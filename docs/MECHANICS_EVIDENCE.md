@@ -44,6 +44,8 @@
 
 | 成就 | `Achievement` 142 行、`AchievementUI`、`AchievementItemUI`、`conditionType` 1–24 | `AchievementUI` 的 142 行全部列出；当前只对五类本地可验证条件给出进度：12 破障（`removed_obstacles`）、13 NPC 谈话（`talk_total`）、14 村庄宝箱、15 到达地图（`visited_maps`）、17 支线完成数。可领取时按原 `rewardIds/rewardCounts` 原子发奖并累计 `score`；其余条件类型显示“未接入”，拒绝领取，不伪造进度。原版 `AchievementItemUI` 逐行动画和其余 18 类条件尚未接入。`tools/check_achievements.py` 覆盖 142 行、五类进度、重复领取拒绝、未接入拒绝、UI 打开/关闭 |
 
+| 战斗商店 | `BattleMainUI.battleShop_Button`、`BattleShopUI`、`BattleShop` 12 行 | 战斗 HUD 左上角原版 `battleShop_Button` 现在真实可点，打开 `BattleShopUI`；商品按原表价格/货币购买，进入背包，购买和关闭按钮均有实际命令。`tools/check_battle_shop.py` 覆盖原按钮命中、打开、购买扣款/入库、关闭；原版商品列表逐行动画仍未复刻 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。

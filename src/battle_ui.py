@@ -8,8 +8,9 @@ original Spine package rather than from screenshots.
 from __future__ import annotations
 
 import math
+import tkinter as tk
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 W, H = 1024, 576
 FONT = 'C:/Windows/Fonts/msyh.ttc'
@@ -46,6 +47,7 @@ class BattleUI:
         self.selected = None
         self._hud_rects = {}
         self.target_hits = {}
+        self.shop_hit = None
         self.item_filter = None
         self.info = ''
         # Lightweight battle presentation timeline.  Events are emitted by the
@@ -147,12 +149,14 @@ class BattleUI:
         visible = {'enemy_Panel': enemy, 'mine_Panel': not enemy,
                    'enemyCount_Panel': False, 'catched_Sprite': False,
                    'finded_Sprite': False, 'chat_Panel': False,
-                   'leftButtons_Panel': False}
+                   'leftButtons_Panel': True}
         relation = int(petrow.get('restraint', 3) or 3)
         kind = {1: 'life', 2: 'energy', 3: 'power', 4: 'defence',
                 5: 'speed', 6: 'all'}.get(relation, 'power')
         resources = {'kindIcon_Sprite': f'UI/pet_kind_{kind}.png'}
         layer = self.app.cocos_ui.render('BattleMainUI', (W, H), text, visible, resources)
+        if 'battleShop_Button' in self.app.cocos_ui.buttons:
+            self.shop_hit = self.app.cocos_ui.buttons['battleShop_Button']
         for name in ('mineMenuPos_Panel', 'enemyMenuPos_Panel'):
             if name in self.app.cocos_ui.rects:
                 self.target_hits[name] = self.app.cocos_ui.rects[name]
@@ -247,6 +251,8 @@ class BattleUI:
         self._draw_team(draw)
         self._draw_damage(draw)
         self.hits = {}
+        if self.shop_hit:
+            self.hits['battleShop_Button'] = self.shop_hit
         if self.battle.result:
             self._draw_result(frame, draw)
         elif self.screen == 'main':
@@ -563,6 +569,8 @@ class BattleUI:
             self._after_action()
         elif key == 'catch_Button':
             self.screen = 'balls' if b.can_catch else 'items'
+        elif key == 'battleShop_Button':
+            self.battle_shop()
         elif key.startswith('itemMenu_'):
             rows = self._battle_items(balls=self.screen == 'balls')
             page = self.ball_page if self.screen == 'balls' else self.page
@@ -601,6 +609,74 @@ class BattleUI:
                 self.screen = 'main'
                 self._after_action()
         return 'refresh'
+
+    def battle_shop(self):
+        """Original BattleShopUI: real BattleShop rows, no simulated payment."""
+        if getattr(self, 'shop_window', None) is not None:
+            try:
+                self.shop_window.lift()
+                return
+            except tk.TclError:
+                self.shop_window = None
+        self.shop_window = tk.Toplevel(self.app.root)
+        win = self.shop_window
+        win.title('战斗商店 · 原版 BattleShopUI')
+        win.transient(self.app.root)
+        win.resizable(False, False)
+        try:
+            layer = self.app.cocos_ui.render('BattleShopUI', (800, 480), {})
+            photo = ImageTk.PhotoImage(layer)
+            art = tk.Label(win, image=photo, bg='#101418')
+            art.image = photo
+            art.pack()
+        except (FileNotFoundError, ValueError, KeyError, OSError):
+            tk.Label(win, text='BattleShopUI 原版布局读取失败。',
+                     bg='#202b30', fg='#ffb0a0').pack(padx=20, pady=20)
+        info = tk.StringVar(value='战斗商店：购买后道具进入背包，战斗继续。')
+        body = tk.Frame(win, bg='#202b30')
+        body.pack(fill='both', expand=True, padx=12, pady=8)
+        tk.Label(body, textvariable=info, bg='#202b30', fg='#f2e7cf',
+                 font=('Microsoft YaHei UI', 10), anchor='w').pack(fill='x')
+        rows = sorted(self.app.data.tables['BattleShop'].items(),
+                      key=lambda pair: int(pair[0]))
+        box = tk.Listbox(body, width=82, height=9, font=('Microsoft YaHei UI', 9),
+                        bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        bar = tk.Scrollbar(body, command=box.yview)
+        box.configure(yscrollcommand=bar.set)
+        box.pack(side='left', fill='both', expand=True)
+        bar.pack(side='right', fill='y')
+        for key, row in rows:
+            currency = self.app.data.tables['Money'].get(
+                str(row['moneyType']), {}).get('name', row['moneyType'])
+            box.insert('end', f'{row["name"]}  {row["price"]} {currency}  — {row.get("des", "")}')
+
+        def buy():
+            if not box.curselection():
+                info.set('请先选择商品。')
+                return
+            key, row = rows[box.curselection()[0]]
+            try:
+                self.app.state.buy('BattleShop', key)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            info.set(f'购买成功：{row["name"]} · 背包数量 '
+                     f'{self.app.state.count(row["goodsKid"])}')
+
+        def close():
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+            self.shop_window = None
+
+        tk.Button(body, text='购买', bg='#5b7c52', fg='white',
+                  command=buy).pack(side='left', padx=6, anchor='n')
+        tk.Button(body, text='关闭', command=close).pack(side='left', padx=6, anchor='n')
+        self.shop_box = box
+        self.shop_actions = {'buy': buy, 'close': close}
+        win.protocol('WM_DELETE_WINDOW', close)
+        win.bind('<Escape>', lambda _: close())
 
     def _after_action(self):
         b = self.battle
