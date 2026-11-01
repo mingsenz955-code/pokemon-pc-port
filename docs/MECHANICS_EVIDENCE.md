@@ -50,6 +50,8 @@
 
 | 背包 | `BagUI`、`item_ListView`、`tag_1..5_Button`、`use_Button`、`heCheng_Button`、`DebrisItem` | 背包现在打开原版 `BagUI`，五个分类页签分别过滤原 `Item.type`；列表叠加在原 `item_ListView` 区域；`use_Button` 调用 `GameState.use_item` 对选中宠物使用道具；`heCheng_Button` 对 `DebrisItem` 检查 `needCount`、原子消耗碎片并 `grant` 对应 `petId`，失败不消耗。`tools/check_bag_ui.py` 覆盖原布局/页签/动作绑定、70 个埃拉芬碎片合成和关闭；原版逐格物品图标、拖动和合成特效尚未复刻 |
 
+| 宠物列表 | `PetListUI`、`itemListView_Panel`、`baseInfo_Panel`、`joinBattle_Button`、`evolution_Button`、`useItem_Button`、`free_Button` | 顶栏“宠物”打开原版 `PetListUI`；列表叠加在 `itemListView_Panel`，详情/技能/天赋切换覆盖 `baseInfo_Panel`；`joinBattle_Button` 设置真实出战索引，`evolution_Button` 调用 `GameState.evolve`，`useItem_Button` 带选中宠物进入原版背包，`free_Button` 两段确认后才放生且禁止放生出战宠物。`tools/check_pet_list_ui.py` 覆盖原布局、动作绑定、页签、出战和放生保护；原版逐行 `PetListItemUI` 卡牌、点击展开动画尚未复刻 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
@@ -57,7 +59,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：42 个原版 UI 布局、112 个可见 Button 的真实命中区、pressed 纹理、35 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：43 个原版 UI 布局、121 个可见 Button 的真实命中区、pressed 纹理、36 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。

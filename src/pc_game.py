@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.18（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.19（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -368,6 +368,7 @@ class NativeGame(ActivityUI, Preview):
         44: ('TaskUI', '每日任务'),
         45: ('AchievementUI', '成就'),
         46: ('BagUI', '背包'),
+        47: ('PetListUI', '宠物'),
     }
 
     def open_ui(self, request):
@@ -481,6 +482,8 @@ class NativeGame(ActivityUI, Preview):
             self._achievement_body(body, info)
         elif uiid == 46:
             self._bag_body(body, info)
+        elif uiid == 47:
+            self._pet_list_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -788,7 +791,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.18')
+        win.title('任务指引 · 原生 0.2.19')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1463,50 +1466,145 @@ class NativeGame(ActivityUI, Preview):
         if self.battle:
             self.event_issue = '请在战斗界面使用换宠和道具指令。'
             return
-        win = tk.Toplevel(self.root)
-        win.title('携带宠物 · 原生 0.2')
-        win.transient(self.root)
-        frame = tk.Frame(win)
-        frame.pack(fill='both', expand=True, padx=8, pady=8)
-        box = tk.Listbox(frame, width=32, height=12, font=('Microsoft YaHei UI', 10))
+        self.open_ui(Request('openui', 'pet-list', 1, {'parameters': {'uiid': 47}}))
+
+    def _pet_list_body(self, body, info):
+        """Original PetListUI: party list, stats/skills/talents, battle and evolve."""
+        state, tables = self.state, self.data.tables
+        pets = list(state.pets)
+        selected = [0 if pets else -1]
+        page = ['base']
+        confirm_free = [None]
+        detail_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        detail_rect = self.ui_hits.get('baseInfo_Panel') or self.ui_rects.get('baseInfo_Panel')
+        if detail_rect:
+            detail_frame.place(x=detail_rect[0], y=detail_rect[1],
+                               width=max(160, detail_rect[2]-detail_rect[0]),
+                               height=max(120, detail_rect[3]-detail_rect[1]))
+            detail_frame.lift()
+        else:
+            detail_frame.pack(fill='both', expand=True)
+        detail = tk.Text(detail_frame, width=44, height=13, wrap='word', font=('Microsoft YaHei UI', 9))
+        detail.pack(fill='both', expand=True)
+        list_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        rect = self.ui_hits.get('itemListView_Panel') or self.ui_rects.get('itemListView_Panel')
+        if rect:
+            list_frame.place(x=rect[0], y=rect[1], width=max(150, rect[2]-rect[0]),
+                             height=max(120, rect[3]-rect[1]))
+            list_frame.lift()
+        else:
+            list_frame.pack(fill='both', expand=True)
+        box = tk.Listbox(list_frame, width=34, height=11, font=('Microsoft YaHei UI', 9),
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        bar = tk.Scrollbar(list_frame, command=box.yview)
+        box.configure(yscrollcommand=bar.set)
         box.pack(side='left', fill='both', expand=True)
-        detail = tk.Text(frame, width=44, height=12, wrap='word', font=('Microsoft YaHei UI', 10))
-        detail.pack(side='left', fill='both', expand=True, padx=(8, 0))
-        pets = list(self.state.pets)
-        for p in pets:
-            row = self.data.tables['Pet'][p.species]
-            box.insert('end', f'{row["name"]}  Lv.{p.level}  HP {p.hp}/{p.stats(self.data.tables)[0]}')
+        bar.pack(side='right', fill='y')
+
         def show(_=None):
-            if not box.curselection():
+            if not pets:
+                detail.delete('1.0', 'end')
+                detail.insert('1.0', '当前没有携带宠物。')
                 return
-            p = pets[box.curselection()[0]]
-            row = self.data.tables['Pet'][p.species]
-            stats = p.stats(self.data.tables)
+            if box.curselection():
+                selected[0] = box.curselection()[0]
+            pet = pets[selected[0]]
+            row = tables['Pet'][pet.species]
+            stats = pet.stats(tables)
+            active = ' · 出战中' if selected[0] == state.active_pet else ''
+            if page[0] == 'skill':
+                skills = [tables['Skill'].get(str(s), {}).get('name', str(s)) for s in pet.skills]
+                body_text = '技能：\n' + ('\n'.join(f'· {name}' for name in skills) or '（无）')
+            elif page[0] == 'talent':
+                talents = [tables['Talent'].get(str(t), {}).get('name', str(t)) for t in pet.talents]
+                body_text = '天赋：\n' + ('\n'.join(f'· {name}' for name in talents) or '（无）')
+            else:
+                body_text = (f'{row["name"]}  Lv.{pet.level}{active}\n'
+                             f'生命 {pet.hp}/{stats[0]}  能量 {pet.energy}/{stats[1]}\n'
+                             f'力量 {stats[2]}  防御 {stats[3]}  速度 {stats[4]}\n'
+                             f'品质 {pet.quality}  突破 {pet.breakthrough}  亲密度 {pet.friendly}\n'
+                             f'携带物 {tables["Item"].get(str(pet.held_item), {}).get("name", pet.held_item)}')
             detail.delete('1.0', 'end')
-            detail.insert('1.0',
-                f'{row["name"]}  Lv.{p.level}\n生命 {p.hp}/{stats[0]}  能量 {p.energy}/{stats[1]}\n'
-                f'力量 {stats[2]}  防御 {stats[3]}  速度 {stats[4]}\n'
-                f'品质 {p.quality}  突破 {p.breakthrough}  亲密度 {p.friendly}\n'
-                f'携带物 {p.held_item}\n技能：' + ', '.join(self.data.tables['Skill'][s]['name'] for s in p.skills) + '\n'
-                f'天赋：' + ', '.join(self.data.tables['Talent'].get(str(t), {}).get('name', str(t)) for t in p.talents))
-        box.bind('<<ListboxSelect>>', show)
-        def evolve():
-            if not box.curselection():
+            detail.insert('1.0', body_text)
+            info.set(f'{row["name"]} · 出战 {state.active_pet+1}/{max(1, len(pets))}')
+
+        def rebuild():
+            nonlocal pets
+            pets = list(state.pets)
+            box.delete(0, 'end')
+            for pet in pets:
+                row = tables['Pet'][pet.species]
+                mark = '★' if pets.index(pet) == state.active_pet else ' '
+                box.insert('end', f'{mark} {row["name"]}  Lv.{pet.level}  '
+                                  f'HP {pet.hp}/{pet.stats(tables)[0]}')
+            if pets:
+                selected[0] = min(selected[0], len(pets)-1)
+                box.selection_set(selected[0])
+                show()
+
+        def join_battle():
+            if not pets:
                 return
-            p = pets[box.curselection()[0]]
+            state.active_pet = selected[0]
+            confirm_free[0] = None
+            rebuild()
+
+        def evolve():
+            if not pets:
+                return
+            pet = pets[selected[0]]
             try:
-                self.state.evolve(p.uid)
-                detail.delete('1.0', 'end')
-                detail.insert('1.0', f'进化为 {self.data.tables["Pet"][p.species]["name"]}！')
-                win.destroy()
-                self.pets_ui()
+                state.evolve(pet.uid)
+                confirm_free[0] = None
+                rebuild()
+                info.set('进化成功。')
             except (ValueError, KeyError) as error:
-                detail.delete('1.0', 'end')
-                detail.insert('1.0', str(error))
-        buttons = tk.Frame(win)
-        buttons.pack(fill='x', padx=8, pady=(0, 8))
-        tk.Button(buttons, text='尝试进化', command=evolve).pack(side='left')
-        tk.Button(buttons, text='关闭', command=win.destroy).pack(side='right')
+                info.set(str(error))
+
+        def free():
+            if not pets:
+                return
+            pet = pets[selected[0]]
+            if selected[0] == state.active_pet:
+                info.set('出战中宠物不能放生，请先更换出战宠物。')
+                return
+            if confirm_free[0] != pet.uid:
+                confirm_free[0] = pet.uid
+                info.set('再次点击“放生”确认放弃这只宠物。')
+                return
+            state.pets.remove(pet)
+            if state.active_pet > selected[0]:
+                state.active_pet -= 1
+            state.active_pet = max(0, min(state.active_pet, len(state.pets)-1))
+            confirm_free[0] = None
+            rebuild()
+            info.set('已放生。')
+
+        def use_item():
+            if not pets:
+                return
+            pet = pets[selected[0]]
+            self.bag_target_uid = pet.uid
+            self.close_ui()
+            self.bag_ui()
+
+        def tag(value):
+            page[0] = value
+            show()
+
+        box.bind('<<ListboxSelect>>', show)
+        self.ui_actions.update({
+            'joinBattle_Button': join_battle,
+            'evolution_Button': evolve,
+            'useItem_Button': use_item,
+            'free_Button': free,
+            'skillTag_Button': lambda: tag('skill'),
+            'talentTag_Button': lambda: tag('talent'),
+            'skill_Button': lambda: tag('skill'),
+            'trainValue_Button': lambda: tag('base'),
+            'close_Button': self.close_ui,
+        })
+        rebuild()
 
     def bag_ui(self):
         if self.battle:
@@ -1529,6 +1627,10 @@ class NativeGame(ActivityUI, Preview):
         target_box.pack(anchor='w', pady=2)
         if targets:
             target_box.current(0)
+            preferred = getattr(self, 'bag_target_uid', None)
+            match = next((i for i, pet in enumerate(targets) if pet.uid == preferred), None)
+            if match is not None:
+                target_box.current(match)
         list_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
         rect = self.ui_hits.get('item_ListView') or self.ui_rects.get('item_ListView')
         if rect:
