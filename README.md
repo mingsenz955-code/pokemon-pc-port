@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.10%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.11%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.10 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.11 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -38,6 +38,9 @@ TaskUI 的每日页可用真实按钮领取；原版任务页的逐帧 item 动�
 炼狱龙越过全部障碍、乘龙渡水；障碍从 `spriteTileLayer` 真实移除、写入
 `removed_obstacles` 并推进 `conditionType=6` 任务，试乘 `wait type=3` 在破障后继续。
 当前 143 张地图共解析 10,937 个原版障碍对象。
+0.2.11 接通 TaskUI 三页与 `tag_task_main/branch/daily` 原标签：主线和已接支线显示真实
+`MainTask`/`BranchTask` 名称、描述、状态、条件进度与奖励；每日页保留八行领取。
+主线/支线奖励仍由原目标 NPC 的 `submittask` 事件发放，界面不会伪造远程领奖。
 **这些改动仍不代表完整复刻**：宠物使者付费试用/发货、试炼塔、礼包发货、成就、
 排行榜领奖、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
 
@@ -49,8 +52,8 @@ TaskUI 的每日页可用真实按钮领取；原版任务页的逐帧 item 动�
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.10/口袋妖怪-PC移植开发版0.2.10.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.10.zip`](publish/release/pokemon-pc-0.2.10.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.11/口袋妖怪-PC移植开发版0.2.11.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.11.zip`](publish/release/pokemon-pc-0.2.11.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -106,10 +109,11 @@ TaskUI 的每日页可用真实按钮领取；原版任务页的逐帧 item 动�
 - **道馆试练**：`Budokan` 五座道馆，每馆二十位 `BudokanNpc` 按顺序挑战；队伍读取
   `BudokanNpcPet`，胜利推进 `GameState.budokans`，失败不推进；第二十场发放原表进化材料。
   UI 15 与 `openui 15 → closeui yes → fight type=4` 已实测，原版动态 item 动画仍待继续对照。
-- **每日任务**：`DailyTask` 八行按原条件统计捕捉、NPC 战斗、聊天、购买、轮盘、卡牌获胜、
+- **每日任务与任务页**：`DailyTask` 八行按原条件统计捕捉、NPC 战斗、聊天、购买、轮盘、卡牌获胜、
   赛宠获胜；七项日常全部完成后“全能训练”可领取。每天按本地日期重置，完成与领取分离，
-  奖励走原表 `rewardIds/rewardCounts` 和事务发放。TaskUI 每日页、任务按钮已接通；
-  原版任务页逐帧 item 动画与服务器时间校准仍未完成。
+  奖励走原表 `rewardIds/rewardCounts` 和事务发放。TaskUI 的 `tag_1/2/3` 已分别打开主线、
+  支线、每日三页；主线/支线显示原表描述、进度、奖励，但奖励仍必须由目标 NPC 的
+  `submittask` 事件发放，界面不做远程伪造领取。原版任务页逐帧 item 动画与服务器时间校准仍未完成。
 - **地图交互**：出口、传送、区域触发、树/岩障碍和坐骑破障已接入；`obsType` 障碍会阻挡步行，
   护城龙/陆行鸟可破坏并移除，月桂叶/炼狱龙/乘龙按原表穿越对应地形。原版障碍点击/采集动作、
   部分场景机关和后期地图仍会停止并提示。
@@ -208,8 +212,9 @@ py -3.12 -m venv .venv
 # 道馆试练：Budokan 20 场顺序、BudokanNpcPet 队伍、type=4 原事件与最终材料
 .\.venv\Scripts\python.exe tools\check_budokan.py
 
-# 每日任务：DailyTask 八行、七类计数、每日重置、原子领取与 TaskUI
+# 每日任务与 TaskUI：八行、七类计数、三页 tab、每日重置、原子领取与主线/支线不伪造领奖
 .\.venv\Scripts\python.exe tools\check_daily_tasks.py
+.\.venv\Scripts\python.exe tools\check_task_ui.py
 
 # 树/岩障碍：obsType 解析、坐骑能力、真实移除、conditionType=6 任务、试乘 wait 继续
 .\.venv\Scripts\python.exe tools\check_obstacles.py

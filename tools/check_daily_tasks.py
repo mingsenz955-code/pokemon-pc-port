@@ -154,7 +154,7 @@ try:
     app.runtime.sequence, app.runtime.file, app.runtime.pending = [], '', None
     app.state = state2
     app.open_ui(Request('openui', 'daily-check', 1,
-                        {'parameters': {'uiid': 44}}))
+                        {'parameters': {'uiid': 44, 'page': 'daily'}}))
     assert app.ui_open
     win = app.ui_window
     win.geometry('+20+20')
@@ -170,9 +170,18 @@ try:
     assert 'tag_1_Button' in app.ui_actions
     assert 'tag_2_Button' in app.ui_actions
     assert 'tag_3_Button' in app.ui_actions
-    assert '每日任务' in app.ui_info.get()
+    assert '全能训练' in app.ui_info.get()
+    daily_text = app.ui_info.get()
     app.ui_actions['tag_1_Button']()
-    assert '每日任务' in app.ui_info.get()
+    assert app.ui_info.get() != daily_text
+    gold_before = app.state.count('700001')
+    app.ui_actions['receive_Button']()
+    assert app.state.count('700001') == gold_before
+    assert '不会伪造' in app.ui_info.get()
+    app.ui_actions['tag_2_Button']()
+    assert '支线' not in app.ui_info.get() or '当前页' in app.ui_info.get()
+    app.ui_actions['tag_3_Button']()
+    assert '全能训练' in app.ui_info.get()
     app.ui_actions['receive_Button']()
     assert '领取成功' in app.ui_info.get()
     assert app.state.count('240015') == 5 and app.state.count('240018') == 1

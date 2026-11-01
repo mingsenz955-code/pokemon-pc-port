@@ -65,6 +65,7 @@ class NativeGame(ActivityUI, Preview):
         self.ui_render_args = None
         self.ui_close_result = None
         self.ui_info = None
+        self.ui_parameters = {}
         self.arena_summary = None
         self.chest_fx = None
         self.running_session = None
@@ -73,7 +74,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.10（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.11（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -327,6 +328,7 @@ class NativeGame(ActivityUI, Preview):
 
     def open_ui(self, request):
         parameters = request.data.get('parameters', {})
+        self.ui_parameters = parameters
         uiid = int(parameters.get('uiid', 0) or 0)
         if uiid == 7:
             self.starter_window(int(parameters.get('par1', 1)))
@@ -654,7 +656,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.10')
+        win.title('任务指引 · 原生 0.2.11')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1293,7 +1295,7 @@ class NativeGame(ActivityUI, Preview):
             return
         from event_runtime import Request
         self.open_ui(Request('openui', 'daily-task', 1,
-                             {'parameters': {'uiid': 44}}))
+                             {'parameters': {'uiid': 44, 'page': 'daily'}}))
 
     def listing(self, title, content):
         win = tk.Toplevel(self.root)

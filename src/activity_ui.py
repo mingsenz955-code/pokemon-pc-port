@@ -617,17 +617,24 @@ class ActivityUI:
         tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
 
     def _daily_body(self, body, info):
-        """TaskUI daily page: eight original DailyTask rows and claim state."""
+        """TaskUI's main/branch/daily pages and their original list entries.
+
+        The Cocos layout has three real tabs: tag_1=main, tag_2=branch,
+        tag_3=daily.  The host can pass page=daily from the top-bar shortcut;
+        scripts that open uiid 44 directly start on the original main tab.
+        """
         daily = DailyTasks(self.state)
         win = body.master
+        page = str(getattr(self, 'ui_parameters', {}).get('page') or 'main')
         for child in body.winfo_children():
             if isinstance(child, tk.Label):
                 child.pack_forget()
         panel = tk.Frame(win, bg='#2b211b', bd=0, highlightthickness=0)
         panel.place(x=104, y=104, width=588, height=302)
-        tk.Label(win, text=f'每日 {daily.normal_completed()}/7', bg='#c98b62',
+        header = tk.StringVar()
+        tk.Label(win, textvariable=header, bg='#c98b62',
                  fg='#3a2418', font=('Microsoft YaHei UI', 10, 'bold')
-                 ).place(x=68, y=66, width=220, height=26)
+                 ).place(x=68, y=66, width=300, height=26)
         box = tk.Listbox(panel, width=44, height=10, exportselection=False,
                          bg='#211b17', fg='#f1e2c4', selectbackground='#8a5730',
                          selectforeground='#fff6dd', bd=0, highlightthickness=0,
@@ -637,45 +644,119 @@ class ActivityUI:
         tk.Label(panel, textvariable=detail, bg='#2b211b', fg='#f1e2c4',
                  justify='left', anchor='nw', wraplength=232,
                  font=('Microsoft YaHei UI', 10)).place(x=334, y=8, width=246, height=286)
+        action = tk.Button(body, text='领取选中任务', bg='#5b7c52', fg='white',
+                           command=lambda: receive())
+        action.pack(pady=4)
         rows = []
+
         def item_name(item_id):
             for table in ('Item', 'Money', 'Pet'):
                 row = self.data.tables.get(table, {}).get(str(item_id))
                 if row:
                     return row.get('name', str(item_id))
             return str(item_id)
+
+        def rewards_text(row):
+            return '、'.join(f'{item_name(i)}×{n}'
+                             for i, n in zip(numbers(row.get('rewardIds', '')),
+                                             numbers(row.get('rewardCounts', ''))))
+
+        def progress_text(counts, required):
+            values = [int(v) for v in counts] if isinstance(counts, list) else []
+            targets = [int(v) for v in required]
+            if not targets:
+                return '无'
+            return ' / '.join(f'{values[i] if i < len(values) else 0}/{target}'
+                              for i, target in enumerate(targets))
+
+        def main_row():
+            key = str(self.state.main_task)
+            row = self.data.tables['MainTask'].get(key)
+            if not row:
+                return []
+            counts = self.state.task_counts.get(f'main:{key}', [])
+            status = {2: '未接取', 3: '进行中', 4: '可提交', 5: '已完成'}.get(
+                self.state.main_state, str(self.state.main_state))
+            return [{'kind': 'main', 'id': key, 'name': row['name'], 'des': row['des'],
+                     'progress': progress_text(counts, numbers(row['counts'])),
+                     'required': numbers(row['counts']), 'counts': counts,
+                     'status': status, 'rewards': rewards_text(row)}]
+
+        def branch_rows():
+            result = []
+            for key, status in sorted(self.state.branch_states.items(), key=lambda pair: int(pair[0])):
+                row = self.data.tables['BranchTask'].get(str(key))
+                if not row or status not in (3, 4, 5):
+                    continue
+                counts = self.state.task_counts.get(f'branch:{key}', [])
+                result.append({
+                    'kind': 'branch', 'id': str(key), 'name': row['name'], 'des': row['des'],
+                    'progress': progress_text(counts, numbers(row['counts'])),
+                    'required': numbers(row['counts']), 'counts': counts,
+                    'status': {3: '进行中', 4: '可提交', 5: '已完成'}.get(status, str(status)),
+                    'rewards': rewards_text(row)})
+            return result
+
+        def daily_rows():
+            result = []
+            for row in daily.status():
+                result.append({'kind': 'daily', 'id': row['id'], 'name': row['name'],
+                               'des': row['des'], 'progress': f'{row["progress"]}/{row["required"]}',
+                               'required': [row['required']], 'counts': [row['progress']],
+                               'status': ('已领取' if row['claimed'] else
+                                          ('可领取' if row['ready'] else '进行中')),
+                               'rewards': '、'.join(f'{item_name(i)}×{n}'
+                                                   for i, n in zip(row['reward_ids'],
+                                                                   row['reward_counts'])),
+                               'daily': row})
+            return result
+
+        def page_rows():
+            return {'main': main_row, 'branch': branch_rows, 'daily': daily_rows}.get(page, main_row)()
+
         def selected():
             selection = box.curselection()
             return rows[selection[0]] if selection and selection[0] < len(rows) else None
+
         def show():
             row = selected()
             if not row:
-                detail.set('请选择一个每日任务。')
-                info.set('请选择一个每日任务。')
+                text = '当前页没有可显示的原版任务。'
+                detail.set(text)
+                info.set(text)
                 return
-            rewards = '、'.join(f'{item_name(i)}×{n}'
-                                for i, n in zip(row['reward_ids'], row['reward_counts']))
-            state = '已领取' if row['claimed'] else ('可领取' if row['ready'] else '进行中')
-            text = (f'{row["name"]} · {state}\n{row["des"]}\n'
-                    f'进度：{row["progress"]} / {row["required"]}\n奖励：{rewards}')
+            text = (f'{row["name"]} · {row["status"]}\n{row["des"]}\n'
+                    f'进度：{row["progress"]}\n奖励：{row["rewards"] or "无"}')
             detail.set(text)
             info.set(text)
+
         def refresh(select=None):
             rows.clear()
-            rows.extend(daily.status())
+            rows.extend(page_rows())
             box.delete(0, 'end')
             for row in rows:
-                mark = '✓' if row['claimed'] else ('★' if row['ready'] else '·')
-                box.insert('end', f'{mark} {row["name"]}  {row["progress"]}/{row["required"]}')
+                mark = '✓' if row['status'] == '已领取' else ('★' if row['status'] in ('可领取', '可提交') else '·')
+                box.insert('end', f'{mark} {row["name"]}  {row["progress"]}')
             if rows:
                 box.selection_set(min(select if select is not None else 0, len(rows)-1))
                 box.see(box.curselection()[0])
+            header.set({'main': f'主线 · {self.state.main_state}', 'branch': f'支线 · {len(rows)}',
+                        'daily': f'每日 {daily.normal_completed()}/7'}.get(page, '任务'))
+            action.configure(text='领取选中任务' if page == 'daily' else '查看任务目标')
             show()
-        def claim():
+
+        def receive():
             row = selected()
             if not row:
-                detail.set('请选择一个每日任务。')
-                info.set('请选择一个每日任务。')
+                text = '请选择一个任务。'
+                detail.set(text)
+                info.set(text)
+                return
+            if row['kind'] != 'daily':
+                text = ('主线/支线奖励按原版由目标 NPC 的 submittask 事件发放；'
+                        '这里不会伪造远程领取。请按任务描述前往目标。')
+                detail.set(text)
+                info.set(text)
                 return
             try:
                 result = daily.claim(row['id'])
@@ -688,22 +769,18 @@ class ActivityUI:
             text = f'领取成功：{rewards}。明天可再次完成每日任务。'
             detail.set(text)
             info.set(text)
-        def tag(page):
-            labels = {
-                1: '每日任务：捕捉、战斗、聊天、消费、轮盘、卡牌、赛宠，共七项；全部完成后可领全能训练。',
-                2: '当前宿主界面显示每日任务；主线任务请在“任务”入口查看。',
-                3: '当前宿主界面显示每日任务；支线任务请在“任务”入口查看。',
-            }
-            info.set(labels.get(page, ''))
-            detail.set(labels.get(page, ''))
-        self.ui_actions['receive_Button'] = claim
-        self.ui_actions['tag_1_Button'] = lambda: tag(1)
-        self.ui_actions['tag_2_Button'] = lambda: tag(2)
-        self.ui_actions['tag_3_Button'] = lambda: tag(3)
+
+        def tag(target):
+            nonlocal page
+            page = target
+            refresh()
+
+        self.ui_actions['receive_Button'] = receive
+        self.ui_actions['tag_1_Button'] = lambda: tag('main')
+        self.ui_actions['tag_2_Button'] = lambda: tag('branch')
+        self.ui_actions['tag_3_Button'] = lambda: tag('daily')
         self.ui_actions['close_Button'] = lambda: self.close_ui('no')
         box.bind('<<ListboxSelect>>', lambda event: show())
-        tk.Button(body, text='领取选中任务', bg='#5b7c52', fg='white',
-                  command=claim).pack(pady=4)
         refresh()
 
     def _budokan_body(self, body, info, budokan_id=1):
