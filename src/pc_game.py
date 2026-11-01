@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.28（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.29（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -378,6 +378,7 @@ class NativeGame(ActivityUI, Preview):
         53: ('GoodsBuyConfirmUI', '购买确认'),
         54: ('SkillReplaceUI', '技能替换'),
         55: ('OpenChestConfirmUI', '开启宝箱'),
+        56: ('FreePetConfirmUI', '放生确认'),
     }
 
     def open_ui(self, request):
@@ -509,6 +510,8 @@ class NativeGame(ActivityUI, Preview):
             self._skill_replace_body(body, info)
         elif uiid == 55:
             self._open_chest_body(body, info)
+        elif uiid == 56:
+            self._free_pet_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -932,7 +935,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.28')
+        win.title('任务指引 · 原生 0.2.29')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1776,6 +1779,45 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['cancel_Button'] = self.close_ui
         self.ui_actions['close_Button'] = self.close_ui
 
+    def open_free_pet(self, uid):
+        self.open_ui(Request('openui', 'free-pet', 1, {
+            'parameters': {'uiid': 56, 'uid': uid}}))
+
+    def _free_pet_body(self, body, info):
+        uid = str(self.ui_parameters.get('uid') or
+                  (self.state.pets[0].uid if self.state.pets else ''))
+        pet = next((candidate for candidate in self.state.pets
+                    if str(candidate.uid) == uid), None)
+        if pet is None:
+            info.set('这只宠物不在携带栏。')
+            return
+        name = self.data.tables['Pet'][pet.species]['name']
+        text = f'确定放生 {name} Lv.{pet.level} 吗？放生后无法恢复。'
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('FreePetConfirmUI', (800, 480),
+                                         {'info_Text': text})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(text)
+        def back():
+            self.close_ui()
+            self.pets_ui()
+        def confirm():
+            if pet is self.state.pets[self.state.active_pet]:
+                info.set('出战中宠物不能放生，请先更换出战宠物。')
+                return
+            index = self.state.pets.index(pet)
+            self.state.pets.remove(pet)
+            if self.state.active_pet > index:
+                self.state.active_pet -= 1
+            self.state.active_pet = max(
+                0, min(self.state.active_pet, len(self.state.pets)-1))
+            back()
+        self.ui_actions['confirm_Button'] = confirm
+        self.ui_actions['cancel_Button'] = back
+        self.ui_actions['close_Button'] = back
+
     def illustrated_ui(self):
         if self.battle or self.ui_open:
             return
@@ -1955,17 +1997,7 @@ class NativeGame(ActivityUI, Preview):
             if selected[0] == state.active_pet:
                 info.set('出战中宠物不能放生，请先更换出战宠物。')
                 return
-            if confirm_free[0] != pet.uid:
-                confirm_free[0] = pet.uid
-                info.set('再次点击“放生”确认放弃这只宠物。')
-                return
-            state.pets.remove(pet)
-            if state.active_pet > selected[0]:
-                state.active_pet -= 1
-            state.active_pet = max(0, min(state.active_pet, len(state.pets)-1))
-            confirm_free[0] = None
-            rebuild()
-            info.set('已放生。')
+            self.open_free_pet(pet.uid)
 
         def use_item():
             if not pets:
