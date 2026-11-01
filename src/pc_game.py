@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 from original_data import OriginalData
 from pc_preview import Preview, data_root
 from game_state import GameState
-from event_runtime import EventRuntime, PendingMechanic
+from event_runtime import EventRuntime, PendingMechanic, Request
 from csb_render import CocosUI
 from battle import make_npc_battle, make_wild_battle
 from arena import ArenaProgress, make_arena_battle
@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.16（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.18（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -367,6 +367,7 @@ class NativeGame(ActivityUI, Preview):
         43: ('BuyConfirmUI', '购买赛跑奖牌'),
         44: ('TaskUI', '每日任务'),
         45: ('AchievementUI', '成就'),
+        46: ('BagUI', '背包'),
     }
 
     def open_ui(self, request):
@@ -478,6 +479,8 @@ class NativeGame(ActivityUI, Preview):
             self._daily_body(body, info)
         elif uiid == 45:
             self._achievement_body(body, info)
+        elif uiid == 46:
+            self._bag_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -785,7 +788,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.16')
+        win.title('任务指引 · 原生 0.2.18')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1509,56 +1512,118 @@ class NativeGame(ActivityUI, Preview):
         if self.battle:
             self.event_issue = '请在战斗界面使用道具指令。'
             return
-        win = tk.Toplevel(self.root)
-        win.title('背包与货币 · 原生 0.2')
-        win.transient(self.root)
-        info = tk.StringVar(value=f'金币 {self.state.count("700001")}')
-        tk.Label(win, textvariable=info, anchor='w', font=('Microsoft YaHei UI', 11)).pack(fill='x', padx=8, pady=4)
-        targets = list(self.state.pets)
-        target_box = ttk.Combobox(win, state='readonly', width=45,
-            values=[f'{self.data.tables["Pet"][p.species]["name"]} Lv.{p.level}' for p in targets])
-        target_box.pack(fill='x', padx=8, pady=4)
+        self.open_ui(Request('openui', 'bag', 1, {'parameters': {'uiid': 46}}))
+
+    def _bag_body(self, body, info):
+        """Original BagUI: five tabs, item list, use and fragment synthesis."""
+        tabs = {1: ('道具', {1, 3, 4, 6}), 2: ('蛋', {5}), 3: ('卷轴', {2}),
+                4: ('重要', {7}), 5: ('碎片', {8})}
+        state, tables = self.state, self.data.tables
+        current = [1]
+        selected = [None]
+        targets = list(state.pets)
+        target_name = tk.StringVar()
+        target_box = ttk.Combobox(body, textvariable=target_name, state='readonly',
+                                  values=[f'{tables["Pet"][p.species]["name"]} Lv.{p.level}'
+                                          for p in targets], width=30)
+        target_box.pack(anchor='w', pady=2)
         if targets:
             target_box.current(0)
-        frame = tk.Frame(win)
-        frame.pack(fill='both', expand=True, padx=8)
-        box = tk.Listbox(frame, width=64, height=14, font=('Microsoft YaHei UI', 10))
+        list_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        rect = self.ui_hits.get('item_ListView') or self.ui_rects.get('item_ListView')
+        if rect:
+            list_frame.place(x=rect[0], y=rect[1], width=max(120, rect[2]-rect[0]),
+                             height=max(100, rect[3]-rect[1]))
+            list_frame.lift()
+        else:
+            list_frame.pack(fill='both', expand=True)
+        box = tk.Listbox(list_frame, width=38, height=13, font=('Microsoft YaHei UI', 9),
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        bar = tk.Scrollbar(list_frame, command=box.yview)
+        box.configure(yscrollcommand=bar.set)
         box.pack(side='left', fill='both', expand=True)
-        usable = []
-        for item_id, count in self.state.inventory.items():
-            if count <= 0:
-                continue
-            row = self.data.tables['Item'].get(str(item_id))
-            if row:
+        bar.pack(side='right', fill='y')
+        rows = []
+
+        def refresh(_=None):
+            rows.clear()
+            box.delete(0, 'end')
+            allowed = tabs[current[0]][1]
+            for item_id, count in state.inventory.items():
+                if int(count) <= 0:
+                    continue
+                row = tables['Item'].get(str(item_id))
+                if not row or int(row.get('type', -1)) not in allowed:
+                    continue
+                rows.append((str(item_id), row, int(count)))
                 box.insert('end', f'{row["name"]} × {count}  — {row.get("des", "")}')
-                if int(row.get('useType', 0)) in (1, 2):
-                    usable.append((str(item_id), row))
-            else:
-                money = self.data.tables['Money'].get(str(item_id), {})
-                box.insert('end', f'{money.get("name", item_id)} × {count}')
+            info.set(f'{tabs[current[0]][0]} · {len(rows)} 种 · 金币 {state.count("700001")}')
+            if rows:
+                box.selection_set(0)
+                show()
+
+        def show(_=None):
+            if not rows or not box.curselection():
+                return
+            item_id, row, count = rows[box.curselection()[0]]
+            selected[0] = (item_id, row, count)
+            debris = tables.get('DebrisItem', {}).get(item_id)
+            synth = (f' · 碎片合成需要 {debris["needCount"]} 个' if debris else '')
+            info.set(f'{row["name"]} × {count}{synth}\n{row.get("des", "")}')
+
         def use():
-            if not box.curselection():
-                return
-            index = box.curselection()[0]
-            if not usable:
-                info.set('没有可使用的回复道具。')
-                return
-            # The list also contains non-usable rows, so match by a parallel scan.
-            selected_text = box.get(index)
-            entry = next((entry for entry in usable if selected_text.startswith(entry[1]['name']+' ×')), None)
-            if entry is None:
-                info.set('这个道具不能在背包中使用。')
+            entry = selected[0]
+            if not entry:
+                info.set('请先选择道具。')
                 return
             try:
                 target = targets[target_box.current()] if target_box.current() >= 0 else None
-                message = self.state.use_item(entry[0], target)
-                info.set(message + f' · 金币 {self.state.count("700001")}')
-                win.destroy()
-                self.bag_ui()
+                message = state.use_item(entry[0], target)
+                info.set(message)
+                refresh()
             except ValueError as error:
                 info.set(str(error))
-        tk.Button(frame, text='对所选宠物使用', command=use).pack(side='left', padx=8, anchor='n')
-        tk.Button(frame, text='关闭', command=win.destroy).pack(side='left', padx=4, anchor='n')
+
+        def synthesize():
+            entry = selected[0]
+            if not entry:
+                info.set('请先选择碎片。')
+                return
+            item_id, row, count = entry
+            debris = tables.get('DebrisItem', {}).get(item_id)
+            if not debris:
+                info.set('这个道具不是可合成碎片。')
+                return
+            need = int(debris['needCount'])
+            if count < need:
+                info.set(f'碎片不足：需要 {need} 个，当前 {count} 个。')
+                return
+            try:
+                with state.transaction():
+                    state.consume([item_id], [need])
+                    state.grant(debris['petId'], 1)
+                refresh()
+                info.set(f'合成成功：{tables["Pet"][debris["petId"]]["name"]} 已进入宠物栏。')
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+
+        def tab(value):
+            current[0] = value
+            selected[0] = None
+            refresh()
+
+        for index in range(1, 6):
+            self.ui_actions[f'tag_{index}_Button'] = (
+                lambda value=index: tab(value))
+        self.ui_actions['use_Button'] = use
+        self.ui_actions['heCheng_Button'] = synthesize
+        self.ui_actions['bag_use'] = use
+        self.ui_actions['bag_synthesize'] = synthesize
+        self.ui_actions['close_Button'] = self.close_ui
+        box.bind('<<ListboxSelect>>', show)
+        refresh()
+        tk.Button(body, text='使用', command=use).pack(side='left', padx=6)
+        tk.Button(body, text='碎片合成', command=synthesize).pack(side='left', padx=6)
 
     def tasks_ui(self):
         row = self.data.tables['MainTask'][str(self.state.main_task)]

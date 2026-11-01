@@ -48,6 +48,8 @@
 
 | 剧情/地图覆盖 | 1,685 个 `pEvent*.json`、461 个触发器、431 张 `VillageMap` | `tools/check_event_coverage.py` 逐脚本解析原加密事件数据：36 种实际命令全部在 `EventRuntime` 的 PRESENTATION/STATE/INTERACTIVE 分派内，未知命令为 0；461 个触发器类型（tomap/toarea/toexit/talk/fightover/fight）均有宿主通知入口；431 张地图均能由 `OriginalData.load_map` 读取。该测试只证明“可解析/可加载”，不代表每条剧情分支、每个事件 UI 选择和每张地图的完整玩法都已逐帧复刻 |
 
+| 背包 | `BagUI`、`item_ListView`、`tag_1..5_Button`、`use_Button`、`heCheng_Button`、`DebrisItem` | 背包现在打开原版 `BagUI`，五个分类页签分别过滤原 `Item.type`；列表叠加在原 `item_ListView` 区域；`use_Button` 调用 `GameState.use_item` 对选中宠物使用道具；`heCheng_Button` 对 `DebrisItem` 检查 `needCount`、原子消耗碎片并 `grant` 对应 `petId`，失败不消耗。`tools/check_bag_ui.py` 覆盖原布局/页签/动作绑定、70 个埃拉芬碎片合成和关闭；原版逐格物品图标、拖动和合成特效尚未复刻 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
@@ -55,7 +57,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：41 个原版 UI 布局、104 个可见 Button 的真实命中区、pressed 纹理、34 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：42 个原版 UI 布局、112 个可见 Button 的真实命中区、pressed 纹理、35 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。
