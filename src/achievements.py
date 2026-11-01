@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 class Achievements:
-    SUPPORTED = {3, 4, 5, 7, 8, 12, 13, 14, 15, 17, 22, 23}
+    SUPPORTED = {1, 3, 4, 5, 7, 8, 11, 12, 13, 14, 15, 17, 22, 23}
     COUNTERS = {3: ('caught_total', '野外捕获'),
                 4: ('hatch_total', '孵化'),
                 5: ('evolve_total', '进化'),
@@ -39,6 +39,19 @@ class Achievements:
         condition_type = int(row.get('conditionType', 0) or 0)
         target = int(row.get('count', 1) or 1)
         values = self._ints(row.get('conditions'))
+        if condition_type == 1:
+            # The first collection family filters by one quality/rarity slot.
+            if len(values) >= 4 and values[2] != -1 and values[0] == -1 and values[3] == -1 and values[4:] == [-1, -1, 0]:
+                grade = values[2]
+                current = sum(1 for pet in self.state.pets+self.state.bank
+                              if int(getattr(pet, 'quality', 0)) == grade)
+                return current, target, f'当前拥有品质 {grade} 的宠物 {current} 只'
+            return None
+        if condition_type == 11:
+            if values and values[-1] == -1:
+                current = int(self.state.activities.get('battle_wins', 0))
+                return current, target, f'已取得 {current} 场战斗胜利'
+            return None
         if condition_type in self.COUNTERS:
             counter, label = self.COUNTERS[condition_type]
             current = int(self.state.activities.get(counter, 0))

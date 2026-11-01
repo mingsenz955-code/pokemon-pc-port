@@ -68,6 +68,16 @@ assert api.claim('6301')['score'] == 5
 assert api.claim('5901')['score'] == 5
 assert api.claim('3102')['score'] == 15
 
+# Collection families and total battle wins use exact local party/bank data.
+from types import SimpleNamespace  # noqa: E402
+state.pets.extend(SimpleNamespace(quality=2) for _ in range(5))
+state.activities['battle_wins'] = 1
+assert api.progress('401')[:2] == (5, 5)
+assert api.progress('2301')[:2] == (1, 1)
+assert api.progress('101') is None
+assert api.claim('401')['score'] == 5
+assert api.claim('2301')['score'] == 5
+
 # Unsupported original condition types must not fabricate progress/rewards.
 before = state.count('260017')
 try:
