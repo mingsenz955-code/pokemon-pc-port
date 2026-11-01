@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 class Achievements:
-    SUPPORTED = {1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 17, 22, 23, 24}
+    SUPPORTED = {1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 17, 18, 19, 22, 23, 24}
     COUNTERS = {3: ('caught_total', '野外捕获'),
                 4: ('hatch_total', '孵化'),
                 5: ('evolve_total', '进化'),
@@ -52,6 +52,21 @@ class Achievements:
                 uses = self.state.activities.get('heal_items', {})
                 current = sum(int(uses.get(str(item), 0)) for item in values)
                 return current, target, f'已使用指定回复/飞越道具 {current} 次'
+            return None
+        if condition_type == 18:
+            # -1,<moneyType>,1 = total spent in any shop; the 5,-1,-1 rows
+            # describe a separate mystery-shop counter that is not wired yet.
+            if len(values) >= 2 and values[0] == -1:
+                spent = self.state.activities.get('shop_spent', {})
+                current = int(spent.get(str(values[1]), 0))
+                return current, target, f'已消费 {current} / {target}'
+            return None
+        if condition_type == 19:
+            # 1=main shop, 3=material shop, 4=scroll shop.
+            if values:
+                talks = self.state.activities.get('shop_talks', {})
+                current = int(talks.get(str(values[0]), 0))
+                return current, target, f'与店员对话 {current} / {target} 次'
             return None
         if condition_type == 24:
             if len(values) >= 2 and values[0] == 2:

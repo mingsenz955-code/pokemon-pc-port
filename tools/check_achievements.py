@@ -98,6 +98,13 @@ state.inventory['230001'] = 1
 state.use_item('230001', state.pets[0])
 assert state.activities['heal_items']['230001'] == 21
 
+state.activities['shop_spent'] = {'700001': 10000}
+assert api.progress('7001')[:2] == (10000, 10000)
+assert api.claim('7001')['score'] == 10
+state.activities['shop_talks'] = {'1': 100}
+assert api.progress('5601')[:2] == (100, 100)
+assert api.claim('5601')['score'] == 10
+
 # Unsupported original condition types must not fabricate progress/rewards.
 before = state.count('260017')
 try:

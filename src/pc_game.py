@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.24（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.25（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -643,6 +643,11 @@ class NativeGame(ActivityUI, Preview):
         table = {1: 'Shop', 2: 'EvolutionShop', 3: 'SkillShop',
                  22: 'IArenaShop', 28: 'MedalShop'}[uiid]
         self.shop_uiid = uiid
+        clerk = {1: '1', 2: '3', 3: '4'}.get(uiid)
+        if clerk:
+            talks = dict(self.state.activities.get('shop_talks', {}))
+            talks[clerk] = int(talks.get(clerk, 0))+1
+            self.state.activities['shop_talks'] = talks
         goods = []
         for key, row in sorted(self.data.tables[table].items(), key=lambda pair: int(pair[0])):
             if str(row.get('repeat', '1')) == '0' and self.state.shop_purchases.get(f'{table}:{key}'):
@@ -921,7 +926,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.24')
+        win.title('任务指引 · 原生 0.2.25')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()

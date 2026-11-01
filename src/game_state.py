@@ -433,6 +433,9 @@ class GameState:
             self.grant(item_id, quantity*int(row.get('gotCount', 1)))
             self.consume([row['moneyType']], [cost])
             self.shop_purchases[purchase_key] = self.shop_purchases.get(purchase_key, 0)+quantity
+            spent = dict(self.activities.get('shop_spent', {}))
+            spent[str(row['moneyType'])] = int(spent.get(str(row['moneyType']), 0))+cost
+            self.activities['shop_spent'] = spent
             from daily_tasks import DailyTasks
             DailyTasks(self).record('purchase', quantity)
 

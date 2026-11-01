@@ -36,6 +36,7 @@ try:
     assert state.shop_purchases.get(f'Shop:{key}', 0) == 0
     app.ui_actions['buy_Button']()
     assert state.shop_purchases.get(f'Shop:{key}', 0) == 1
+    assert state.activities['shop_spent']['700001'] >= int(row['price'])
     assert app.ui_render_args['name'] == 'ShopUI'
     app.close_ui()
     assert not app.ui_open
