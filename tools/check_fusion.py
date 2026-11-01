@@ -97,3 +97,9 @@ root.destroy()
 print({'fusion_species': child.species, 'level': child.level,
        'variation': child.variation, 'growth': child.growth,
        'ordered_recipe': 'passed', 'ui_button': 'passed'})
+import json
+(ROOT/'outputs/verification/fusion.json').write_text(json.dumps({
+    'fusion_species': child.species, 'level': child.level,
+    'variation': child.variation, 'growth': child.growth,
+    'ordered_recipe': True, 'ui_button': True,
+}, ensure_ascii=False, indent=2), encoding='utf-8')

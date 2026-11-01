@@ -66,3 +66,8 @@ app.close_ui()
 root.destroy()
 print({'merge_quality': merged.quality, 'variation': merged.variation,
        'growth': merged.growth, 'ui_button': 'passed'})
+import json
+(ROOT/'outputs/verification/merge.json').write_text(json.dumps({
+    'merge_quality': merged.quality, 'variation': merged.variation,
+    'growth': merged.growth, 'ui_button': True,
+}, ensure_ascii=False, indent=2), encoding='utf-8')

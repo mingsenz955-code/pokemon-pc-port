@@ -124,3 +124,10 @@ print({'ui_count': len(report), 'original_buttons': all_buttons,
        'close_buttons_clicked': closed, 'unbound_buttons': 0,
        'pressed_texture': diff, 'unknown_feedback': 'passed',
        'closeui_branch': 'passed'})
+import json
+(ROOT/'outputs/verification/ui-buttons.json').write_text(json.dumps({
+    'ui_count': len(report), 'original_buttons': all_buttons,
+    'close_buttons_clicked': closed, 'unbound_buttons': 0,
+    'pressed_texture': list(diff), 'unknown_feedback': True,
+    'closeui_branch': True, 'uis': report,
+}, ensure_ascii=False, indent=2), encoding='utf-8')
