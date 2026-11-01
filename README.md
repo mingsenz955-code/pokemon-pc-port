@@ -154,6 +154,9 @@ py -3.12 -m venv .venv
 
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6
 .\.venv\Scripts\python.exe build\_host_debug.py
+
+# 打包 EXE 独立启动、窗口标题与首帧截图
+.\.venv\Scripts\python.exe tools\check_packaged_boot.py
 ```
 
 测试报告写到 `outputs/verification/`（不提交）。已核对的关键结论：
