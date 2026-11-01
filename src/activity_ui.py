@@ -183,8 +183,16 @@ class ActivityUI:
                 info.set(str(error))
         chooser.bind('<<ComboboxSelected>>', refresh)
         box.bind('<<ListboxSelect>>', select_skill)
+        def open_replace():
+            if not box.curselection():
+                info.set('先选择要学习的新技能。')
+                return
+            key, scroll = choices[box.curselection()[0]]
+            self.open_skill_replace(pets[chooser.current()].uid, key, scroll=scroll)
         tk.Button(body, text='学习所选技能', command=learn).pack(pady=4)
+        tk.Button(body, text='打开原版替换界面', command=open_replace).pack(pady=2)
         self.ui_actions['learn_Button'] = learn
+        self.ui_actions['replace_Button'] = open_replace
         self.ui_actions['confirm_Button'] = learn
         refresh()
 

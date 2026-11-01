@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.25（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.26（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -376,6 +376,7 @@ class NativeGame(ActivityUI, Preview):
         51: ('TipConfirmUI', '提示'),
         52: ('ShopGoodsUI', '商品详情'),
         53: ('GoodsBuyConfirmUI', '购买确认'),
+        54: ('SkillReplaceUI', '技能替换'),
     }
 
     def open_ui(self, request):
@@ -503,6 +504,8 @@ class NativeGame(ActivityUI, Preview):
             self._shop_goods_body(body, info)
         elif uiid == 53:
             self._goods_confirm_body(body, info)
+        elif uiid == 54:
+            self._skill_replace_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -926,7 +929,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.25')
+        win.title('任务指引 · 原生 0.2.26')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1670,6 +1673,73 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['confirm_Button'] = yes
         self.ui_actions['cancel_Button'] = no
         self.ui_actions['close_Button'] = no
+
+    def open_skill_replace(self, uid, key, scroll=None):
+        passive = str(key) in self.data.tables['Talent']
+        self.open_ui(Request('openui', 'skill-replace', 1, {
+            'parameters': {'uiid': 54, 'uid': uid, 'key': str(key),
+                           'passive': passive, 'scroll': scroll}}))
+
+    def _skill_replace_body(self, body, info):
+        parameters = self.ui_parameters
+        uid = parameters.get('uid')
+        if uid is None and self.state.pets:
+            uid = self.state.pets[0].uid
+        uid = str(uid)
+        key = parameters.get('key')
+        if key is None:
+            key = next(iter(self.data.tables['Skill']))
+        key = str(key)
+        passive = bool(parameters.get('passive'))
+        scroll = parameters.get('scroll')
+        pet = next((candidate for candidate in self.state.pets
+                    if str(candidate.uid) == uid), None)
+        if pet is None:
+            info.set('这只宠物不在携带栏。')
+            return
+        table = 'Talent' if passive else 'Skill'
+        keys = ([str(value) for value in pet.talents if 400200 <= int(value) < 400300]
+                if passive else [str(value) for value in pet.skills])
+        new_row = self.data.tables[table].get(key, {})
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('SkillReplaceUI', (800, 480), {
+                'petName_Text': self.data.tables['Pet'][str(pet.species)]['name'],
+                'info_Text': f'新技能：{new_row.get("name", key)}',
+                'mySkillInfo_Text': '选择要替换掉的技能；确认后消耗卷轴/货币。'})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        frame = tk.Frame(self.ui_window, bg='#202b30')
+        rect = self.ui_hits.get('skill_ListView') or self.ui_rects.get('skill_ListView')
+        if rect:
+            frame.place(x=rect[0], y=rect[1], width=max(180, rect[2]-rect[0]),
+                        height=max(120, rect[3]-rect[1]))
+            frame.lift()
+        else:
+            frame.pack(fill='both', expand=True)
+        box = tk.Listbox(frame, font=('Microsoft YaHei UI', 10), exportselection=False)
+        box.pack(fill='both', expand=True)
+        for index, current in enumerate(keys):
+            row = self.data.tables[table].get(str(current), {})
+            box.insert('end', f'{index+1}. {row.get("name", current)}')
+        if not keys:
+            info.set('没有可替换的技能槽。')
+        else:
+            box.selection_set(0)
+            info.set(f'新技能：{new_row.get("name", key)} · 请选择替换槽')
+        def confirm():
+            if not box.curselection():
+                info.set('请选择要替换的技能。')
+                return
+            try:
+                self.state.learn_skill(pet.uid, key, scroll=scroll,
+                                       replace=box.curselection()[0])
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            self.close_ui()
+        self.ui_actions['confirm_Button'] = confirm
+        self.ui_actions['close_Button'] = self.close_ui
 
     def illustrated_ui(self):
         if self.battle or self.ui_open:
