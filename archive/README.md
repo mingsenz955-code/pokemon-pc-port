@@ -40,6 +40,7 @@
 | `research/evidence/faces.jpg` | 44654 | - |
 | `research/evidence/icon.png` | 12804 | - |
 | `release/pokemon-pc-0.2.2.zip` | 81457707 | - |
+| `release/pokemon-pc-0.2.3.zip` | 80894747 | - |
 
 ## 拼接示例（PowerShell）
 
