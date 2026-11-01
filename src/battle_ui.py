@@ -639,9 +639,19 @@ class BattleUI:
                  font=('Microsoft YaHei UI', 10), anchor='w').pack(fill='x')
         rows = sorted(self.app.data.tables['BattleShop'].items(),
                       key=lambda pair: int(pair[0]))
-        box = tk.Listbox(body, width=82, height=9, font=('Microsoft YaHei UI', 9),
-                        bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
-        bar = tk.Scrollbar(body, command=box.yview)
+        goods_rect = (self.app.cocos_ui.hits.get('goods_ListView')
+                      or self.app.cocos_ui.rects.get('goods_ListView'))
+        list_frame = tk.Frame(win, bg='#202b30', highlightthickness=0)
+        if goods_rect:
+            list_frame.place(x=goods_rect[0], y=goods_rect[1],
+                             width=max(100, goods_rect[2]-goods_rect[0]),
+                             height=max(80, goods_rect[3]-goods_rect[1]))
+            list_frame.lift()
+        else:
+            list_frame.pack(fill='both', expand=True, padx=12, pady=8)
+        box = tk.Listbox(list_frame, width=82, height=9, font=('Microsoft YaHei UI', 9),
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        bar = tk.Scrollbar(list_frame, command=box.yview)
         box.configure(yscrollcommand=bar.set)
         box.pack(side='left', fill='both', expand=True)
         bar.pack(side='right', fill='y')
