@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.9%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.10%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.9 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.10 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -34,8 +34,12 @@
 0.2.9 接入原版每日任务 `DailyTask` 八行（七项日常 + 全能训练），按原条件接入捕捉、NPC 战斗、
 聊天、购买、轮盘、卡牌获胜、赛宠获胜计数；每天重置，完成与领取分离，奖励原子发放。
 TaskUI 的每日页可用真实按钮领取；原版任务页的逐帧 item 动画和服务器时间校准仍未完成。
+0.2.10 接入原版 `obsType` 树/岩障碍：护城龙破坏岩石、陆行鸟砍伐树木，月桂叶穿越荆棘、
+炼狱龙越过全部障碍、乘龙渡水；障碍从 `spriteTileLayer` 真实移除、写入
+`removed_obstacles` 并推进 `conditionType=6` 任务，试乘 `wait type=3` 在破障后继续。
+当前 143 张地图共解析 10,937 个原版障碍对象。
 **这些改动仍不代表完整复刻**：宠物使者付费试用/发货、试炼塔、礼包发货、成就、
-排行榜领奖、地图障碍、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
+排行榜领奖、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
 
 核对地址、测试及差异见 [规则核对记录](docs/MECHANICS_EVIDENCE.md)。
 原交接文档保存在 [DeepSeek 交接](docs/DEEPSEEK_HANDOVER.md) 和
@@ -45,8 +49,8 @@ TaskUI 的每日页可用真实按钮领取；原版任务页的逐帧 item 动�
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.9/口袋妖怪-PC移植开发版0.2.9.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.9.zip`](publish/release/pokemon-pc-0.2.9.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.10/口袋妖怪-PC移植开发版0.2.10.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.10.zip`](publish/release/pokemon-pc-0.2.10.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -106,7 +110,9 @@ TaskUI 的每日页可用真实按钮领取；原版任务页的逐帧 item 动�
   赛宠获胜；七项日常全部完成后“全能训练”可领取。每天按本地日期重置，完成与领取分离，
   奖励走原表 `rewardIds/rewardCounts` 和事务发放。TaskUI 每日页、任务按钮已接通；
   原版任务页逐帧 item 动画与服务器时间校准仍未完成。
-- **地图交互**：出口、传送、区域触发已接入；部分场景障碍/骑乘/采集仍会停止并提示。
+- **地图交互**：出口、传送、区域触发、树/岩障碍和坐骑破障已接入；`obsType` 障碍会阻挡步行，
+  护城龙/陆行鸟可破坏并移除，月桂叶/炼狱龙/乘龙按原表穿越对应地形。原版障碍点击/采集动作、
+  部分场景机关和后期地图仍会停止并提示。
 
 ### 明确未完成
 
@@ -204,6 +210,9 @@ py -3.12 -m venv .venv
 
 # 每日任务：DailyTask 八行、七类计数、每日重置、原子领取与 TaskUI
 .\.venv\Scripts\python.exe tools\check_daily_tasks.py
+
+# 树/岩障碍：obsType 解析、坐骑能力、真实移除、conditionType=6 任务、试乘 wait 继续
+.\.venv\Scripts\python.exe tools\check_obstacles.py
 
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6
 .\.venv\Scripts\python.exe build\_host_debug.py

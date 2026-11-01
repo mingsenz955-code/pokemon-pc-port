@@ -73,7 +73,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.9（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.10（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -96,6 +96,7 @@ class NativeGame(ActivityUI, Preview):
     def load_map(self, mid, x=None, y=None):
         super().load_map(mid, x, y)
         self.chest_fx = None
+        self._apply_removed_obstacles()
         if hasattr(self, 'state') and not self.booting:
             self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
             if self.map_id not in self.state.visited_maps:
@@ -114,12 +115,55 @@ class NativeGame(ActivityUI, Preview):
         high = interval[-1] if len(interval) > 1 else interval[0]
         self.encounter_threshold = self.state.rng.randint(min(low, high), max(low, high))
 
+    def _apply_removed_obstacles(self):
+        entries = getattr(getattr(self, 'state', None), 'removed_obstacles', [])
+        changed = False
+        for entry in entries:
+            try:
+                map_id, tx, ty = int(entry[0]), int(entry[1]), int(entry[2])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if map_id != self.map_id:
+                continue
+            if self.map.remove_obstacle(tx, ty) is not None:
+                changed = True
+        if changed:
+            self.background = self.map.render(self.SCALE)
+
+    def break_obstacle(self, obs_type, tx, ty):
+        """Break/cut an obsType sprite only when the current ride has the ability."""
+        mounts = Mounts(self.state)
+        if not mounts.obstacle_ability(obs_type):
+            return False
+        if self.map.remove_obstacle(tx, ty) is None:
+            return False
+        self.state.removed_obstacles.append([int(self.map_id), int(tx), int(ty), int(obs_type)])
+        self.background = self.map.render(self.SCALE)
+        TaskProgress(self.state).update('obstacle', int(obs_type))
+        if self.pending_wait and self.pending_wait.kind == 'wait':
+            params = self.pending_wait.data.get('parameters', {})
+            if int(params.get('type', 0) or 0) == 3:
+                self.pending_wait = None
+                self.wait_until = 0
+                self.event_issue = ''
+                self.runtime.resume()
+                # Do not run the next event step inside move_to: a following
+                # toplace/goto may replace self.map while the caller is still
+                # finishing this movement.
+                self.root.after(0, self.drive)
+        return True
+
     def move_to(self, x, y):
         mounts = Mounts(self.state)
         if self.noclip:
             return super().move_to(x, y)
         if self.map.blocked(x, y, mounts):
-            return
+            tx, ty = int(x//self.map.tw), int(y//self.map.th)
+            obs_type = self.map.obstacle_at(x, y)
+            if obs_type and self.break_obstacle(obs_type, tx, ty):
+                pass
+            else:
+                return
         mounts.enter(self.map.terrain_at(x, y), int(self.map.info['mapType']))
         self.x, self.y = x, y
 
@@ -610,7 +654,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.9')
+        win.title('任务指引 · 原生 0.2.10')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()

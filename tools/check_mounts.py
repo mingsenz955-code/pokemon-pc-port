@@ -143,6 +143,10 @@ class MountChecks(unittest.TestCase):
                     index = values.index(gid)
                     x, y = index % world.width*world.tw+1, index//world.width*world.th+1
                     category = int(world.tile_properties(gid).get('collideTile', 0))
+                    if world.obstacle_at(x, y):
+                        # obsType sprite objects take precedence over the
+                        # collideLayer at the same tile; covered by check_obstacles.
+                        continue
                     self.assertEqual(world.terrain_at(x, y), category)
                     self.assertEqual(world.blocked(x, y), category != 0)
                     found.add(category)

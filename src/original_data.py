@@ -234,6 +234,21 @@ class OriginalMap:
         for group in self.xml.findall('objectgroup'):
             for node in group.findall('object'):
                 self.objects.append({'group': group.get('name'), **node.attrib, 'props': props(node)})
+        # 1.20.4 draws cuttable trees and breakable rocks as spriteTileLayer
+        # objects carrying obsType (1=wood, 2=stone).  They are not part of
+        # collideLayer, so the old terrain-only collision let the player walk
+        # straight through them.
+        self.obstacles = {}
+        for obj in self.objects:
+            if obj.get('group') != 'spriteTileLayer' or not obj.get('gid'):
+                continue
+            p = self.tile_properties(int(obj['gid']))
+            obs = int(p.get('obsType', 0) or 0)
+            if obs:
+                tx = int(float(obj['x']))//self.tw
+                ty = int(float(obj['y']))//self.th
+                self.obstacles[(tx, ty)] = obs
+        self.removed_obstacles = set()
 
     def tileset(self, gid):
         gid = gid & 0x1fffffff
@@ -285,6 +300,10 @@ class OriginalMap:
             for obj in sorted(self.objects, key=lambda x: float(x.get('y', 0))):
                 if obj['group'] != 'spriteTileLayer' or not obj.get('gid'):
                     continue
+                tx = int(float(obj['x']))//self.tw
+                ty = int(float(obj['y']))//self.th
+                if (tx, ty) in self.removed_obstacles:
+                    continue
                 gid = int(obj['gid'])
                 tile = self.tile(gid)
                 p = self.tile_properties(gid)
@@ -301,11 +320,25 @@ class OriginalMap:
         tx, ty = int(x//self.tw), int(y//self.th)
         if not (0 <= tx < self.width and 0 <= ty < self.height):
             return None
+        if (tx, ty) in getattr(self, 'obstacles', {}) and (tx, ty) not in getattr(self, 'removed_obstacles', set()):
+            return self.obstacles[(tx, ty)]
         for name, vals, _ in self.layers:
             if name == 'collideLayer':
                 gid = vals[ty*self.width+tx]
                 return int(self.tile_properties(gid).get('collideTile', 0))
         return 0
+
+    def obstacle_at(self, x, y):
+        tx, ty = int(x//self.tw), int(y//self.th)
+        return (getattr(self, 'obstacles', {}).get((tx, ty))
+                if (tx, ty) not in getattr(self, 'removed_obstacles', set()) else None)
+
+    def remove_obstacle(self, tx, ty):
+        obstacles = getattr(self, 'obstacles', {})
+        if (tx, ty) not in obstacles:
+            return None
+        self.removed_obstacles.add((tx, ty))
+        return obstacles[(tx, ty)]
 
     def blocked(self, x, y, mounts=None):
         terrain = self.terrain_at(x, y)
