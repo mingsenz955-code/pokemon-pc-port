@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.21（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.22（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -372,6 +372,8 @@ class NativeGame(ActivityUI, Preview):
         47: ('PetListUI', '宠物'),
         48: ('IllustratedUI', '图鉴'),
         49: ('GetItemUI', '获得物品'),
+        50: ('SecondConfirmUI', '二次确认'),
+        51: ('TipConfirmUI', '提示'),
     }
 
     def open_ui(self, request):
@@ -491,6 +493,10 @@ class NativeGame(ActivityUI, Preview):
             self._illustrated_overview_body(body, info)
         elif uiid == 49:
             self._get_item_body(body, info)
+        elif uiid == 50:
+            self._second_confirm_body(body, info)
+        elif uiid == 51:
+            self._tip_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -798,7 +804,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.21')
+        win.title('任务指引 · 原生 0.2.22')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1178,9 +1184,8 @@ class NativeGame(ActivityUI, Preview):
                         raise PendingMechanic('原战斗指令没有 npcid，不能改用虚构对手')
                     if parameters.get('confirm'):
                         row = self.data.tables['NpcFight'].get(str(npcid), {})
-                        if not messagebox.askyesno('战斗确认', '要开始这场战斗吗？', parent=self.root):
-                            self.runtime.resume('no')
-                            continue
+                        self.confirm_battle(request, npcid, int(parameters.get('type', 0) or 0))
+                        return
                     fight_type = int(parameters.get('type', 0) or 0)
                     self.start_battle(npcid, kind={3: 'arena', 4: 'budokan', 5: 'infinite_arena'}.get(fight_type))
                     self.runtime.resume('start')
@@ -1504,6 +1509,45 @@ class NativeGame(ActivityUI, Preview):
         info.set(f'{title}：{len(items)} 项奖励')
         self.ui_actions['confirm_Button'] = self.close_ui
         self.ui_actions['close_Button'] = self.close_ui
+
+    def _second_confirm_body(self, body, info):
+        text = str(self.ui_parameters.get('text', '确定执行这个操作吗？'))
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('SecondConfirmUI', (800, 480), {'info_Text': text})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(text)
+        self.ui_actions['confirm_Button'] = lambda: self.close_ui('yes')
+        self.ui_actions['cancel_Button'] = lambda: self.close_ui('no')
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+
+    def _tip_body(self, body, info):
+        text = str(self.ui_parameters.get('text', ''))
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('TipConfirmUI', (800, 480), {'tip_Text': text})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(text)
+        self.ui_actions['confirm_Button'] = self.close_ui
+        self.ui_actions['close_Button'] = self.close_ui
+
+    def confirm_battle(self, request, npcid, fight_type):
+        self.open_ui(Request('openui', 'fight-confirm', 1, {
+            'parameters': {'uiid': 50, 'text': '要开始这场战斗吗？'}}))
+        def yes():
+            self.close_ui()
+            self.start_battle(npcid, kind={3: 'arena', 4: 'budokan', 5: 'infinite_arena'}.get(fight_type))
+            self.runtime.resume('start')
+            self.drive()
+        def no():
+            self.close_ui()
+            self.runtime.resume('no')
+            self.drive()
+        self.ui_actions['confirm_Button'] = yes
+        self.ui_actions['cancel_Button'] = no
+        self.ui_actions['close_Button'] = no
 
     def illustrated_ui(self):
         if self.battle or self.ui_open:
@@ -1859,14 +1903,19 @@ class NativeGame(ActivityUI, Preview):
         self.listing('任务', '\n'.join(lines))
 
     def about(self):
-        messagebox.showinfo('当前范围', '原生开发版 0.2，尚未完成所有内容。\n\n'
+        text = ('原生开发版 0.2，尚未完成所有内容。\n\n'
             '已接入：真实冠军赛序章与主线 1–6、461 条触发规则、任务与事件条件、分支解释器、'
             '原版战斗核心（伤害/属性克制/暴击/状态/捕捉/经验/掉落）、原版 Cocos 战斗界面、'
-            '初始宠物选择、任务目标解析与跨图自动指引、商店/治疗/地图等界面入口、独立持久化。\n\n'
+            '初始宠物选择、任务目标解析与跨图自动指引、原版背包/宠物列表/图鉴/获得物品/确认框、'
+            '商店/治疗/地图等界面入口、独立持久化。\n\n'
             '15 个独立数值函数已与原二进制进行 3,000 组比较。\n'
-            '仍在移植：全部 57 种状态、天赋/携带物完整结算、宠物图鉴/融合、完整背包与任务 UI、'
-            '战斗内存档、全部支线与结局。遇到缺失机制会停在原位置，不伪造结果。',
-            parent=self.root)
+            '仍在移植：全部 57 种状态、天赋/携带物完整结算、宠物融合后续、完整任务与剧情分支、'
+            '战斗内存档、全部支线与结局。遇到缺失机制会停在原位置，不伪造结果。')
+        if self.battle or self.ui_open:
+            self.event_issue = text
+            return
+        self.open_ui(Request('openui', 'about-tip', 1, {
+            'parameters': {'uiid': 51, 'text': text}}))
 
 
 def main():

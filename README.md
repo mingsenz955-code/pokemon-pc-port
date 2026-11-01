@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.21%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.22%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.21 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.22 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -63,6 +63,8 @@ NPC 谈话和 obsType 破障五类条件的真实进度；这些条件可以原�
 真实“发现数量/捕捉数量”重绘，点击查看种族、星级、等级和技能。
 0.2.21 地图宝藏和村庄宝箱改用原版 `GetItemUI`：真实标题、奖励列表和确认关闭，
 不再只写一行 event_issue 提示。
+0.2.22 战斗前确认改用原版 `SecondConfirmUI`，顶栏“当前进度”改用原版 `TipConfirmUI`；
+两个界面都有真实确认/取消分支。
 **这些改动仍不代表完整复刻**：宠物使者付费试用/发货、试炼塔、礼包发货、成就其余
 条件类型、排行榜领奖、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
 
@@ -74,8 +76,8 @@ NPC 谈话和 obsType 破障五类条件的真实进度；这些条件可以原�
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.21/口袋妖怪-PC移植开发版0.2.21.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.21.zip`](publish/release/pokemon-pc-0.2.21.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.22/口袋妖怪-PC移植开发版0.2.22.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.22.zip`](publish/release/pokemon-pc-0.2.22.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -261,6 +263,9 @@ py -3.12 -m venv .venv
 
 # 原版获得物品界面
 .\.venv\Scripts\python.exe tools\check_get_item_ui.py
+
+# 原版二次确认/提示界面
+.\.venv\Scripts\python.exe tools\check_confirm_ui.py
 
 # 树/岩障碍：obsType 解析、坐骑能力、真实移除、conditionType=6 任务、试乘 wait 继续
 .\.venv\Scripts\python.exe tools\check_obstacles.py
