@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 class Achievements:
-    SUPPORTED = {1, 3, 4, 5, 7, 8, 11, 12, 13, 14, 15, 17, 22, 23}
+    SUPPORTED = {1, 2, 3, 4, 5, 7, 8, 11, 12, 13, 14, 15, 17, 22, 23, 24}
     COUNTERS = {3: ('caught_total', '野外捕获'),
                 4: ('hatch_total', '孵化'),
                 5: ('evolve_total', '进化'),
@@ -39,6 +39,25 @@ class Achievements:
         condition_type = int(row.get('conditionType', 0) or 0)
         target = int(row.get('count', 1) or 1)
         values = self._ints(row.get('conditions'))
+        if condition_type == 2:
+            if len(values) == 1:
+                item_type = values[0]
+                owned = {str(item) for item, count in self.state.inventory.items()
+                         if int(count) > 0
+                         and str(self.state.tables['Item'].get(str(item), {}).get('type', '')) == str(item_type)}
+                return len(owned), target, f'已拥有 {len(owned)} 种 type={item_type} 道具'
+            return None
+        if condition_type == 24:
+            if len(values) >= 2 and values[0] == 2:
+                kind = values[1]
+                species = {str(value) for value in self.state.encyclopedia}
+                if kind == -1:
+                    current = len(species)
+                    return current, target, f'图鉴已记录 {current} 种宠物'
+                current = sum(1 for value in species
+                              if str(self.state.tables['Pet'].get(value, {}).get('kind', '')) == str(kind))
+                return current, target, f'已获得 {current} 种 kind={kind} 宠物'
+            return None
         if condition_type == 1:
             # The first collection family filters by one quality/rarity slot.
             if len(values) >= 4 and values[2] != -1 and values[0] == -1 and values[3] == -1 and values[4:] == [-1, -1, 0]:
