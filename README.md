@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.3%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.4%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.3 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.4 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -19,8 +19,10 @@
 任务指引已接入原版任务条件解析、跨地图出口路线和逐格实际移动，修正出口落点在地图外或墙内的旧问题。
 原版 Cocos 按钮现在全部建立真实点击区域，按下时优先切换原版 pressed 纹理；`closeui` 的 no/yes 分支
 会按玩家的实际确认结果跳转。合体（PetHeTi）与融合（PetMerge）已按 ARM 反汇编接入材料、货币、
-属性平均值/加成、品质重算和原子回滚。
-**这些改动仍不代表完整复刻**：竞技场、无限竞技场、赛宠、圣兽使者、礼包发货、
+属性平均值/加成、品质重算和原子回滚；竞技场已接入原版事件 `openui 10 → closeui yes → fight type=3`
+往返、真实 ArenaNpcPet 队伍、排名/称号/连胜/徽章与 Boss 掉落；无限竞技场已接入
+`openui 19/20 → closeui yes → fight type=5`、五层 IArenaNpc 队伍、徽章消耗、荣誉/层数推进和商店。
+**这些改动仍不代表完整复刻**：赛宠、圣兽使者、礼包发货、
 地图障碍、后期主支线、技能状态细节和原版动态 UI 等仍有大量工作。
 
 核对地址、测试及差异见 [规则核对记录](docs/MECHANICS_EVIDENCE.md)。
@@ -31,8 +33,8 @@
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.3/口袋妖怪-PC移植开发版0.2.3.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.3.zip`](publish/release/pokemon-pc-0.2.3.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.4/口袋妖怪-PC移植开发版0.2.4.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.4.zip`](publish/release/pokemon-pc-0.2.4.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -78,6 +80,12 @@
 - **商店**：可读取原 `Shop` 表并购买，但尚未按原 `VillageMap.shopType` 做完整货架过滤。
 - **战斗状态**：已覆盖主要状态与持续伤害/回复/免疫/驱散；57 种状态中仍有少数目标选择与叠加规则待逐条核对。
 - **宠物养成**：进化、训练、突破、原版合体（PetHeTi）与融合（PetMerge）已接入；品质重算、携带物和放生仍不完整。
+- **竞技场**：按原版 `ArenaNpc.rankInterval` 选择当前排名上一位对手，按 `ArenaNpcPet`/`petLevel` 生成真实 6 只队伍；
+  首次或离开后收 1 枚徽章，连胜免费；胜利提升排名、Boss 授予称号并发放原版掉落，失败重置连胜。界面与事件往返已实测，
+  但原版竞技场专属发招动画/结算特效仍需继续对照。
+- **无限竞技场**：`IArenaNpc` 五层（Lv.30/60/90/120/121），按当前层生成 6 只 `IArenaNpcPet`
+  真实队伍；每次挑战消耗 1 枚徽章，胜利按原 `Formula_InfiniteArenaHonorReward` 获得 1 荣誉并升层，
+  最高层封顶；UI 19/20/21 与事件 `fight type=5` 已接通。层间地图引导、原版层间转场/动画仍未完整复刻。
 - **地图交互**：出口、传送、区域触发已接入；部分场景障碍/骑乘/采集仍会停止并提示。
 
 ### 明确未完成
@@ -85,7 +93,7 @@
 - 战斗内存档与战斗中断恢复；
 - 全部 57 种 `SkillState` 的完整语义、天赋/携带物全结算；
 - 宠物图鉴、训练、放生、仓库整理；
-- 完整背包、任务列表/追踪、商店货架、道馆、竞技场、无限竞技场、轮盘、卡牌传说、赛宠、圣兽使者；
+- 完整背包、任务列表/追踪、商店货架、道馆、轮盘、卡牌传说、赛宠、圣兽使者；
 - 全支线、全地图、结局与全流程回归；
 - Spine 时间线动画、FFD/IK、全部技能表现；
 - 音乐/音效全接入、原字体一致性；
@@ -151,6 +159,12 @@ py -3.12 -m venv .venv
 # 宠物合体（PetHeTi）与融合（PetMerge）
 .\.venv\Scripts\python.exe tools\check_fusion.py
 .\.venv\Scripts\python.exe tools\check_merge.py
+
+# 竞技场：排名、真实 ArenaNpcPet 队伍、徽章/连胜、完整事件往返
+.\.venv\Scripts\python.exe tools\check_arena.py
+
+# 无限竞技场：五层 IArenaNpc、荣誉、徽章、完整事件往返
+.\.venv\Scripts\python.exe tools\check_infinite_arena.py
 
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6
 .\.venv\Scripts\python.exe build\_host_debug.py

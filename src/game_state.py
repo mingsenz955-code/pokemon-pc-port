@@ -162,6 +162,13 @@ class GameState:
         self.encyclopedia = []
         self.budokans = {}
         self.arenas = {}
+        self.arena_ranks = {}
+        self.arena_titles = {}
+        self.arena_wins = {}
+        self.arena_streak = {}
+        self.infinite_level = 1
+        self.infinite_highest = 1
+        self.infinite_honor = 0
         self.hatching = []
         self.rides, self.ride = [], 0
         self.trial_ride = 0
@@ -197,6 +204,14 @@ class GameState:
             self.record_pet(p.species)
         self.budokans = {str(k): value for k, value in zip(numbers(row['budokanIds']), numbers(row['budokanLevels']))}
         self.arenas = {str(k): value for k, value in zip(numbers(row['arenaIds']), numbers(row['arenaTitles']))}
+        arena_ids = numbers(row.get('arenaIds', ''))
+        self.arena_ranks = {str(k): rank for k, rank in zip(arena_ids, numbers(row.get('arenaRanks', '')))}
+        self.arena_titles = {str(k): title for k, title in zip(arena_ids, numbers(row.get('arenaTitles', '')))}
+        self.arena_wins = {str(k): 0 for k in arena_ids}
+        self.arena_streak = {str(k): 0 for k in arena_ids}
+        self.infinite_level = 1
+        self.infinite_highest = 1
+        self.infinite_honor = 0
 
     def record_pet(self, species):
         if str(species) not in self.encyclopedia:
@@ -630,6 +645,23 @@ class GameState:
             raise ValueError('Unrecognized save fields')
         for key, value in payload['state'].items():
             setattr(result, key, value)
+        # 0.2.3 and older saves do not carry the arena rank/title fields.
+        for field in ('arena_ranks', 'arena_titles', 'arena_wins', 'arena_streak'):
+            if not hasattr(result, field):
+                setattr(result, field, {})
+        if not hasattr(result, 'infinite_level'):
+            result.infinite_level = 1
+        if not hasattr(result, 'infinite_highest'):
+            result.infinite_highest = result.infinite_level
+        if not hasattr(result, 'infinite_honor'):
+            result.infinite_honor = 0
+        init_row = tables['Init'][str(getattr(result, 'initialization', 1))]
+        for arena_id in numbers(init_row.get('arenaIds', '')):
+            key = str(arena_id)
+            result.arena_ranks.setdefault(key, 101)
+            result.arena_titles.setdefault(key, 0)
+            result.arena_wins.setdefault(key, 0)
+            result.arena_streak.setdefault(key, 0)
         result.pets = [Pet(**p) for p in payload['pets']]
         result.bank = [Pet(**p) for p in payload['bank']]
         if 'starter_id' not in payload['state'] and result.sprite_id == '10001' and result.pets:

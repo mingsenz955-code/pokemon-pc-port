@@ -2,6 +2,8 @@
 import tkinter as tk
 from PIL import ImageTk
 from activities import Activities
+from arena import ArenaProgress
+from infinite_arena import InfiniteArenaProgress
 
 
 class ActivityUI:
@@ -480,13 +482,46 @@ class ActivityUI:
         self.ui_actions['check_Button'] = check
         tk.Button(body, text='查看图鉴', command=check).pack(pady=4)
 
-    def _arena_body(self, body, info):
-        arena = next(iter(self.data.tables['Arena'].values()), None)
+    def _arena_body(self, body, info, arena_id=None, phase=1):
+        progress = ArenaProgress(self.state)
+        arena = self.data.tables['Arena'].get(str(arena_id)) if arena_id else None
+        if not arena:
+            arena = next(iter(self.data.tables['Arena'].values()), None)
         if not arena:
             info.set('原版 Arena 表为空。')
             return
-        info.set(f'{arena["name"]}：参加消耗 {arena["moneyCount"]} 枚货币。\n'
-                 '挑战对手来自原版 ArenaNpc 排名区间。')
+        aid = str(arena['keyId'])
+        rank = progress.rank(aid)
+        title = progress.title_name(aid)
+        streak = progress.streak(aid)
+        cost = progress.entry_cost(aid)
+        npc = progress.next_npc(aid)
+        opponent = '无'
+        if npc:
+            title_row = self.data.tables['ArenaTitle'].get(str(npc.get('titleId', '0')))
+            opponent = (f'{title_row["name"] if title_row else "竞技场对手"} · '
+                        f'Lv.{npc["petLevel"]} · 排名 {npc["rankInterval"]}')
+        money_name = ''
+        if cost:
+            money_name = (self.data.tables['Money'].get(cost[0]) or
+                          self.data.tables['Item'].get(cost[0]) or {}).get('name', cost[0])
+        info.set(f'{arena["name"]}\n当前排名：{rank} · 称号：{title} · 连胜：{streak}\n'
+                 f'下一位对手：{opponent}\n'
+                 f'{"本场免费（连胜中）" if not cost else f"本场消耗 {money_name}×{cost[1]}"}')
+        def challenge():
+            ok, reason = progress.can_enter(aid)
+            if not ok:
+                info.set(reason)
+                return
+            if not any(p.hp > 0 for p in self.state.pets):
+                info.set('没有可出战的宠物，不能进入竞技场。')
+                return
+            # The original closeui yes branch leads to fight type=3.  The host
+            # charges the badge when that fight actually starts.
+            self.close_ui('yes')
+        def leave():
+            progress.leave(aid)
+            self.close_ui('no')
         def rule():
             win = tk.Toplevel(self.root)
             win.title('竞技场规则')
@@ -494,14 +529,19 @@ class ActivityUI:
             text.pack(fill='both', expand=True)
             text.insert('1.0', arena.get('rule', ''))
             text.config(state='disabled')
-        def challenge():
-            rows = [r for r in self.data.tables['ArenaNpc'].values()
-                    if str(r.get('arenaId')) == str(arena['keyId'])]
-            info.set(f'已读取 {len(rows)} 个原版竞技场对手；战斗回合尚未接入，未扣除徽章。')
-        self.ui_actions['ruleInfo_Button'] = rule
+        def share():
+            text = f'我在《口袋妖怪单机版》竞技场排名 {rank}，称号 {title}，来挑战我！'
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            info.set('邀请文本已复制到剪贴板。')
         self.ui_actions['challenge_Button'] = challenge
+        self.ui_actions['ruleInfo_Button'] = rule
+        self.ui_actions['leave_Button'] = leave
+        self.ui_actions['close_Button'] = leave
+        self.ui_actions['weixin_Button'] = share
+        tk.Button(body, text='开始挑战', command=challenge).pack(pady=3)
         tk.Button(body, text='查看规则', command=rule).pack(pady=3)
-        tk.Button(body, text='读取对手', command=challenge).pack(pady=3)
+        tk.Button(body, text='离开竞技场', command=leave).pack(pady=3)
 
     def _trial_body(self, body, info):
         rows = list(self.data.tables['TrialPet'].values())
@@ -558,22 +598,51 @@ class ActivityUI:
         tk.Button(body, text='战斗排名', command=lambda: show(*pages['fightTag_Button'])).pack(pady=2)
         tk.Button(body, text='怪物资料', command=lambda: show('怪物资料', 'Pet')).pack(pady=2)
 
-    def _infinite_body(self, body, info, uiid):
-        row = next(iter(self.data.tables['InfiniteArena'].values()), None)
-        if row:
-            info.set(f'{row["name"]}：{row["rule"]}')
+    def _infinite_body(self, body, info, uiid, arena_id=None):
+        progress = InfiniteArenaProgress(self.state)
+        arena = self.data.tables['InfiniteArena'].get(str(arena_id or 1))
+        if not arena:
+            arena = next(iter(self.data.tables['InfiniteArena'].values()), None)
+        if not arena:
+            info.set('原版 InfiniteArena 表为空。')
+            return
+        aid = str(arena['keyId'])
+        level = progress.level(aid)
+        row = progress.level_row(aid, level)
+        honor = progress.honor()
+        money, amount = progress.entry_cost(aid)
+        currency = (self.data.tables['Money'].get(money) or {}).get('name', money)
+        info.set(f'{arena["name"]}\n{arena["rule"]}\n'
+                 f'当前层数：{level} / {progress.max_level()} · 最高：{progress.highest()}\n'
+                 f'荣誉：{honor} · 守护者等级：Lv.{row["petLevel"]} · 挑战消耗 {currency}×{amount}')
+        if uiid == 21:
+            info.set(f'确定要离开无限竞技场吗？\n当前层数：{level} · 荣誉：{honor}')
         def confirm():
+            if uiid == 20:
+                ok, reason = progress.can_enter(aid)
+                if not ok:
+                    info.set(reason)
+                    return
+                if not any(p.hp > 0 for p in self.state.pets):
+                    info.set('没有可出战的宠物，不能挑战守护者。')
+                    return
             self.close_ui('yes')
         def cancel():
             self.close_ui('no')
-        if uiid == 21:
-            self.ui_actions['confirm_Button'] = confirm
-            self.ui_actions['cancel_Button'] = cancel
-        else:
-            self.ui_actions['confirm_Button'] = confirm
-            self.ui_actions['cancel_Button'] = cancel
+        def rule():
+            win = tk.Toplevel(self.root)
+            win.title('无限竞技场规则')
+            text = tk.Text(win, width=62, height=18, wrap='word')
+            text.pack(fill='both', expand=True)
+            text.insert('1.0', arena.get('rule', ''))
+            text.config(state='disabled')
+        self.ui_actions['confirm_Button'] = confirm
+        self.ui_actions['cancel_Button'] = cancel
+        self.ui_actions['close_Button'] = cancel
+        self.ui_actions['ruleInfo_Button'] = rule
         tk.Button(body, text='确认', command=confirm).pack(pady=3)
-        tk.Button(body, text='取消', command=cancel).pack(pady=3)
+        tk.Button(body, text='取消/离开', command=cancel).pack(pady=3)
+        tk.Button(body, text='查看规则', command=rule).pack(pady=3)
 
     def starter_window(self, key):
         win = tk.Toplevel(self.root)

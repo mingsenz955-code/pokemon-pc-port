@@ -18,6 +18,8 @@ from game_state import GameState
 from event_runtime import EventRuntime, PendingMechanic
 from csb_render import CocosUI
 from battle import make_npc_battle, make_wild_battle
+from arena import ArenaProgress, make_arena_battle
+from infinite_arena import InfiniteArenaProgress, make_infinite_arena_battle
 from battle_ui import BattleUI
 from activity_ui import ActivityUI
 from task_progress import TaskProgress
@@ -61,10 +63,11 @@ class NativeGame(ActivityUI, Preview):
         self.ui_render_args = None
         self.ui_close_result = None
         self.ui_info = None
+        self.arena_summary = None
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.3（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.4（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -297,7 +300,7 @@ class NativeGame(ActivityUI, Preview):
         elif uiid == 9:
             self._area_map_body(body, info)
         elif uiid == 10:
-            self._arena_body(body, info)
+            self._arena_body(body, info, parameters.get('par1'), int(parameters.get('par2', 1) or 1))
         elif uiid == 13:
             self._trial_body(body, info)
         elif uiid == 25:
@@ -305,7 +308,7 @@ class NativeGame(ActivityUI, Preview):
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
-            self._infinite_body(body, info, uiid)
+            self._infinite_body(body, info, uiid, parameters.get('par1'))
         elif uiid == 18:
             self._merge_body(body, info)
         elif uiid == 23:
@@ -524,7 +527,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.3')
+        win.title('任务指引 · 原生 0.2.4')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -736,6 +739,19 @@ class NativeGame(ActivityUI, Preview):
             raise PendingMechanic('队伍已全灭；原版恢复点/白屏传送尚未接入，不能伪造复活')
         if kind == 'wild' or str(npcid) in self.data.tables.get('VillageEnemy', {}):
             battle = make_wild_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
+        elif kind == 'arena':
+            progress = ArenaProgress(self.state)
+            with self.state.transaction():
+                progress.enter(npcid)
+                battle = make_arena_battle(self.data.tables, self.state.pets, npcid,
+                                           self.state.rng, rank=progress.rank(npcid))
+        elif kind == 'infinite_arena':
+            progress = InfiniteArenaProgress(self.state)
+            with self.state.transaction():
+                progress.enter(npcid)
+                battle = make_infinite_arena_battle(self.data.tables, self.state.pets,
+                                                    npcid, self.state.rng,
+                                                    level=progress.level(npcid))
         else:
             battle = make_npc_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
@@ -754,13 +770,33 @@ class NativeGame(ActivityUI, Preview):
         if not battle or not battle.result:
             return
         result = battle.result
+        arena_battle = battle.kind == 'arena'
+        infinite_battle = battle.kind == 'infinite_arena'
+        arena_summary = None
         if result in ('win', 'caught'):
             battle.apply_rewards(self.state)
+        if arena_battle:
+            arena_summary = ArenaProgress(self.state).finish(
+                battle.arena_id, battle.arena_npc_id, result)
+            self.arena_summary = arena_summary
+            if result == 'win':
+                drops = '、'.join(f'{self.data.tables["Item"].get(i, self.data.tables["Money"].get(i, {})).get("name", i)}×{n}'
+                                  for i, n in arena_summary['drops']) or '无'
+                self.battle_tips.append(
+                    f'竞技场排名 {arena_summary["rank_before"]} → {arena_summary["rank_after"]}，'
+                    f'称号：{arena_summary["title"]}，奖励：{drops}')
+        elif infinite_battle:
+            arena_summary = InfiniteArenaProgress(self.state).finish(result, battle.infinite_arena_id)
+            self.arena_summary = arena_summary
+            if result == 'win':
+                self.battle_tips.append(
+                    f'无限竞技场第 {arena_summary["level_before"]} 层通过，'
+                    f'进入第 {arena_summary["level_after"]} 层，荣誉 +1。')
         if result == 'caught':
             pet = battle.caught_pet
             land = int(self.data.tables['Pet'][pet.species].get('kind', -1))
             TaskProgress(self.state).update('catch', int(pet.species), land, self.state.map_id)
-        elif result == 'win' and battle.kind != 'wild':
+        elif result == 'win' and battle.kind != 'wild' and not arena_battle and not infinite_battle:
             TaskProgress(self.state).update('fight', 2, 1, int(battle.source_id), -1)
             self.state.npc_fights[battle.source_id] = 1
         TaskProgress(self.state).update()
@@ -829,7 +865,8 @@ class NativeGame(ActivityUI, Preview):
                         if not messagebox.askyesno('战斗确认', '要开始这场战斗吗？', parent=self.root):
                             self.runtime.resume('no')
                             continue
-                    self.start_battle(npcid)
+                    fight_type = int(parameters.get('type', 0) or 0)
+                    self.start_battle(npcid, kind={3: 'arena', 5: 'infinite_arena'}.get(fight_type))
                     self.runtime.resume('start')
                     self.drive()
                     return
