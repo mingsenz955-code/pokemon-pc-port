@@ -44,6 +44,14 @@ try:
     assert '出战中' in app.ui_info.get()
     app.ui_actions['cancel_Button']()
     app.close_ui()
+
+    sample = state.pets[0]
+    app.open_pet_property(sample.uid)
+    app.ui_actions['free_Button']()
+    assert app.ui_render_args['name'] == 'FreePetConfirmUI'
+    app.ui_actions['cancel_Button']()
+    assert app.ui_render_args['name'] == 'PetPropertyUI'
+    app.ui_actions['close_Button']()
     print('FreePetConfirmUI checks passed')
 finally:
     for job in root.tk.call('after', 'info'):

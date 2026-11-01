@@ -66,7 +66,7 @@
 
 | 放生宠物 | `FreePetConfirmUI`、`confirm_Button`、`cancel_Button` | PetList 的放生改为打开原版 `FreePetConfirmUI`，显示宠物名和等级；取消回宠物列表，确认才真正移除宠物并修正出战序号；出战中宠物拒绝放生。`tools/check_free_pet_ui.py` 覆盖取消、确认、出战保护 |
 
-| 宠物属性 | `PetPropertyUI`、`skillTag_Button`、`talentTag_Button`、`free_Button`、`evolution_Button` | PetList 双击宠物打开原版 `PetPropertyUI`；显示名字、等级、编号和五项属性，技能/天赋标签切换真实列表和原版描述；放生走 `FreePetConfirmUI`，进化调用原 `Pet.evolve`。`tools/check_pet_property_ui.py` 覆盖标签切换、按钮绑定和关闭 |
+| 宠物属性 | `PetPropertyUI`、`skillTag_Button`、`talentTag_Button`、`free_Button`、`evolution_Button` | PetList 双击宠物打开原版 `PetPropertyUI`；显示名字、等级、编号和五项属性，技能/天赋标签切换真实列表和原版描述；放生走 `FreePetConfirmUI` 并在取消后回到属性页，确认放生后回宠物列表；进化调用原 `Pet.evolve`。`tools/check_pet_property_ui.py` 覆盖标签切换、按钮绑定和关闭 |
 
 ## 测试和审计
 

@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.30（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.31（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -938,7 +938,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.30')
+        win.title('任务指引 · 原生 0.2.31')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1782,13 +1782,14 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['cancel_Button'] = self.close_ui
         self.ui_actions['close_Button'] = self.close_ui
 
-    def open_free_pet(self, uid):
+    def open_free_pet(self, uid, back=47):
         self.open_ui(Request('openui', 'free-pet', 1, {
-            'parameters': {'uiid': 56, 'uid': uid}}))
+            'parameters': {'uiid': 56, 'uid': uid, 'back': back}}))
 
     def _free_pet_body(self, body, info):
         uid = str(self.ui_parameters.get('uid') or
                   (self.state.pets[0].uid if self.state.pets else ''))
+        back_uiid = int(self.ui_parameters.get('back', 47) or 47)
         pet = next((candidate for candidate in self.state.pets
                     if str(candidate.uid) == uid), None)
         if pet is None:
@@ -1805,7 +1806,10 @@ class NativeGame(ActivityUI, Preview):
         info.set(text)
         def back():
             self.close_ui()
-            self.pets_ui()
+            if back_uiid == 57 and pet in self.state.pets:
+                self.open_pet_property(pet.uid)
+            else:
+                self.pets_ui()
         def confirm():
             if pet is self.state.pets[self.state.active_pet]:
                 info.set('出战中宠物不能放生，请先更换出战宠物。')
@@ -1816,6 +1820,7 @@ class NativeGame(ActivityUI, Preview):
                 self.state.active_pet -= 1
             self.state.active_pet = max(
                 0, min(self.state.active_pet, len(self.state.pets)-1))
+            back_uiid = 47
             back()
         self.ui_actions['confirm_Button'] = confirm
         self.ui_actions['cancel_Button'] = back
@@ -1899,7 +1904,7 @@ class NativeGame(ActivityUI, Preview):
         box.bind('<<ListboxSelect>>', show)
         self.ui_actions['skillTag_Button'] = lambda: tag('skill')
         self.ui_actions['talentTag_Button'] = lambda: tag('talent')
-        self.ui_actions['free_Button'] = lambda: self.open_free_pet(pet.uid)
+        self.ui_actions['free_Button'] = lambda: self.open_free_pet(pet.uid, back=57)
         self.ui_actions['evolution_Button'] = evolution
         self.ui_actions['close_Button'] = self.close_ui
         self.ui_window.bind('<Escape>', lambda _event: self.close_ui())
