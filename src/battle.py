@@ -138,9 +138,8 @@ class BattlePet:
         self.talent_boost = boost
         for index, pct in boost.items():
             if pct:
-                self.max_hp = max(1, int(self.base_stats[0]*(1+pct/100)))
-                self.stats[0] = self.max_hp
                 self.stats[index] = int(self.stats[index]*(1+pct/100))
+        self.max_hp = max(1, self.stats[0])
 
     # -- stats ---------------------------------------------------------------
     def effective(self, index):
@@ -256,6 +255,11 @@ class Battle:
         self.kind = kind
         self.name = name
         self.fight_row = fight_row or {}
+        self.enemy_items = {}
+        for item, count in zip(numbers(self.fight_row.get('itemIds', '0')),
+                               numbers(self.fight_row.get('itemCounts', '0'))):
+            if item and count > 0:
+                self.enemy_items[str(item)] = self.enemy_items.get(str(item), 0)+count
         self.bgm = bgm
         self.can_catch = can_catch
         self.can_escape = can_escape
@@ -279,6 +283,7 @@ class Battle:
         self.caught_pet = None
         self.exp_gained = []
         self.drops = []
+        self.rewards_applied = False
         self._start_messages()
         self._check_end()
 
@@ -345,7 +350,9 @@ class Battle:
     # -- player actions ------------------------------------------------------
     def choose_skill(self, index):
         """index 0 is the original normal attack, 1..4 are the four skills."""
-        if self.result:
+        if self.result or self.force_switch:
+            return []
+        if type(index) is not int or index < 0:
             return []
         unit = self.player_active
         if index == 0:
@@ -362,7 +369,7 @@ class Battle:
         return self._perform_round(action)
 
     def choose_item(self, item_id):
-        if self.result:
+        if self.result or self.force_switch:
             return []
         item_id = str(item_id)
         if item_id not in self.catch_items:
@@ -384,24 +391,24 @@ class Battle:
     def choose_switch(self, index):
         if self.result:
             return []
-        if index == self.player_index:
-            return []
         unit = self.player[index] if 0 <= index < len(self.player) else None
         if not unit or not unit.alive:
             self.messages.append('这只宠物已经无法战斗。')
-            return []
-        if self.player_active.has('charm', 'bind'):
-            self.messages.append(f'{self.player_active.name} 处于魅惑/禁锢状态，无法替换。')
             return []
         if self.force_switch:
             self.player_index = index
             self.force_switch = False
             self.messages.append(f'换上 {unit.name}！')
             return []
+        if index == self.player_index:
+            return []
+        if self.player_active.has('charm', 'bind'):
+            self.messages.append(f'{self.player_active.name} 处于魅惑/禁锢状态，无法替换。')
+            return []
         return self._perform_round({'type': 'switch', 'index': index})
 
     def choose_escape(self):
-        if self.result:
+        if self.result or self.force_switch:
             return []
         if not self.can_escape:
             self.messages.append('训练师对战中不能逃跑。')
@@ -446,7 +453,9 @@ class Battle:
         for side in order:
             if self.result:
                 break
-            unit, target = (player, enemy) if side == 'player' else (enemy, player)
+            # A switch changes the opponent's target during this same round.
+            unit, target = ((self.player_active, self.enemy_active) if side == 'player'
+                            else (self.enemy_active, self.player_active))
             action = player_action if side == 'player' else enemy_action
             if not unit.alive or not target.alive:
                 continue
@@ -507,30 +516,34 @@ class Battle:
         return values[0] if values else 0
 
     def _enemy_heal_item(self):
-        rows = numbers(self.fight_row.get('itemIds', '0'))
-        counts = numbers(self.fight_row.get('itemCounts', '0'))
-        for item, count in zip(rows, counts):
-            if item and count > 0 and str(item) in self.tables['Item']:
-                return str(item)
+        for item, count in self.enemy_items.items():
+            if count > 0 and item in self.tables['Item']:
+                return item
         return None
 
     def _use_item(self, unit, target, item_id):
+        from item_effects import recovery
         row = self.tables['Item'].get(str(item_id), {})
-        description = str(row.get('des', ''))
-        if '全回复' in description:
-            target.hp, target.energy = target.max_hp, target.max_energy
-        else:
-            match = re.search(r'(\d+)', description)
-            amount = int(match.group(1)) if match else 0
-            if '生命' in description:
-                target.heal(amount)
-            elif '能量' in description:
-                target.restore_energy(amount)
-            else:
-                self.messages.append(f'{row.get("name", item_id)} 没有可应用的回复效果。')
-                return
+        effect = self.tables.get('PetItem', {}).get(str(item_id))
+        if effect is None:
+            self.messages.append('该道具的原版效果尚未接入。')
+            return False
+        try:
+            result = recovery(effect, target.hp, target.energy, target.max_hp, target.max_energy)
+        except ValueError as error:
+            self.messages.append(str(error))
+            return False
+        changed = (target.hp, target.energy) != (result.hp, result.energy)
+        if result.cleanse:
+            changed = bool(target.remove_buffs(debuff=True)) or changed
+        if not changed:
+            self.messages.append('这只宠物不需要此道具。')
+            return False
+        target.hp, target.energy = result.hp, result.energy
         self._sync_pet(target)
         self.messages.append(f'{unit.name} 使用了 {row.get("name", item_id)}！')
+        self.events.append({'type': 'item_used', 'side': unit.side, 'id': str(item_id)})
+        return True
 
     def _execute(self, unit, target, action, side):
         kind = action['type']
@@ -542,7 +555,8 @@ class Battle:
         if kind == 'item':
             item_id = action['id']
             if side == 'enemy':
-                self._use_item(unit, target, item_id)
+                if self.enemy_items.get(str(item_id), 0) > 0 and self._use_item(unit, unit, item_id):
+                    self.enemy_items[str(item_id)] -= 1
             else:
                 self._use_item(unit, unit, item_id)
             return
@@ -833,7 +847,6 @@ class Battle:
             index = self._next_alive(self.player, self.player_index)
             if index is not None:
                 self.force_switch = True
-                self.player_index = index
 
     def _finish(self):
         for unit in self.player+self.enemy:
@@ -899,8 +912,14 @@ class Battle:
             self.messages.append(f'{unit.name} 获得 {gained} 点经验。')
             if levels:
                 self.messages.append(f'{unit.name} 升到了 Lv.{unit.pet.level}！')
-                for _ in levels:
-                    pass
+                # Keep the battle wrapper in sync, otherwise the round's final
+                # _sync_pet writes stale HP/energy over add_exp's level-up gains.
+                unit.stats = unit.pet.stats(self.tables)
+                unit.base_stats = list(unit.stats)
+                unit._apply_talent_stats()
+                unit.max_energy = max(1, unit.stats[1])
+                unit.hp = min(unit.max_hp, unit.pet.hp)
+                unit.energy = min(unit.max_energy, unit.pet.energy)
         # Drops from the original fight row.
         ids = numbers(self.fight_row.get('dropItemIds', '0'))
         pros = numbers(self.fight_row.get('dropPros', '0'))
@@ -914,23 +933,29 @@ class Battle:
                     self.drops.append((str(item), amount))
 
     def apply_rewards(self, state):
-        from pet_factory import generate_pet
-        for item, amount in self.drops:
-            if str(item) in self.tables['Pet']:
-                for _ in range(amount):
-                    state.add_generated_pet(item)
-                    self.messages.append(f'获得了宠物 {self.tables["Pet"][str(item)]["name"]}！')
-            else:
-                state.grant(item, amount)
-                row = self.tables['Item'].get(str(item)) or self.tables['Money'].get(str(item), {})
-                self.messages.append(f'获得了 {row.get("name", item)} × {amount}。')
-        if self.caught_pet:
-            if len(state.pets) < 6:
-                state.pets.append(self.caught_pet)
-            else:
-                state.bank.append(self.caught_pet)
-            state.record_pet(self.caught_pet.species)
-            self.messages.append(f'捕捉到了 {self.tables["Pet"][self.caught_pet.species]["name"]}！')
+        if self.rewards_applied:
+            return False
+        if self.result not in ('win', 'caught'):
+            raise ValueError('Only a completed victory or capture can grant rewards')
+        messages = []
+        with state.transaction():
+            from activities import Activities
+            from game_formulas import hatch_exp
+            Activities(state).add_hatch_exp(hatch_exp(sum(entry[1] for entry in self.exp_gained)))
+            state.grant_many([item for item, _ in self.drops],
+                             [amount for _, amount in self.drops])
+            for item, amount in self.drops:
+                row = (self.tables['Pet'].get(str(item)) or
+                       self.tables['Item'].get(str(item)) or
+                       self.tables['Money'].get(str(item), {}))
+                messages.append(f'获得了 {row.get("name", item)} × {amount}。')
+            if self.caught_pet:
+                name = self.tables['Pet'][self.caught_pet.species]['name']
+                state.receive_pet(self.caught_pet)
+                messages.append(f'捕捉到了 {name}！')
+        self.messages.extend(messages)
+        self.rewards_applied = True
+        return True
 
     # -- serialization -------------------------------------------------------
     def snapshot(self):

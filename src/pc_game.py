@@ -18,9 +18,11 @@ from event_runtime import EventRuntime, PendingMechanic
 from csb_render import CocosUI
 from battle import make_npc_battle, make_wild_battle
 from battle_ui import BattleUI
+from activity_ui import ActivityUI
+from task_progress import TaskProgress
 
 
-class NativeGame(Preview):
+class NativeGame(ActivityUI, Preview):
     def __init__(self, root, data):
         self.state = GameState(data.tables)
         self.cocos_ui = CocosUI(data)
@@ -53,10 +55,11 @@ class NativeGame(Preview):
             child.destroy()
         tk.Label(top, text='口袋妖怪 · PC 移植开发版', fg='#f5d492', bg='#202b30',
                  font=('Microsoft YaHei UI', 12, 'bold')).pack(side='left', padx=14, pady=10)
-        for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui),
+        for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui), ('抽宠', self.lottery_ui),
                                 ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
-        self.save_path = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'/'slot1.json'
+        default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
+        self.save_path = Path(os.environ.get('POCKET_NATIVE_SAVE_DIR', str(default_save)))/'slot1.json'
         self.load_map(7401, 17*64+32, (30-14)*64)
         self.reset_encounter()
         self.runtime.notify('tomap', map=7401)
@@ -134,29 +137,34 @@ class NativeGame(Preview):
                 result.append(('temp:'+key, str(row['spriteid']), row['x'], row['y']))
         return result
 
+    def actor_animation(self, oid, sid):
+        if str(sid) == '30001' and hasattr(self, 'state'):
+            return 'opened' if str(oid) in self.state.activities.get('village_chests', []) else 'closed'
+        return super().actor_animation(oid, sid)
+
     UI_LAYOUTS = {
-        1: ('ShopUI', '商店'), 2: ('ShopUI', '材料商店'), 3: ('ShopUI', '卷轴商店'),
-        4: ('ShopUI', '银行'), 5: ('HatchRoomUI', '孵化屋'), 6: ('SkillShopUI', '技能商店'),
-        7: ('ArenaInfoUI', '竞技场'), 8: ('IllustratedPetInfoUI', '宠物图鉴'),
+        1: ('ShopUI', '商店'), 2: ('EvolutionShopUI', '材料商店'), 3: ('SkillShopUI', '卷轴商店'),
+        4: ('PetBankUI', '宠物银行'), 5: ('HatchRoomUI', '孵化屋'), 6: ('SkillLearnUI', '技能学习'),
+        7: ('ChoiceFirstPetUI', '初始宠物'), 8: ('IllustratedPetInfoUI', '宠物图鉴'),
         9: ('AreaMapUI', '地区地图'), 10: ('ArenaInfoUI', '竞技场'),
         11: ('CureConfirmUI', '宠物治疗'), 12: ('ContinuousLoginUI', '连续登录'),
-        13: ('TrialPetUI', '宠物使者'), 14: ('GetItemUI', '获得物品'),
-        15: ('ArenaRuleInfoUI', '道馆挑战'), 16: ('BuyPetUI', '坐骑商店'),
+        13: ('TrialPetUI', '宠物使者'), 14: ('SaveConfirmUI', '保存进度'),
+        15: ('TrialTowerUI', '试炼塔'), 16: ('BuyPetUI', '坐骑商店'),
         17: ('BuyPetUI', '宠物商店'), 18: ('MergePetUI', '宠物融合'),
-        19: ('InfiniteArenaUI', '无限竞技场'), 20: ('RankChallengeConfirmUI', '守护者挑战'),
-        21: ('ChallengeResultUI', '挑战结果'), 22: ('InfiniteArenaShopUI', '竞技场商店'),
-        23: ('PetTuPoUI', '宠物突破'), 24: ('TreasureCheckUI', '神秘宝藏'),
-        25: ('RunningPetWelUI', '赛宠嘉年华'), 26: ('GiftBagCureUI', '礼包'),
-        27: ('TrialPetUI', '圣兽使者'), 28: ('RunningPetResultUI', '竞赛兑换'),
+        19: ('InfiniteArenaUI', '无限竞技场'), 20: ('InfiniteArenaEnterConfirmUI', '无限竞技场入场'),
+        21: ('InfiniteArenaQuitConfirmUI', '无限竞技场退出'), 22: ('InfiniteArenaShopUI', '竞技场商店'),
+        23: ('PetTuPoUI', '宠物突破'), 24: ('TreasureMapUI', '神秘宝藏'),
+        25: ('RunningPetWelUI', '赛宠嘉年华'), 26: ('RankUI', '排行榜'),
+        27: ('GiftBagUI', '礼包'), 28: ('MedalShopUI', '奖牌兑换'),
         29: ('RouletteUI', '幸运轮盘'), 30: ('CardLegendUI', '卡牌传说'),
-        34: ('PetHeTiUI', '宠物合体'), 36: ('TrialPetUI', '圣兽使者'),
+        34: ('PetHeTiUI', '宠物合体'), 36: ('StoreGiftBagUI', '商店礼包'),
     }
 
     def open_ui(self, request):
         parameters = request.data.get('parameters', {})
         uiid = int(parameters.get('uiid', 0) or 0)
         if uiid == 7:
-            self.choose_starter(int(parameters.get('par1', 1)))
+            self.starter_window(int(parameters.get('par1', 1)))
             return
         layout, name = self.UI_LAYOUTS.get(uiid, ('MainUI', f'原版界面 {uiid}'))
         if self.ui_window and self.ui_window.winfo_exists():
@@ -173,6 +181,7 @@ class NativeGame(Preview):
             label = tk.Label(win, image=photo, bg='#101418')
             label.image = photo
             label.pack()
+            self.ui_art_label = label
         except (FileNotFoundError, ValueError, KeyError) as error:
             tk.Label(win, text=f'原 UI 布局读取失败：{error}', fg='#ffb0a0',
                      bg='#202b30').pack(padx=20, pady=20)
@@ -182,40 +191,64 @@ class NativeGame(Preview):
         tk.Label(body, textvariable=info, bg='#202b30', fg='#f2e7cf',
                  font=('Microsoft YaHei UI', 10), justify='left').pack(anchor='w')
         if uiid == 11:
-            info.set('宠物护士可以为全部携带宠物恢复生命与能量。')
+            currency, cost = self.state.cure_cost()
+            info.set(f'治疗全部携带宠物：{cost} {self.data.tables["Money"][currency]["name"]}' if currency else '医疗卡治疗免费。')
+            def cure():
+                try:
+                    self.heal_party()
+                    info.set('全部携带宠物已恢复。')
+                except ValueError as error:
+                    info.set(str(error))
             tk.Button(body, text='治疗全部宠物', bg='#5b7c52', fg='white',
-                      command=lambda: (self.heal_party(), info.set('全部宠物已恢复。'))).pack(pady=6)
+                      command=cure).pack(pady=6)
         elif uiid == 14:
-            rewards = getattr(self.state, 'last_rewards', [])
-            info.set('获得：\n' + ('\n'.join(rewards) if rewards else '奖励已经放入背包。'))
-        elif uiid in (1, 2, 3, 4, 5, 6, 16, 17, 22, 28):
+            info.set('保存当前游戏进度。')
+            tk.Button(body, text='保存进度', command=lambda: (self.save(), info.set(self.event_issue))).pack(pady=6)
+        elif uiid == 4:
+            self._bank_body(body, info)
+        elif uiid == 6:
+            self._skill_body(body, info)
+        elif uiid == 5:
+            self._hatch_body(body, info)
+        elif uiid == 17:
+            self._pet_shop_body(body, info, parameters.get('par1'))
+        elif uiid in (1, 2, 3, 22, 28):
             self._shop_body(body, info, uiid)
+        elif uiid == 29:
+            self._roulette_body(body, info)
+        elif uiid == 30:
+            self._cards_body(body, info)
         elif uiid == 9:
             info.set('当前地图：'+self.map.info['name']+f'\n世界焦点：{self.state.world_focus}\n'
                      '原版地区地图会显示已发现城镇和道路。')
         elif uiid == 23:
-            info.set('突破会消耗同名宠物或突破材料，并提升全部属性。')
+            self._breakthrough_body(body, info)
         elif uiid == 34:
             info.set('合体需要原版配方中的两只宠物与合体材料。')
         else:
-            info.set(f'原版界面 {uiid}（{name}）已打开。\n参数：{parameters}')
+            info.set(f'{name}的交互尚未实现，当前仅显示原版布局。')
         tk.Button(body, text='关闭', command=self.close_ui).pack(side='bottom', pady=6)
 
     def choose_starter(self, key):
+        if self.state.starter_id:
+            raise ValueError('已经选择了初始宠物。')
         row = self.data.tables['InitPet'][str(key)]
         species = str(row['petId'])
         pet = self.state.add_preset(str(key))
-        self.state.initialization = int(key)
+        self.state.starter_id = int(key)
         self.advance_main_condition('choose_pet', key)
         self.event_issue = f'选择了 {self.data.tables["Pet"][species]["name"]}！'
+        self.close_transient_ui()
         if self.runtime.pending and self.runtime.pending.kind == 'openui':
             self.runtime.resume()
         self.drive()
 
     def _shop_body(self, body, info, uiid):
+        table = {1: 'Shop', 2: 'EvolutionShop', 3: 'SkillShop',
+                 22: 'IArenaShop', 28: 'MedalShop'}[uiid]
         goods = []
-        for key, row in self.data.tables['Shop'].items():
-            if uiid in (16, 17) and row['goodsKid'] not in self.data.tables['Pet']:
+        for key, row in sorted(self.data.tables[table].items(), key=lambda pair: int(pair[0])):
+            if str(row.get('repeat', '1')) == '0' and self.state.shop_purchases.get(f'{table}:{key}'):
                 continue
             goods.append((str(key), row))
         info.set(f'商店共 {len(goods)} 件商品 · 持有金币 {self.state.count("700001")}')
@@ -224,21 +257,21 @@ class NativeGame(Preview):
         box = tk.Listbox(frame, width=58, height=6, font=('Microsoft YaHei UI', 10))
         box.pack(side='left', fill='both', expand=True)
         for key, row in goods:
-            box.insert('end', f'{row["name"]}  {row["price"]} 金  — {row.get("des", "")}')
+            currency = self.data.tables['Money'].get(str(row['moneyType']), {}).get('name', row['moneyType'])
+            box.insert('end', f'{row["name"]}  {row["price"]} {currency}  — {row.get("des", "")}')
         def buy():
             if not box.curselection():
                 return
             key, row = goods[box.curselection()[0]]
             try:
-                self.state.buy('Shop', key)
-                info.set(f'购买 {row["name"]} 成功 · 持有金币 {self.state.count("700001")}')
+                self.state.buy(table, key)
+                info.set(f'购买 {row["name"]} 成功 · 剩余 {self.state.count(row["moneyType"])}')
             except (ValueError, KeyError, NotImplementedError) as error:
                 info.set(str(error))
         tk.Button(frame, text='购买', command=buy).pack(side='left', padx=8, anchor='n')
 
     def heal_party(self):
-        for pet in self.state.pets + self.state.bank:
-            pet.heal(self.data.tables)
+        self.state.cure_party()
 
     def close_ui(self):
         if self.ui_window and self.ui_window.winfo_exists():
@@ -265,21 +298,7 @@ class NativeGame(Preview):
             self.keys.add(key)
 
     def advance_main_condition(self, kind, value):
-        """Original MainTask.conditionType turns the current task into state 4."""
-        row = self.data.tables['MainTask'].get(str(self.state.main_task))
-        if not row or self.state.main_state != 3:
-            return
-        condition_type = str(row.get('conditionType', ''))
-        values = str(row.get('conditions', '')).split(',')
-        expected = {'talk': '4', 'area': '1', 'map': '5', 'catch': '3',
-                    'choose_pet': '2', 'item': '7', 'level': '6'}.get(kind)
-        if condition_type != expected:
-            return
-        if kind == 'catch':
-            if str(value) in values or values[-1] == str(self.state.map_id):
-                self.state.main_state = 4
-        elif str(value) in values:
-            self.state.main_state = 4
+        TaskProgress(self.state).update(kind, int(value))
 
     def interact(self):
         if self.booting:
@@ -297,6 +316,19 @@ class NativeGame(Preview):
             return
         oid = actors[0][0]
         if oid.startswith('temp:'):
+            return
+        if str(actors[0][1]) == '30001':
+            from activities import Activities
+            try:
+                rewards = Activities(self.state).open_village_chest(oid)
+                names = []
+                for key, count in rewards:
+                    row = (self.data.tables['Item'].get(str(key)) or self.data.tables['Pet'].get(str(key))
+                           or self.data.tables['Money'].get(str(key), {}))
+                    names.append(f'{row.get("name", key)} × {count}')
+                self.event_issue = '宝箱获得：'+'、'.join(names)
+            except (ValueError, KeyError) as error:
+                self.event_issue = str(error)
             return
         self.advance_main_condition('talk', oid)
         if self.runtime.notify('talk', npcid=int(oid)):
@@ -439,19 +471,34 @@ class NativeGame(Preview):
         else:
             battle = make_npc_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
+        battle.source_id = str(npcid)
         self.battle_tips = []
         self.keys.clear()
         self.dialogue = None
         self.event_issue = ''
         self.player_sprite = self.state.sprite_id
+        if battle.kind == 'wild':
+            self.runtime.notify('fight', type=1)
+            self.drive()
 
     def finish_battle(self):
         battle = self.battle
         if not battle or not battle.result:
             return
         result = battle.result
+        if result in ('win', 'caught'):
+            battle.apply_rewards(self.state)
         if result == 'caught':
-            self.advance_main_condition('catch', self.state.map_id)
+            pet = battle.caught_pet
+            land = int(self.data.tables['Pet'][pet.species].get('kind', -1))
+            TaskProgress(self.state).update('catch', int(pet.species), land, self.state.map_id)
+        elif result == 'win' and battle.kind != 'wild':
+            TaskProgress(self.state).update('fight', 2, 1, int(battle.source_id), -1)
+            self.state.npc_fights[battle.source_id] = 1
+        TaskProgress(self.state).update()
+        if battle.kind == 'wild' and result in ('win', 'caught'):
+            self.runtime.notify('fightover', type=1, result=1,
+                                petid=int(battle.caught_pet.species if battle.caught_pet else battle.enemy_active.pet.species))
         for unit in battle.player:
             unit.pet.hp, unit.pet.energy = unit.hp, unit.energy
         self.state.active_pet = min(battle.player_index, max(0, len(self.state.pets)-1))
@@ -465,11 +512,14 @@ class NativeGame(Preview):
         if self.runtime.pending and self.runtime.pending.kind == 'battleover':
             self.runtime.resume(self.runtime.battle_result)
         elif self.runtime.pending and self.runtime.pending.kind == 'wait':
+            self.pending_wait = None
             self.runtime.resume()
         self.drive()
 
     def drive(self):
-        if self.display_request or self.runtime_error or self.battle:
+        if self.display_request or self.runtime_error:
+            return
+        if self.battle and not self.runtime.running:
             return
         if self.pending_wait or self.ui_open:
             return
@@ -517,9 +567,7 @@ class NativeGame(Preview):
                     return
                 if request.kind == 'battleover':
                     if not self.battle:
-                        # A save can resume immediately before a recorded outcome.
-                        self.runtime.resume('lose')
-                        continue
+                        raise PendingMechanic('缺少实际战斗结果，不能代填胜负；请读取战斗前存档')
                     return
                 if request.kind == 'openui':
                     self.open_ui(request)
@@ -539,10 +587,8 @@ class NativeGame(Preview):
                     parameters = request.data.get('parameters', {})
                     wait_type = int(parameters.get('type', 0) or 0)
                     if self.battle:
-                        # Battle tutorials are displayed over the live battle; the
-                        # event itself must not stall waiting for a fixed delay.
-                        self.runtime.resume()
-                        continue
+                        self.pending_wait = request
+                        return
                     if wait_type == 2 and self.ui_open:
                         self.pending_wait = request
                         return
@@ -560,9 +606,16 @@ class NativeGame(Preview):
                 self.state.audit.append({'event': self.runtime.file, 'index': self.runtime.index, 'pending': str(error)})
                 return
 
+    def battle_action_complete(self):
+        if self.pending_wait and self.runtime.pending is self.pending_wait:
+            self.pending_wait = None
+            self.runtime.resume()
+        self.drive()
+
     def tick(self):
         old_map, old_x, old_y = self.map_id, self.x, self.y
         if not self.booting:
+            TaskProgress(self.state).update()
             self.drive()
             self.steps = [1] if self.runtime.running or self.runtime_error else []
         super().tick()
@@ -636,25 +689,51 @@ class NativeGame(Preview):
             self.event_issue = '战斗中存档尚未接入原版战斗快照，未写入不一致的进度。'
             return
         self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
+        self.state.presentation = {
+            'face': self.face, 'player_visible': self.player_visible,
+            'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
+            'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
+            'encounter_distance': self.encounter_distance,
+            'encounter_threshold': self.encounter_threshold,
+        }
         self.runtime.persist()
         self.state.save(self.save_path)
         self.event_issue = '已保存独立移植存档，包含当前剧情位置、背包、任务和随机数状态。'
 
     def restore(self):
+        if self.battle:
+            self.event_issue = '战斗中暂不支持读取存档，请在战斗结束后读取。'
+            return
         if not self.save_path.exists():
             self.event_issue = '还没有原生移植存档。'
             return
         try:
             state = GameState.load(self.data.tables, self.save_path)
-            self.state = state
-            self.runtime = EventRuntime(self.data, state)
-            self.runtime.restore(state.pending_runtime)
+            runtime = EventRuntime(self.data, state)
+            runtime.restore(state.pending_runtime)
+            self.close_transient_ui()
+            self.state, self.runtime = state, runtime
             self.load_map(state.map_id, state.x, state.y)
             self.runtime_error, self.display_request, self.dialogue = '', None, None
+            self.pending_wait, self.wait_until = None, 0
+            self.camera_focus, self.screen_black, self.flash_until = None, False, 0
+            self.player_visible, self.main_ui_visible = True, True
+            self.teach_nodes, self.battle_tips = [], []
+            for key in ('face', 'player_visible', 'camera_focus', 'main_ui_visible',
+                        'teach_nodes', 'screen_black', 'encounter_distance', 'encounter_threshold'):
+                if key in state.presentation:
+                    setattr(self, key, state.presentation[key])
+            self.keys.clear()
             self.player_sprite = state.sprite_id
             self.drive()
         except (ValueError, KeyError, OSError) as error:
             messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
+
+    def close_transient_ui(self):
+        # Loading must not acknowledge an old event through close_ui().
+        if self.ui_window and self.ui_window.winfo_exists():
+            self.ui_window.destroy()
+        self.ui_window, self.ui_open = None, False
 
     def listing(self, title, content):
         win = tk.Toplevel(self.root)
@@ -666,6 +745,9 @@ class NativeGame(Preview):
         return win
 
     def pets_ui(self):
+        if self.battle:
+            self.event_issue = '请在战斗界面使用换宠和道具指令。'
+            return
         win = tk.Toplevel(self.root)
         win.title('携带宠物 · 原生 0.2')
         win.transient(self.root)
@@ -712,11 +794,20 @@ class NativeGame(Preview):
         tk.Button(buttons, text='关闭', command=win.destroy).pack(side='right')
 
     def bag_ui(self):
+        if self.battle:
+            self.event_issue = '请在战斗界面使用道具指令。'
+            return
         win = tk.Toplevel(self.root)
         win.title('背包与货币 · 原生 0.2')
         win.transient(self.root)
         info = tk.StringVar(value=f'金币 {self.state.count("700001")}')
         tk.Label(win, textvariable=info, anchor='w', font=('Microsoft YaHei UI', 11)).pack(fill='x', padx=8, pady=4)
+        targets = list(self.state.pets)
+        target_box = ttk.Combobox(win, state='readonly', width=45,
+            values=[f'{self.data.tables["Pet"][p.species]["name"]} Lv.{p.level}' for p in targets])
+        target_box.pack(fill='x', padx=8, pady=4)
+        if targets:
+            target_box.current(0)
         frame = tk.Frame(win)
         frame.pack(fill='both', expand=True, padx=8)
         box = tk.Listbox(frame, width=64, height=14, font=('Microsoft YaHei UI', 10))
@@ -728,7 +819,7 @@ class NativeGame(Preview):
             row = self.data.tables['Item'].get(str(item_id))
             if row:
                 box.insert('end', f'{row["name"]} × {count}  — {row.get("des", "")}')
-                if int(row.get('useType', 0)) == 1:
+                if int(row.get('useType', 0)) in (1, 2):
                     usable.append((str(item_id), row))
             else:
                 money = self.data.tables['Money'].get(str(item_id), {})
@@ -747,19 +838,30 @@ class NativeGame(Preview):
                 info.set('这个道具不能在背包中使用。')
                 return
             try:
-                message = self.state.use_item(entry[0])
+                target = targets[target_box.current()] if target_box.current() >= 0 else None
+                message = self.state.use_item(entry[0], target)
                 info.set(message + f' · 金币 {self.state.count("700001")}')
                 win.destroy()
                 self.bag_ui()
             except ValueError as error:
                 info.set(str(error))
-        tk.Button(frame, text='使用回复道具', command=use).pack(side='left', padx=8, anchor='n')
+        tk.Button(frame, text='对所选宠物使用', command=use).pack(side='left', padx=8, anchor='n')
         tk.Button(frame, text='关闭', command=win.destroy).pack(side='left', padx=4, anchor='n')
 
     def tasks_ui(self):
         row = self.data.tables['MainTask'][str(self.state.main_task)]
-        self.listing('当前任务', f'{row["name"]}\n状态 {self.state.main_state}\n\n{row["des"]}\n\n'
-                     +f'已完成主线：{len(self.state.completed_main)}\n已完成支线：{len(self.state.completed_branch)}')
+        TaskProgress(self.state).update()
+        labels = {2: '未接取', 3: '进行中', 4: '可提交', 5: '已完成'}
+        lines = [f'主线：{row["name"]} · {labels.get(self.state.main_state, self.state.main_state)}', row['des'],
+                 f'进度 {self.state.task_counts.get(f"main:{self.state.main_task}", [])} / {row["counts"]}', '', '支线任务：']
+        for key, status in sorted(self.state.branch_states.items(), key=lambda pair: int(pair[0])):
+            if status not in (3, 4):
+                continue
+            branch = self.data.tables['BranchTask'][key]
+            lines.extend([f'{branch["name"]} · {labels[status]}', branch['des'],
+                          f'进度 {self.state.task_counts.get(f"branch:{key}", [])} / {branch["counts"]}', ''])
+        lines.extend([f'已完成主线：{len(self.state.completed_main)}', f'已完成支线：{len(self.state.completed_branch)}'])
+        self.listing('任务', '\n'.join(lines))
 
     def about(self):
         messagebox.showinfo('当前范围', '原生开发版 0.2，尚未完成所有内容。\n\n'

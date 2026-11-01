@@ -207,6 +207,9 @@ class Preview:
                     self.load_map(mid)
                 return
 
+    def actor_animation(self, oid, sid):
+        return 'closed' if str(sid) == '30001' else 'standdown'
+
     def make_frame(self):
         focus = getattr(self, 'camera_focus', None) or (self.x, self.y)
         camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2, self.background.width-self.WIDTH))
@@ -214,7 +217,7 @@ class Preview:
         frame = Image.new('RGBA', (self.WIDTH, self.HEIGHT), '#1d2927')
         crop = self.background.crop((int(camx), int(camy), int(camx)+self.WIDTH, int(camy)+self.HEIGHT))
         frame.alpha_composite(crop)
-        entities = [(sid, x, y, 'standdown') for _, sid, x, y in self.actors()]
+        entities = [(sid, x, y, self.actor_animation(oid, sid)) for oid, sid, x, y in self.actors()]
         if getattr(self, 'player_visible', True):
             entities.append((getattr(self, 'player_sprite', '10001'), self.x, self.y, self.face))
         for sid, x, y, face in sorted(entities, key=lambda a: a[2]):

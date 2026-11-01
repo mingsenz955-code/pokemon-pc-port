@@ -45,6 +45,7 @@ def original(address, args):
 
 rng = random.Random(20261101)
 checks = [
+    ('hatch_exp', 0x2b5d28, lambda: [rng.randint(0, 200000)], formulas.hatch_exp),
     ('level_exp', 0x2b5954, lambda: [rng.randint(1, 300)], formulas.level_exp),
     ('attribute_hp', 0x2b598c, lambda: [rng.randint(1, 120), rng.randrange(2, 12)/2, rng.randrange(0, 12)/2, rng.randint(1, 170)], lambda *a: formulas.attribute(*a, hp=True)),
     ('attribute', 0x2b59d8, lambda: [rng.randint(1, 120), rng.randrange(2, 12)/2, rng.randrange(0, 12)/2, rng.randint(1, 170)], formulas.attribute),

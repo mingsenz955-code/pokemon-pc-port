@@ -31,6 +31,10 @@ def level_exp(level):
     return int(mul(mul(level, 50), add(div(level, 400), .2)))
 
 
+def hatch_exp(experience):
+    return max(1, int(mul(experience, .3)))
+
+
 def attribute(base, variation, growth, level, hp=False):
     rate = mul(add(base, variation), growth)
     if hp:
