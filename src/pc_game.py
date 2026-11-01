@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.29（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.30（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -379,6 +379,7 @@ class NativeGame(ActivityUI, Preview):
         54: ('SkillReplaceUI', '技能替换'),
         55: ('OpenChestConfirmUI', '开启宝箱'),
         56: ('FreePetConfirmUI', '放生确认'),
+        57: ('PetPropertyUI', '宠物属性'),
     }
 
     def open_ui(self, request):
@@ -512,6 +513,8 @@ class NativeGame(ActivityUI, Preview):
             self._open_chest_body(body, info)
         elif uiid == 56:
             self._free_pet_body(body, info)
+        elif uiid == 57:
+            self._pet_property_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -935,7 +938,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.29')
+        win.title('任务指引 · 原生 0.2.30')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1818,6 +1821,90 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['cancel_Button'] = back
         self.ui_actions['close_Button'] = back
 
+    def open_pet_property(self, uid):
+        self.open_ui(Request('openui', 'pet-property', 1, {
+            'parameters': {'uiid': 57, 'uid': uid}}))
+
+    def _pet_property_body(self, body, info):
+        uid = str(self.ui_parameters.get('uid') or
+                  (self.state.pets[0].uid if self.state.pets else ''))
+        pet = next((candidate for candidate in self.state.pets
+                    if str(candidate.uid) == uid), None)
+        if pet is None:
+            info.set('这只宠物不在携带栏。')
+            return
+        tables = self.data.tables
+        page = ['skill']
+        stats = pet.stats(tables)
+        pet_name = tables['Pet'][pet.species]['name']
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('PetPropertyUI', (800, 480), {
+                'name_Text': pet_name, 'lv_BitmapFontLabel': str(pet.level),
+                'number_BitmapFontLabel': str(pet.uid),
+                'skillInfo_Text': (f'生命 {stats[0]}  能量 {stats[1]}\n'
+                                   f'攻击 {stats[2]}  防御 {stats[3]}  速度 {stats[4]}')})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        rect = self.ui_hits.get('infoSkill_ListView') or self.ui_rects.get('infoSkill_ListView')
+        if rect:
+            frame.place(x=rect[0], y=rect[1], width=max(160, rect[2]-rect[0]),
+                        height=max(80, rect[3]-rect[1]))
+            frame.lift()
+        else:
+            frame.pack(fill='both', expand=True)
+        box = tk.Listbox(frame, font=('Microsoft YaHei UI', 9), exportselection=False,
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        box.pack(fill='both', expand=True)
+        rows = []
+        def refresh():
+            rows.clear()
+            box.delete(0, 'end')
+            if page[0] == 'skill':
+                keys = [str(value) for value in pet.skills]
+                table = tables['Skill']
+            else:
+                keys = [str(value) for value in pet.talents]
+                table = tables['Talent']
+            for key in keys:
+                row = table.get(key)
+                if not row:
+                    continue
+                rows.append(row)
+                box.insert('end', str(row.get('name', key)))
+            if rows:
+                box.selection_set(0)
+                show()
+            else:
+                info.set(f'{pet_name} 没有{"技能" if page[0] == "skill" else "天赋"}。')
+        def show(_=None):
+            index = box.curselection()
+            if not index or index[0] >= len(rows):
+                return
+            row = rows[index[0]]
+            info.set(f'{pet_name} Lv.{pet.level} · {row.get("name", "")}\n'
+                     f'{row.get("des", "")}')
+        def tag(value):
+            page[0] = value
+            refresh()
+        def evolution():
+            try:
+                self.state.evolve(pet.uid)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            self.close_ui()
+            self.open_pet_property(pet.uid)
+        box.bind('<<ListboxSelect>>', show)
+        self.ui_actions['skillTag_Button'] = lambda: tag('skill')
+        self.ui_actions['talentTag_Button'] = lambda: tag('talent')
+        self.ui_actions['free_Button'] = lambda: self.open_free_pet(pet.uid)
+        self.ui_actions['evolution_Button'] = evolution
+        self.ui_actions['close_Button'] = self.close_ui
+        self.ui_window.bind('<Escape>', lambda _event: self.close_ui())
+        refresh()
+
     def illustrated_ui(self):
         if self.battle or self.ui_open:
             return
@@ -2012,6 +2099,10 @@ class NativeGame(ActivityUI, Preview):
             show()
 
         box.bind('<<ListboxSelect>>', show)
+        def property_click(_event=None):
+            if pets:
+                self.open_pet_property(pets[selected[0]].uid)
+        box.bind('<Double-Button-1>', property_click)
         self.ui_actions.update({
             'joinBattle_Button': join_battle,
             'evolution_Button': evolve,

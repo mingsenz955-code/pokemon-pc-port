@@ -66,6 +66,8 @@
 
 | 放生宠物 | `FreePetConfirmUI`、`confirm_Button`、`cancel_Button` | PetList 的放生改为打开原版 `FreePetConfirmUI`，显示宠物名和等级；取消回宠物列表，确认才真正移除宠物并修正出战序号；出战中宠物拒绝放生。`tools/check_free_pet_ui.py` 覆盖取消、确认、出战保护 |
 
+| 宠物属性 | `PetPropertyUI`、`skillTag_Button`、`talentTag_Button`、`free_Button`、`evolution_Button` | PetList 双击宠物打开原版 `PetPropertyUI`；显示名字、等级、编号和五项属性，技能/天赋标签切换真实列表和原版描述；放生走 `FreePetConfirmUI`，进化调用原 `Pet.evolve`。`tools/check_pet_property_ui.py` 覆盖标签切换、按钮绑定和关闭 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
@@ -73,7 +75,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：52 个原版 UI 布局、139 个可见 Button 的真实命中区、pressed 纹理、39 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：53 个原版 UI 布局、144 个可见 Button 的真实命中区、pressed 纹理、40 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。

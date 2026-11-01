@@ -397,6 +397,12 @@
       "source": "outputs/口袋妖怪-PC移植开发版0.2.29.zip",
       "bytes": 81617322,
       "sha256": "45d539bb08c8a0756f83674888b6c69bd0c809b8011098b567ea61ce52b544cd"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.30.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.30.zip",
+      "bytes": 81619338,
+      "sha256": "00bdc76ed4887dc9e808b3314a88310027a91318fcf5f3491c54c4cb16207feb"
     }
   ]
 }
