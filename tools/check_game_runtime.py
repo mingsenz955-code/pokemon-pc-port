@@ -63,6 +63,7 @@ assert state.submit_task(1) is False and state.inventory['700001'] == 1100
 
 runtime = EventRuntime(data, state)
 runtime.start('pEvent101002.json')
+state.starter_id = 1
 assert runtime.branch_matches({'initid': 1, 'id': 7})
 assert not runtime.branch_matches({'initid': 2, 'id': 11})
 try:
@@ -93,6 +94,6 @@ report = {'original_trigger_rows': len(runtime.triggers),
           'task_rewards_cannot_repeat': 'passed',
           'unverified_npc_state_branch_stops': 'passed',
           'battle_without_outcome_cannot_continue': 'passed',
-          'native_host_full_gameplay': 'partial: prologue→starter→main task 4 verified in Tk host; later systems pending'}
+          'native_host_full_gameplay': 'not assessed by this script; see check_task_progress.py and build/_host_debug.py for bounded host scenarios'}
 (ROOT/'outputs/verification/game-runtime-checks.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
 print(json.dumps(report, indent=2))

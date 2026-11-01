@@ -75,7 +75,9 @@ class EventRuntime:
         for trigger in self.triggers:
             if trigger['type'] != kind or not self.matches(trigger):
                 continue
-            if any(str(parameters.get(k)) != str(v) for k, v in trigger['conditions_add'].items()):
+            if any(not (kind == 'fightover' and k == 'petid' and int(v) == -1)
+                   and str(parameters.get(k)) != str(v)
+                   for k, v in trigger['conditions_add'].items()):
                 continue
             self.start(f'pEvent{trigger["id"]}.json', trigger)
             return True
@@ -100,6 +102,7 @@ class EventRuntime:
         while self.queue and not self.running:
             notification = self.queue.pop(0)
             self.notify(notification['kind'], **notification['parameters'])
+        self.persist()
 
     def jump(self, identifier):
         self.index = next((i for i, step in enumerate(self.sequence) if int(step['id']) == int(identifier)), -1)
@@ -116,7 +119,7 @@ class EventRuntime:
         if 'npcfight' in condition:
             checks.append(int(self.state.npc_fights.get(str(condition['npcfight']), 0)) == state)
         if 'initid' in condition:
-            checks.append(self.state.initialization == int(condition['initid']))
+            checks.append(self.state.starter_id == int(condition['initid']))
         if 'ride' in condition:
             checks.append((int(condition['ride']) in self.state.rides) == bool(state))
         if 'event' in condition:
@@ -168,12 +171,10 @@ class EventRuntime:
             if kind == 'giveitem':
                 rows = parameter if isinstance(parameter, list) else [parameter]
                 for row in rows:
-                    if str(row['itemid']) in self.state.tables['Pet']:
-                        raise PendingMechanic('宠物奖励的随机属性生成尚未核定')
-                    if str(row['itemid']) not in self.state.tables['Item'] and str(row['itemid']) not in self.state.tables['Money']:
+                    if not any(str(row['itemid']) in self.state.tables[table] for table in ('Pet', 'Item', 'Money')):
                         raise ValueError(f'Unknown reward {row["itemid"]}')
-                for row in rows:
-                    self.state.grant(row['itemid'], row['itemcount'])
+                self.state.grant_many([row['itemid'] for row in rows],
+                                      [row['itemcount'] for row in rows])
             elif kind == 'eventstate':
                 for row in parameter if isinstance(parameter, list) else [parameter]:
                     self.state.events[str(row['eventid'])] = int(row['state'])
@@ -183,7 +184,11 @@ class EventRuntime:
                 elif 'btask' in parameter:
                     self.state.branch_states[str(parameter['btask'])] = int(parameter['state'])
             elif kind == 'submittask':
-                self.state.submit_task(parameter.get('btask', parameter.get('mtask')), 'btask' in parameter)
+                # Original mtask is a nonzero flag; the handler submits the
+                # current task, not that numeric ID (e.g. pEvent101005 uses 5
+                # while the current task is 6). Branch IDs remain explicit.
+                branch = 'btask' in parameter
+                self.state.submit_task(parameter['btask'] if branch else self.state.main_task, branch)
             elif kind == 'costtaskitem':
                 table = 'BranchTask' if 'btask' in parameter else 'MainTask'
                 task = self.state.tables[table][str(parameter.get('btask', parameter.get('mtask')))]
@@ -262,6 +267,7 @@ class EventRuntime:
             if self.notify(event['kind'], **event['parameters']):
                 self.queue.extend(queued[index+1:])
                 break
+        self.persist()
 
     def persist(self):
         self.state.pending_runtime = self.snapshot() if self.running else None

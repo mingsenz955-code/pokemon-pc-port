@@ -16,7 +16,10 @@ battle = make_npc_battle(data.tables, state.pets, 1002011, random.Random(7))
 rounds = 0
 while not battle.result and rounds < 60:
     rounds += 1
-    battle.choose_skill(0)
+    if battle.force_switch:
+        battle.choose_switch(next(i for i, unit in enumerate(battle.player) if unit.alive))
+    else:
+        battle.choose_skill(0)
 assert battle.result in ('win', 'lose'), battle.result
 assert battle.round > 0
 print('npc', battle.result, battle.round, battle.exp_gained[:2])
@@ -33,7 +36,10 @@ assert 1 <= chance_full <= 100 and chance_low >= chance_full, (chance_full, chan
 rounds = 0
 while not wild.result and rounds < 80:
     rounds += 1
-    wild.choose_item('220004')
+    if wild.force_switch:
+        wild.choose_switch(next(i for i, unit in enumerate(wild.player) if unit.alive))
+    else:
+        wild.choose_item('220004')
 assert wild.result in ('caught', 'win', 'lose', 'escape'), wild.result
 if wild.result == 'caught':
     wild.apply_rewards(state)

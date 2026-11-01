@@ -429,8 +429,11 @@ class BattleUI:
                     self.notice = '该道具数量不足。'
                     self.screen = 'main'
                     return 'refresh'
-                self.app.state.consume([item], [1])
-                b.choose_item(item)
+                events = b.choose_item(item)
+                if any(event['type'] == 'catch_attempt' or
+                       (event['type'] == 'item_used' and event.get('side') == 'player')
+                       for event in events):
+                    self.app.state.consume([item], [1])
             self.screen = 'main'
             self._after_action()
         elif key == 'confirm_no':
@@ -457,4 +460,6 @@ class BattleUI:
         else:
             self.screen = 'main'
             self.notice = ''
+        if hasattr(self.app, 'battle_action_complete'):
+            self.app.battle_action_complete()
         return 'refresh'

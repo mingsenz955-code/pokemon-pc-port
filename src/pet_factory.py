@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 
 from game_state import Pet, numbers
+from game_formulas import add, sub, mul, f32
 
 
 def _rows(value):
@@ -12,14 +14,19 @@ def _rows(value):
 
 
 def weighted_choice(rng: random.Random, values, weights):
-    total = sum(max(0, float(w)) for w in weights)
+    values, weights = list(values), [float(w) for w in weights]
+    if not values or len(values) != len(weights):
+        raise ValueError('Invalid original probability vector lengths')
+    if any(not math.isfinite(w) or w < 0 for w in weights):
+        raise ValueError('Invalid original probability weight')
+    total = sum(weights)
     if total <= 0:
-        return values[rng.randrange(len(values))]
+        raise ValueError('Original probability vector has no positive weight')
     roll = rng.random()*total
     upto = 0.0
     for value, weight in zip(values, weights):
         upto += max(0, float(weight))
-        if roll <= upto:
+        if roll < upto:
             return value
     return values[-1]
 
@@ -27,12 +34,14 @@ def weighted_choice(rng: random.Random, values, weights):
 def _attribute_roll(rng, intervals, probabilities):
     interval = weighted_choice(rng, intervals, probabilities)
     low, high = float(interval[0]), float(interval[1])
-    if high <= low:
-        return round(low, 1)
-    return round(rng.uniform(low, high), 1)
+    # getFloatValueWithIntervalList (0x2ba826) uses an unsigned 32-bit
+    # draw scaled by 2^-32, then binary32 multiply/add. It never rounds to
+    # tenths; that old approximation materially changed pet attributes.
+    fraction = mul(rng.getrandbits(32), 2**-32)
+    return add(low, mul(fraction, sub(high, low)))
 
 
-def generate_pet(tables, rng: random.Random, species, level=None, *, row=None):
+def generate_pet(tables, rng: random.Random, species, level=None, *, row=None, fixed_attributes=None):
     """Replicates the data-driven random pet generation exposed by the tables.
 
     The interval/probability columns are the original ones.  The exact original
@@ -41,20 +50,26 @@ def generate_pet(tables, rng: random.Random, species, level=None, *, row=None):
     """
     species = str(species)
     pet = tables['Pet'][species]
+    probability_row = row if row is not None else pet
     if level is None:
         level = 1
     level = max(1, min(int(level), int(pet['maxLevel'])))
-    variations = []
-    for intervals, chances in zip(_rows(pet['attVarInterval']), _rows(pet['attVarIntPro'])):
-        variations.append(_attribute_roll(rng, intervals, chances))
-    growth = []
-    for intervals, chances in zip(_rows(pet['attUpVarInterval']), _rows(pet['attUpVarIntPro'])):
-        growth.append(_attribute_roll(rng, intervals, chances))
+    if fixed_attributes is not None:
+        variations, growth = ([f32(v) for v in values] for values in fixed_attributes)
+        if len(variations) != 5 or len(growth) != 5:
+            raise ValueError('Invalid fixed hatch attributes')
+    else:
+        variations = []
+        for intervals, chances in zip(_rows(probability_row['attVarInterval']), _rows(probability_row['attVarIntPro'])):
+            variations.append(_attribute_roll(rng, intervals, chances))
+        growth = []
+        for intervals, chances in zip(_rows(probability_row['attUpVarInterval']), _rows(probability_row['attUpVarIntPro'])):
+            growth.append(_attribute_roll(rng, intervals, chances))
 
-    pool = numbers(pet['talentIds'])
-    weights = numbers(pet['talentProbability'])
-    count_choices = numbers(pet['talentNum'])
-    count_weights = numbers(pet['talentNumPro'])
+    pool = numbers(probability_row['talentIds'])
+    weights = numbers(probability_row['talentProbability'])
+    count_choices = numbers(probability_row['talentNum'])
+    count_weights = numbers(probability_row['talentNumPro'])
     count = int(weighted_choice(rng, count_choices, count_weights)) if pool else 0
     count = min(count, len(pool))
     talents = []
@@ -75,4 +90,5 @@ def generate_pet(tables, rng: random.Random, species, level=None, *, row=None):
     result = Pet(species, level, variations, growth, skills, talents,
                  held_item='0')
     result.heal(tables)
+    result.update_quality(tables)
     return result

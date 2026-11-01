@@ -1,10 +1,13 @@
-import sys, tkinter as tk, collections
+import sys, tkinter as tk, collections, os
+from pathlib import Path
+os.environ['POCKET_NATIVE_SAVE_DIR'] = str(Path('outputs/verification/host-debug-saves').resolve())
 sys.path.insert(0, 'src')
 from original_data import OriginalData
 from pc_game import NativeGame
 
 root = tk.Tk()
 app = NativeGame(root, OriginalData('original-1.20.4'))
+app.state.rng.seed(12345)
 counts = collections.Counter()
 for step in range(600):
     root.update()
@@ -21,12 +24,18 @@ for step in range(600):
         if app.battle.result or not app.battle.player_active:
             app.finish_battle()
         else:
+            if app.battle.force_switch:
+                app.battle.choose_switch(next(i for i,u in enumerate(app.battle.player) if u.alive))
+                continue
             avail = app.battle.available_skills(app.battle.player_active)
             usable = [i for i, e in enumerate(avail, 1) if e['usable']]
             app.battle.choose_skill(usable[0] if usable else 0)
             app.battle_ui._after_action()
         continue
     if app.ui_open:
+        if app.runtime.pending and app.runtime.pending.kind == 'openui' and app.runtime.pending.data.get('parameters', {}).get('uiid') == 7:
+            app.choose_starter(app.runtime.pending.data['parameters']['par1'])
+            continue
         app.close_ui(); continue
     if app.display_request:
         app.interact(); continue
