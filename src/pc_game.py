@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.19（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.20（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -91,6 +91,7 @@ class NativeGame(ActivityUI, Preview):
                                 ('坐骑', self.mounts_ui), ('宝藏', self.treasure_ui),
                                 ('赛跑', self.running_pet_ui),
                                 ('签到', self.login_ui), ('每日', self.daily_ui),
+                                ('图鉴', self.illustrated_ui),
                                 ('成就', self.achievements_ui),
                                 ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
@@ -369,6 +370,7 @@ class NativeGame(ActivityUI, Preview):
         45: ('AchievementUI', '成就'),
         46: ('BagUI', '背包'),
         47: ('PetListUI', '宠物'),
+        48: ('IllustratedUI', '图鉴'),
     }
 
     def open_ui(self, request):
@@ -484,6 +486,8 @@ class NativeGame(ActivityUI, Preview):
             self._bag_body(body, info)
         elif uiid == 47:
             self._pet_list_body(body, info)
+        elif uiid == 48:
+            self._illustrated_overview_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -791,7 +795,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.19')
+        win.title('任务指引 · 原生 0.2.20')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1461,6 +1465,79 @@ class NativeGame(ActivityUI, Preview):
         box.insert('1.0', content)
         box.config(state='disabled')
         return win
+
+    def illustrated_ui(self):
+        if self.battle or self.ui_open:
+            return
+        self.open_ui(Request('openui', 'illustrated', 1, {'parameters': {'uiid': 48}}))
+
+    def _illustrated_overview_body(self, body, info):
+        """Original IllustratedUI: five PetKindEnum tabs over the full Pet table."""
+        tables = self.state.tables
+        current = [1]
+        selected = [0]
+        species = []
+        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        rect = self.ui_hits.get('item_ScrollView') or self.ui_rects.get('item_ScrollView')
+        if rect:
+            frame.place(x=rect[0], y=rect[1], width=max(160, rect[2]-rect[0]),
+                        height=max(120, rect[3]-rect[1]))
+            frame.lift()
+        else:
+            frame.pack(fill='both', expand=True)
+        box = tk.Listbox(frame, width=58, height=16, font=('Microsoft YaHei UI', 9),
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        bar = tk.Scrollbar(frame, command=box.yview)
+        box.configure(yscrollcommand=bar.set)
+        box.pack(side='left', fill='both', expand=True)
+        bar.pack(side='right', fill='y')
+
+        def show(_=None):
+            if not species:
+                return
+            if box.curselection():
+                selected[0] = box.curselection()[0]
+            key = species[selected[0]]
+            row = tables['Pet'][key]
+            found = '已收录' if key in self.state.encyclopedia else '未收录'
+            skills = '、'.join(tables['Skill'].get(str(s), {}).get('name', str(s))
+                              for s in str(row.get('skillIds', '')).split(',')[:4] if s and s != '0')
+            info.set(f'{row["name"]}（{key}） · {found}\n'
+                     f'种族 {tables["PetKindEnum"].get(str(row.get("kind")), {}).get("name", row.get("kind"))} · '
+                     f'星级 {row.get("starLevel")} · 最大等级 {row.get("maxLevel")}\n'
+                     f'技能：{skills or "无"}')
+
+        def tab(kind):
+            nonlocal species
+            current[0] = kind
+            species = sorted((key for key, row in tables['Pet'].items()
+                              if str(row.get('kind', '')) == str(kind)), key=lambda value: int(value))
+            box.delete(0, 'end')
+            for key in species:
+                row = tables['Pet'][key]
+                mark = '✓' if key in self.state.encyclopedia else '·'
+                box.insert('end', f'{mark} {key}  {row["name"]}  星级 {row.get("starLevel")}')
+            found = sum(1 for key in species if key in self.state.encyclopedia)
+            info.set(f'{tables["PetKindEnum"].get(str(kind), {}).get("name", kind)} · '
+                     f'已收录 {found}/{len(species)}')
+            if getattr(self, 'ui_art_label', None) is not None:
+                layer = self.cocos_ui.render('IllustratedUI', (800, 480), {
+                    'findedCount_BitmapFontLabel': str(len(self.state.encyclopedia)),
+                    'progress_BitmapFontLabel': f'{found}/{len(species)}',
+                })
+                photo = ImageTk.PhotoImage(layer)
+                self.ui_art_label.configure(image=photo)
+                self.ui_art_label.image = photo
+            if species:
+                box.selection_set(0)
+                selected[0] = 0
+                show()
+
+        for kind in range(1, 6):
+            self.ui_actions[f'tag_{kind}_Button'] = lambda value=kind: tab(value)
+        self.ui_actions['close_Button'] = self.close_ui
+        box.bind('<<ListboxSelect>>', show)
+        tab(1)
 
     def pets_ui(self):
         if self.battle:
