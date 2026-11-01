@@ -356,6 +356,7 @@ class NativeGame(ActivityUI, Preview):
         else:
             target = self.guide.refresh()
             if target:
+                self.keys.clear()
                 self.guide.start(target)
 
     def guide_ui(self):
@@ -392,6 +393,7 @@ class NativeGame(ActivityUI, Preview):
         def start():
             target = selected['target']
             if target:
+                self.keys.clear()
                 self.guide.start(target)
                 detail.delete('1.0', 'end')
                 detail.insert('1.0', self.guide.message)
