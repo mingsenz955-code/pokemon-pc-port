@@ -67,7 +67,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.4（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.5（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -314,9 +314,7 @@ class NativeGame(ActivityUI, Preview):
         elif uiid == 23:
             self._breakthrough_body(body, info)
         elif uiid == 24:
-            info.set('宝藏线索来自原版 Treasure 表；确认后会在主界面出现放大镜入口。')
-            self.ui_actions['use_Button'] = lambda: self.close_ui('yes')
-            self.ui_actions['giveUp_Button'] = lambda: self.close_ui('no')
+            self._treasure_body(body, info, parameters.get('par1'))
         elif uiid in (27, 36):
             info.set('原版礼包购买入口；支付与奖励表尚未接入，不能伪造发货。')
             self.ui_actions['buy_Button'] = lambda: info.set('礼包购买与奖励表尚未接入，未扣除货币。')
@@ -527,7 +525,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.4')
+        win.title('任务指引 · 原生 0.2.5')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -918,6 +916,8 @@ class NativeGame(ActivityUI, Preview):
         self.drive()
 
     def tick(self):
+        if self.battle and self.battle_ui:
+            self.battle_ui.advance()
         old_map, old_x, old_y = self.map_id, self.x, self.y
         if not self.booting:
             TaskProgress(self.state).update()

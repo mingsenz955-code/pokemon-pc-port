@@ -598,6 +598,45 @@ class ActivityUI:
         tk.Button(body, text='战斗排名', command=lambda: show(*pages['fightTag_Button'])).pack(pady=2)
         tk.Button(body, text='怪物资料', command=lambda: show('怪物资料', 'Pet')).pack(pady=2)
 
+    def _treasure_body(self, body, info, par1=None):
+        rows = list(self.data.tables.get('Treasure', {}).values())
+        row = None
+        if par1 and str(par1) in self.data.tables.get('Treasure', {}):
+            row = self.data.tables['Treasure'][str(par1)]
+        if row is None:
+            map_name = str(getattr(getattr(self, 'map', None), 'info', {}).get('name', ''))
+            row = next((r for r in rows if str(r.get('name')) == map_name), None)
+        if row is None:
+            row = rows[0] if rows else None
+        if not row:
+            info.set('原版 Treasure 表为空。')
+            return
+        magnifier = self.state.count('220007')
+        chests = self.data.tables.get('TChest', {})
+        chest_names = []
+        for key in str(row.get('chestIds', '')).split(','):
+            chest = chests.get(key.strip())
+            if chest:
+                chest_names.append(chest['name'])
+        info.set(f'{row.get("des", "")}\n'
+                 f'线索地图：{row.get("name", "")} · 宝箱类型：{"、".join(chest_names) or "未知"}\n'
+                 f'当前放大镜：{magnifier} 个 · 每次使用消耗 1 个')
+        def use():
+            if magnifier <= 0:
+                info.set('没有放大镜，无法使用。')
+                return
+            # The original TreasureCheckUI consumes one magnifier and then runs
+            # the map search/chest reveal.  That overlay is still missing; do
+            # not consume an item and pretend the search happened.
+            info.set('原版放大镜地图搜索与宝箱显现尚未接入；本次未扣除放大镜。')
+        def give_up():
+            self.close_ui('no')
+        self.ui_actions['use_Button'] = use
+        self.ui_actions['giveUp_Button'] = give_up
+        self.ui_actions['close_Button'] = give_up
+        tk.Button(body, text='使用放大镜（搜索待接入）', command=use).pack(pady=3)
+        tk.Button(body, text='放弃', command=give_up).pack(pady=3)
+
     def _infinite_body(self, body, info, uiid, arena_id=None):
         progress = InfiniteArenaProgress(self.state)
         arena = self.data.tables['InfiniteArena'].get(str(arena_id or 1))

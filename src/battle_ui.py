@@ -7,6 +7,8 @@ original Spine package rather than from screenshots.
 """
 from __future__ import annotations
 
+import math
+
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1024, 576
@@ -46,6 +48,85 @@ class BattleUI:
         self.target_hits = {}
         self.item_filter = None
         self.info = ''
+        # Lightweight battle presentation timeline.  Events are emitted by the
+        # battle state machine; the UI turns them into lunge/hit/damage
+        # feedback while the actual combat rules stay in battle.py.
+        self.anim = None
+        self.anim_frame = 0
+        self.anim_idle = 0
+        self.display_hp = {}
+        self._event_cursor = len(getattr(battle, 'events', []))
+
+    # -- animation -----------------------------------------------------------
+    def advance(self, steps=1):
+        self.anim_idle += steps
+        if self.anim:
+            self.anim['age'] += steps
+            if self.anim['age'] >= self.anim['duration']:
+                self.anim = None
+            self.frame = None
+            self._signature = None
+        # Smoothly drain/fill the bars instead of snapping to the new value.
+        for side, unit in (('player', self.battle.player_active),
+                           ('enemy', self.battle.enemy_active)):
+            if not unit:
+                continue
+            key = (side, unit.pet.uid)
+            target = int(unit.hp)
+            current = self.display_hp.get(key)
+            if current is None or current == target:
+                self.display_hp[key] = target
+                continue
+            delta = target-current
+            step = max(1, abs(delta)//8+1)
+            self.display_hp[key] = current + (step if delta > 0 else -step)
+            self.frame = None
+            self._signature = None
+
+    def _capture_events(self):
+        events = getattr(self.battle, 'events', [])
+        fresh = events[self._event_cursor:]
+        self._event_cursor = len(events)
+        if not fresh:
+            return
+        source = next((event for event in reversed(fresh)
+                       if event.get('type') in ('attack', 'skill')), None)
+        damage = next((event for event in reversed(fresh)
+                       if event.get('type') == 'damage'), None)
+        if source or damage:
+            self.anim = {
+                'side': str((source or {}).get('side', 'player')),
+                'target': str((damage or {}).get('side', 'enemy')),
+                'kind': (source or {}).get('type', 'damage'),
+                'amount': int((damage or {}).get('amount', 0)),
+                'crit': bool((damage or {}).get('crit')),
+                'age': 0,
+                'duration': 26,
+            }
+            self._signature = None
+
+    def _animation_offsets(self):
+        if not self.anim:
+            return (0, 0), (0, 0), 0.0
+        age = self.anim['age']
+        duration = max(1, self.anim['duration'])
+        phase = age/duration
+        source = self.anim['side']
+        target = self.anim['target']
+        lunge = max(0.0, 1.0-abs(phase*2-0.6)/1.6)
+        if self.anim['kind'] in ('attack', 'skill'):
+            distance = 58 if self.anim['kind'] == 'attack' else 34
+            if source == 'player':
+                source_offset = (round(distance*lunge), round(-16*lunge))
+            else:
+                source_offset = (round(-distance*lunge), round(-16*lunge))
+        else:
+            source_offset = (0, 0)
+        hit_phase = max(0.0, 1.0-abs(phase*2-1.0))
+        shake = round(10*hit_phase*math.sin(age*1.9))
+        target_offset = (shake, 0)
+        flash = hit_phase if target != source or self.anim['kind'] == 'damage' else 0.0
+        return source_offset, target_offset, flash
 
     # -- HUD ----------------------------------------------------------------
     def _hud_layer(self, enemy):
@@ -142,8 +223,19 @@ class BattleUI:
             background = getattr(self.app, 'background', None)
         frame.alpha_composite(cover(background, (W, H)))
         frame.alpha_composite(Image.new('RGBA', (W, H), (8, 10, 14, 60)))
-        self._draw_pet(frame, self.battle.enemy_active, (round(W*.74), round(H*.34)), 235, True)
-        self._draw_pet(frame, self.battle.player_active, (round(W*.26), round(H*.66)), 250, False)
+        source_offset, target_offset, flash = self._animation_offsets()
+        if self.anim:
+            enemy_offset = source_offset if self.anim['side'] == 'enemy' else target_offset
+            player_offset = source_offset if self.anim['side'] == 'player' else target_offset
+        else:
+            bob = round(3*math.sin(self.anim_idle*.06))
+            enemy_offset, player_offset = (0, bob), (0, -bob)
+        self._draw_pet(frame, self.battle.enemy_active,
+                       (round(W*.74)+enemy_offset[0], round(H*.34)+enemy_offset[1]),
+                       235, True, flash if self.anim and self.anim['target'] == 'enemy' else 0)
+        self._draw_pet(frame, self.battle.player_active,
+                       (round(W*.26)+player_offset[0], round(H*.66)+player_offset[1]),
+                       250, False, flash if self.anim and self.anim['target'] == 'player' else 0)
         for layer in (self._hud_layer(True), self._hud_layer(False)):
             if layer:
                 frame.alpha_composite(layer)
@@ -152,6 +244,7 @@ class BattleUI:
         self._draw_status(draw, self.battle.enemy_active, True)
         self._draw_status(draw, self.battle.player_active, False)
         self._draw_team(draw)
+        self._draw_damage(draw)
         self.hits = {}
         if self.battle.result:
             self._draw_result(frame, draw)
@@ -184,7 +277,7 @@ class BattleUI:
         self.frame = frame
         return frame
 
-    def _draw_pet(self, frame, unit, center, height, enemy=False):
+    def _draw_pet(self, frame, unit, center, height, enemy=False, flash=0.0):
         if not unit:
             return
         image = self.app.data.pet_image(unit.pet.species)
@@ -194,7 +287,24 @@ class BattleUI:
         image = image.resize((max(1, round(image.width*ratio)), height), Image.Resampling.LANCZOS)
         if enemy:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        if flash:
+            overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
+            image = Image.blend(image, overlay, min(.55, .55*flash))
         frame.alpha_composite(image, (center[0]-image.width//2, center[1]-image.height//2))
+
+    def _draw_damage(self, draw):
+        if not self.anim or self.anim['amount'] <= 0:
+            return
+        phase = min(1.0, self.anim['age']/max(1, self.anim['duration']))
+        side = self.anim['target']
+        x = round(W*.74) if side == 'enemy' else round(W*.26)
+        y = round(H*.34)-130 if side == 'enemy' else round(H*.66)-160
+        y -= round(34*phase)
+        text = f'-{self.anim["amount"]}'
+        if self.anim['crit']:
+            text += ' 暴击!'
+        self._label(draw, (x, y), text, 28 if self.anim['crit'] else 24,
+                    (255, 236, 120, 255) if self.anim['crit'] else (255, 92, 72, 255), 'mm')
 
     def _draw_bars(self, draw):
         for side, rects in self._hud_rects.items():
@@ -203,12 +313,14 @@ class BattleUI:
                     active = self.battle.enemy_active if side == 'enemy' else self.battle.player_active
                     if not active:
                         continue
+                    key_hp = (side, active.pet.uid)
+                    shown = self.display_hp.get(key_hp, active.hp)
                     color = (76, 200, 96, 255)
                     if active.hp/active.max_hp < .25:
                         color = (220, 64, 56, 255)
                     elif active.hp/active.max_hp < .55:
                         color = (238, 190, 70, 255)
-                    self._bar(draw, rect, active.hp/active.max_hp, color)
+                    self._bar(draw, rect, shown/active.max_hp, color)
                 elif key.endswith('/energy_LoadingBar'):
                     active = self.battle.player_active
                     if active:
@@ -491,6 +603,7 @@ class BattleUI:
 
     def _after_action(self):
         b = self.battle
+        self._capture_events()
         if b.force_switch:
             self.screen = 'pets'
             self.notice = '请选择下一只宠物'
