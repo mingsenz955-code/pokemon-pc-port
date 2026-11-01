@@ -255,6 +255,35 @@ class GameState:
         self.receive_pet(pet)
         return pet
 
+    def open_chest_item(self, item_id='210001'):
+        """Original ChestItem 210001: consume the chest and its 240001 key."""
+        item_id = str(item_id)
+        row = self.tables.get('ChestItem', {}).get(item_id)
+        if not row:
+            raise ValueError('原版宝箱表中没有这个宝箱。')
+        if self.count(item_id) <= 0:
+            raise ValueError('没有可开启的宝箱。')
+        cost_ids = [str(v) for v in numbers(row.get('costIds', ''))]
+        cost_counts = [int(v) for v in numbers(row.get('costCounts', ''))]
+        if len(cost_ids) != len(cost_counts):
+            raise ValueError('原版宝箱消耗列不完整。')
+        for key, count in zip(cost_ids, cost_counts):
+            if self.count(key) < count:
+                raise ValueError('缺少开启宝箱所需的钥匙。')
+        ids = [str(v) for v in numbers(row.get('itemIds', ''))]
+        probabilities = [int(v) for v in numbers(row.get('probabilitys', ''))]
+        counts = [int(v) for v in numbers(row.get('itemCounts', ''))]
+        if not ids or len(ids) != len(probabilities) or len(ids) != len(counts):
+            raise ValueError('原版宝箱奖励列不完整。')
+        picks = min(max(1, int(row.get('kindCount', 1))), len(ids))
+        chosen = self.rng.choices(range(len(ids)), weights=probabilities, k=picks)
+        rewards = [(ids[index], counts[index]) for index in chosen]
+        with self.transaction():
+            self.consume([item_id]+cost_ids, [1]+cost_counts)
+            for key, count in rewards:
+                self.grant(key, count)
+        return rewards
+
     def pet_capacity(self, bank=False):
         key = '700005' if bank else '700004'
         return self.count(key) if key in self.inventory else (200 if bank else 6)

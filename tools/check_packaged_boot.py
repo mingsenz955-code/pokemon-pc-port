@@ -7,14 +7,14 @@ from pathlib import Path
 from PIL import ImageGrab, ImageStat
 
 ROOT = Path(__file__).resolve().parent.parent
-exe = ROOT/'outputs/口袋妖怪-PC移植开发版0.2.27/口袋妖怪-PC移植开发版0.2.27.exe'
+exe = ROOT/'outputs/口袋妖怪-PC移植开发版0.2.28/口袋妖怪-PC移植开发版0.2.28.exe'
 assert exe.exists(), exe
-out = ROOT/'outputs/verification/packaged-0.2.27-boot.png'
+out = ROOT/'outputs/verification/packaged-0.2.28-boot.png'
 out.parent.mkdir(parents=True, exist_ok=True)
 process = subprocess.Popen([str(exe)], cwd=exe.parent)
 try:
     time.sleep(8)
-    title = '口袋妖怪 · 原生 PC 移植开发版 0.2.27（全系统还原进行中）'
+    title = '口袋妖怪 · 原生 PC 移植开发版 0.2.28（全系统还原进行中）'
     hwnd = ctypes.windll.user32.FindWindowW(None, title)
     assert hwnd, f'packaged window title not found: {title}'
     image = ImageGrab.grab()

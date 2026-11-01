@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.27（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.28（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -377,6 +377,7 @@ class NativeGame(ActivityUI, Preview):
         52: ('ShopGoodsUI', '商品详情'),
         53: ('GoodsBuyConfirmUI', '购买确认'),
         54: ('SkillReplaceUI', '技能替换'),
+        55: ('OpenChestConfirmUI', '开启宝箱'),
     }
 
     def open_ui(self, request):
@@ -506,6 +507,8 @@ class NativeGame(ActivityUI, Preview):
             self._goods_confirm_body(body, info)
         elif uiid == 54:
             self._skill_replace_body(body, info)
+        elif uiid == 55:
+            self._open_chest_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -929,7 +932,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.27')
+        win.title('任务指引 · 原生 0.2.28')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1751,6 +1754,28 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['confirm_Button'] = confirm
         self.ui_actions['close_Button'] = self.close_ui
 
+    def _open_chest_body(self, body, info):
+        key_count = self.state.count('240001')
+        text = f'开启宝箱需要钥匙 ×1（持有 {key_count}）'
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('OpenChestConfirmUI', (800, 480), {
+                'title_Text': '开启宝箱', 'need_BitmapFontLabel': str(key_count)})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(text)
+        def confirm():
+            try:
+                rewards = self.state.open_chest_item()
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            self.close_ui()
+            self.show_reward('宝箱获得', rewards)
+        self.ui_actions['confirm_Button'] = confirm
+        self.ui_actions['cancel_Button'] = self.close_ui
+        self.ui_actions['close_Button'] = self.close_ui
+
     def illustrated_ui(self):
         if self.battle or self.ui_open:
             return
@@ -2041,6 +2066,10 @@ class NativeGame(ActivityUI, Preview):
                 info.set('请先选择道具。')
                 return
             try:
+                if entry[0] == '210001':
+                    self.open_ui(Request('openui', 'open-chest', 1, {
+                        'parameters': {'uiid': 55}}))
+                    return
                 target = targets[target_box.current()] if target_box.current() >= 0 else None
                 message = state.use_item(entry[0], target)
                 info.set(message)
