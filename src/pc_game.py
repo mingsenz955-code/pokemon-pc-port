@@ -66,6 +66,8 @@ class NativeGame(ActivityUI, Preview):
         self.ui_close_result = None
         self.ui_info = None
         self.ui_parameters = {}
+        self.accept_task_window = None
+        self.accept_task_buttons = {}
         self.arena_summary = None
         self.chest_fx = None
         self.obstacle_fx = None
@@ -75,7 +77,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.11（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.12（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -634,6 +636,88 @@ class NativeGame(ActivityUI, Preview):
     def heal_party(self):
         self.state.cure_party()
 
+    def accept_task_ui(self, request):
+        """AcceptBTaskUI: original layout/buttons and a real yes/no choice."""
+        parameters = request.data.get('parameters', {})
+        key = str(parameters.get('btask', ''))
+        row = self.data.tables['BranchTask'].get(key)
+        if not row:
+            self.display_request = None
+            self.runtime.resume(False)
+            self.drive()
+            return
+        self.display_request = request
+        win = tk.Toplevel(self.root)
+        self.accept_task_window = win
+        win.title('接受支线任务 · 原版界面')
+        win.transient(self.root)
+        win.resizable(False, False)
+        layer = None
+        buttons = {}
+        try:
+            layer = self.cocos_ui.render(
+                'AcceptBTaskUI', (800, 480),
+                {'name_Text': row['name'], 'info_Text': row['des']})
+            buttons = dict(self.cocos_ui.buttons)
+        except (FileNotFoundError, ValueError, KeyError, OSError):
+            layer = None
+        self.accept_task_buttons = dict(buttons)
+        if layer is not None:
+            photo = ImageTk.PhotoImage(layer)
+            art = tk.Label(win, image=photo, bg='#101418')
+            art.image = photo
+            art.pack()
+            art.bind('<Button-1>', lambda event: click_art(event.x, event.y))
+        else:
+            tk.Label(win, text='AcceptBTaskUI 原版布局读取失败。', fg='#ffb0a0',
+                     bg='#202b30').pack(padx=20, pady=20)
+
+        rewards = []
+        reward_ids = [int(v) for v in str(row.get('rewardIds', '')).split(',') if v.strip()]
+        reward_counts = [int(v) for v in str(row.get('rewardCounts', '')).split(',') if v.strip()]
+        for item_id, count in zip(reward_ids, reward_counts):
+            item = (self.data.tables.get('Item', {}).get(str(item_id))
+                    or self.data.tables.get('Pet', {}).get(str(item_id))
+                    or self.data.tables.get('Money', {}).get(str(item_id)))
+            rewards.append(f'{item.get("name", item_id) if item else item_id}×{count}')
+        body = tk.Frame(win, bg='#202b30')
+        body.pack(fill='x', padx=12, pady=8)
+        tk.Label(body, text=row['name'], bg='#202b30', fg='#f2e7cf',
+                 font=('Microsoft YaHei UI', 13, 'bold'), anchor='w').pack(fill='x')
+        tk.Label(body, text=row['des'].replace('#1', '').replace('#4', '').replace('#0', ''),
+                 bg='#202b30', fg='#e8d8b8', justify='left', wraplength=760,
+                 font=('Microsoft YaHei UI', 10), anchor='w').pack(fill='x', pady=4)
+        if rewards:
+            tk.Label(body, text='奖励：'+'、'.join(rewards), bg='#202b30', fg='#f5d28a',
+                     font=('Microsoft YaHei UI', 10), anchor='w').pack(fill='x')
+        buttons_bar = tk.Frame(body, bg='#202b30')
+        buttons_bar.pack(fill='x', pady=6)
+        tk.Button(buttons_bar, text='接受', bg='#5b7c52', fg='white',
+                  command=lambda: finish(True)).pack(side='left')
+        tk.Button(buttons_bar, text='关闭', command=lambda: finish(False)).pack(side='left', padx=6)
+
+        def click_art(x, y):
+            for name, choice in (('accept_Button', True), ('close_Button', False)):
+                rect = buttons.get(name)
+                if rect and rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
+                    finish(choice)
+                    return
+
+        def finish(choice):
+            if self.accept_task_window is not win:
+                return
+            self.accept_task_window = None
+            self.display_request = None
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+            self.runtime.resume(bool(choice))
+            self.drive()
+
+        self._accept_task_finish = finish
+        win.protocol('WM_DELETE_WINDOW', lambda: finish(False))
+
     def close_ui(self, result=None):
         choice = result if result in ('yes', 'no') else (self.ui_close_result or 'no')
         if self.ui_window and self.ui_window.winfo_exists():
@@ -692,7 +776,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.11')
+        win.title('任务指引 · 原生 0.2.12')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1090,13 +1174,8 @@ class NativeGame(ActivityUI, Preview):
                     self.close_ui()
                     return
                 if request.kind == 'accepttask':
-                    self.display_request = request
-                    key = str(request.data['parameters']['btask'])
-                    row = self.data.tables['BranchTask'][key]
-                    result = messagebox.askyesno(row['name'], row['des'], parent=self.root)
-                    self.display_request = None
-                    self.runtime.resume(result)
-                    continue
+                    self.accept_task_ui(request)
+                    return
                 if request.kind == 'wait':
                     parameters = request.data.get('parameters', {})
                     wait_type = int(parameters.get('type', 0) or 0)

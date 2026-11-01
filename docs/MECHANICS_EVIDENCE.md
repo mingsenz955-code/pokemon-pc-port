@@ -40,6 +40,8 @@
 | 道馆试练 | 事件 `pEvent590199`/`pEvent5901012`、`Budokan` 5 行、`BudokanNpc` 100 行、`BudokanNpcPet` 335 行；`fight type=4 npcid=<budokanId>` | `openui 15 par1=<道馆>` 后 `closeui yes` 才进入战斗，`type=4` 的 `npcid` 是道馆编号而非 `NpcFight` 编号。每个道馆按 `Budokan.npcIds` 顺序挑战二十位 `BudokanNpc`，队伍逐只读取 `BudokanNpcPet` 的等级/技能/天赋/属性；胜利推进 `GameState.budokans`，失败不推进；第二十位按原表 `dropItemIds/dropItemCounts` 发放高级进化材料。UI 15 目前用原布局标题和动态列表，尚未逐帧复刻原版动态 item 动画。`tools/check_budokan.py` 覆盖 20 场顺序、越序拒绝、失败不推进、最终材料只发一次、存档和真实 `openui 15 → closeui yes → fight type=4` 往返 |
 | 每日任务 | `DailyTask` 8 行、`DailyTaskRefreshEvent::handle` 0x2f08f9、`DailyTaskItem::process` 0x2fd727、`addReachCount` 0x2fd743、`TaskUI` 的 `tag_1/2/3` 与 `receive_Button` | 七项日常条件为捕捉 1、NPC 战斗 3、聊天 10、购买 3、轮盘 1、卡牌获胜 1、赛宠获胜 3；第八行“全能训练”需七项全部完成。完成与领取分离，同日不可重复领取，奖励按 `rewardIds/rewardCounts` 原表原子发放；本地日期变化清空计数与领取记录。TaskUI 的 `tag_1=main/tag_2=branch/tag_3=daily` 三页已分别显示 MainTask、BranchTask、DailyTask 的原表名称/描述/进度/奖励；主线和支线奖励只在目标 NPC 的 `submittask` 事件发放，界面按钮不会远程伪造领取。服务器时间校准和原版逐帧 item 动画仍未复刻。`tools/check_daily_tasks.py` 覆盖八行表、七类计数、上限、重置、奖励精确值、存档、购买/轮盘钩子、三页 tab、主线不伪造领取与 TaskUI 每日领取；`tools/check_task_ui.py` 用真实 MainTask 129 / BranchTask 4101 检查三页名称、进度、奖励、可提交状态及主支线不远程发奖 |
 
+| 支线接受 | `AcceptBTaskUI`、`accept_Button`/`close_Button`、`accepttask` 脚本请求 | 原版 `accepttask` 不再使用系统 messagebox，而是读取 AcceptBTaskUI 布局，写入任务名与描述，保留原 `accept_Button`/`close_Button` 命中区；接受/关闭分别恢复脚本一次，窗口关闭按拒绝处理。接受后的任务状态、计数、奖励仍由原事件 `taskstate`/`submittask` 驱动。`tools/check_accept_task.py` 覆盖原按钮命中区存在、接受/拒绝只恢复一次、窗口清理 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
