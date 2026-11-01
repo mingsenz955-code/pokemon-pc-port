@@ -157,6 +157,78 @@
       "source": "research/original-symbols.json",
       "bytes": 2839745,
       "sha256": "81c0d82be048eb983529291e221a06b59befd490293b863e835bf6202df6e54c"
+    },
+    {
+      "path": "research/evidence/face1_10.png",
+      "source": "research/evidence/face1_10.png",
+      "bytes": 4782,
+      "sha256": "14b4f69869faef01c2b1867b42b67575bdc3b98feee37eb1c57fac065033c41c"
+    },
+    {
+      "path": "research/evidence/face1_11.png",
+      "source": "research/evidence/face1_11.png",
+      "bytes": 5159,
+      "sha256": "82df8a02024d411ab5b2c55bf7293e1e5dcff2f59479de71a5aed8968569231d"
+    },
+    {
+      "path": "research/evidence/face1_2.png",
+      "source": "research/evidence/face1_2.png",
+      "bytes": 4325,
+      "sha256": "0f2bcb40096e88904c00c87bb74ea054b4ccf5349491608f99da52710ba53da1"
+    },
+    {
+      "path": "research/evidence/face1_3.png",
+      "source": "research/evidence/face1_3.png",
+      "bytes": 4230,
+      "sha256": "774c827e49686106d65ea889bc42dbd438c6da5655affb03cfe272cf7d584467"
+    },
+    {
+      "path": "research/evidence/face1_4.png",
+      "source": "research/evidence/face1_4.png",
+      "bytes": 4402,
+      "sha256": "8680f2ca8499f12f2cb7a24ee786238b88b72838f66ff82ad9058b4a63761c4f"
+    },
+    {
+      "path": "research/evidence/face1_5.png",
+      "source": "research/evidence/face1_5.png",
+      "bytes": 4203,
+      "sha256": "25744cd9332c11c5de814c5b552d8cf9c400ed8268c5aa36aa2909c0026c4d95"
+    },
+    {
+      "path": "research/evidence/face1_6.png",
+      "source": "research/evidence/face1_6.png",
+      "bytes": 4230,
+      "sha256": "774c827e49686106d65ea889bc42dbd438c6da5655affb03cfe272cf7d584467"
+    },
+    {
+      "path": "research/evidence/face1_7.png",
+      "source": "research/evidence/face1_7.png",
+      "bytes": 2995,
+      "sha256": "7f67ff8f37414961d9f3068c6e851dd79a5b06b48ef62c2b9989c822eecd5853"
+    },
+    {
+      "path": "research/evidence/face1_8.png",
+      "source": "research/evidence/face1_8.png",
+      "bytes": 4530,
+      "sha256": "6f4406661e720311d02793793b9da3d34db6344ac9b379debabddbc736d1cc43"
+    },
+    {
+      "path": "research/evidence/face1_9.png",
+      "source": "research/evidence/face1_9.png",
+      "bytes": 3779,
+      "sha256": "a6396c38dc64f2febd7be632c502b8bedb74de2448b7123ab2310788a9ce9318"
+    },
+    {
+      "path": "research/evidence/faces.jpg",
+      "source": "research/evidence/faces.jpg",
+      "bytes": 44654,
+      "sha256": "3dbc70e446f0ea2f59828bdea9f0974278a4067227212f09ef620faceafe4f5b"
+    },
+    {
+      "path": "research/evidence/icon.png",
+      "source": "research/evidence/icon.png",
+      "bytes": 12804,
+      "sha256": "107a9ec158c9d161a14cadd1e8a0a40c4c4ea12d2e59aee9c98fd26ea58e08e7"
     }
   ]
 }

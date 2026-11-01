@@ -34,7 +34,8 @@
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
 游戏存档独立存放在 `%LOCALAPPDATA%/PocketNativePC/slot1.json`，新包沿用原移植存档。
 恢复 APK 时可用 `python tools/recover_assets.py 游戏.apk original-1.20.4 --research-output research`；
-恢复工具会拒绝覆盖非空资源目录。原资源与 ARM 分析文件不随源码提交。
+恢复工具会拒绝覆盖非空资源目录。原 APK、恢复资源、研究材料和发布包已保存到本仓库的
+[完整归档](archive/README.md)，按其中的分卷顺序拼接即可。
 
 ## 画面
 
@@ -181,14 +182,14 @@ build/
 docs/screenshots/     README 截图
 ```
 
-`original-1.20.4/`、`resources/`、`outputs/`、`research/`、`.venv/` 均被 `.gitignore` 排除。
+`original-1.20.4/`、`resources/`、`outputs/`、`research/`、`.venv/` 不参与源码安装；
+其完整内容以 35 MiB 分卷保存在 `publish/`，拼接与校验方法见 [完整归档](archive/README.md)。
 
 ## 资源与版权
 
-- 本仓库只包含**移植代码、测试脚本和说明文档**。
-- 原版 APK、地图、图片、Spine、Cocos 布局、音频、剧情数据等版权归原权利人所有，**未上传到本仓库**。
-- 本项目用于个人学习、保存研究与互操作性研究；请自行合法取得原版资源，不要将打包后的资源用于商业分发。
-- 本项目不是官方版本，与原开发/发行方无关联。
+- 本仓库同时保存**移植代码、测试脚本、说明文档和原始资源归档**。
+- 原版 APK、地图、图片、Spine、Cocos 布局、音频、剧情数据等版权归原权利人所有；归档用于个人保存、学习与互操作性研究。
+- 本项目不是官方版本，与原开发/发行方无关联；不得将打包后的资源用于商业分发。
 
 ## 仓库
 

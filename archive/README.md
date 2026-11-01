@@ -27,6 +27,18 @@
 | `research/original-core.so` | 8226468 | - |
 | `research/demangled-symbols.json` | 5447220 | - |
 | `research/original-symbols.json` | 2839745 | - |
+| `research/evidence/face1_10.png` | 4782 | - |
+| `research/evidence/face1_11.png` | 5159 | - |
+| `research/evidence/face1_2.png` | 4325 | - |
+| `research/evidence/face1_3.png` | 4230 | - |
+| `research/evidence/face1_4.png` | 4402 | - |
+| `research/evidence/face1_5.png` | 4203 | - |
+| `research/evidence/face1_6.png` | 4230 | - |
+| `research/evidence/face1_7.png` | 2995 | - |
+| `research/evidence/face1_8.png` | 4530 | - |
+| `research/evidence/face1_9.png` | 3779 | - |
+| `research/evidence/faces.jpg` | 44654 | - |
+| `research/evidence/icon.png` | 12804 | - |
 
 ## 拼接示例（PowerShell）
 
