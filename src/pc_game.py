@@ -51,10 +51,20 @@ class NativeGame(ActivityUI, Preview):
         self.show_map_label = False
         self.data = data
         self.guide = Guide(self)
+        self.ui_hits = {}
+        self.ui_buttons = {}
+        self.ui_button_text = {}
+        self.ui_actions = {}
+        self.ui_base_layer = None
+        self.ui_hover = None
+        self.ui_pressed = None
+        self.ui_render_args = None
+        self.ui_close_result = None
+        self.ui_info = None
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.2（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.3（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -197,11 +207,11 @@ class NativeGame(ActivityUI, Preview):
         17: ('BuyPetUI', '宠物商店'), 18: ('MergePetUI', '宠物融合'),
         19: ('InfiniteArenaUI', '无限竞技场'), 20: ('InfiniteArenaEnterConfirmUI', '无限竞技场入场'),
         21: ('InfiniteArenaQuitConfirmUI', '无限竞技场退出'), 22: ('InfiniteArenaShopUI', '竞技场商店'),
-        23: ('PetTuPoUI', '宠物突破'), 24: ('TreasureMapUI', '神秘宝藏'),
+        23: ('PetTuPoUI', '宠物突破'), 24: ('TreasureCheckUI', '神秘宝藏'),
         25: ('RunningPetWelUI', '赛宠嘉年华'), 26: ('RankUI', '排行榜'),
-        27: ('GiftBagUI', '礼包'), 28: ('MedalShopUI', '奖牌兑换'),
+        27: ('GiftBagSaleUI', '礼包'), 28: ('MedalShopUI', '奖牌兑换'),
         29: ('RouletteUI', '幸运轮盘'), 30: ('CardLegendUI', '卡牌传说'),
-        34: ('PetHeTiUI', '宠物合体'), 36: ('StoreGiftBagUI', '商店礼包'),
+        34: ('PetHeTiUI', '宠物合体'), 36: ('GiftBagSaleUI', '商店礼包'),
     }
 
     def open_ui(self, request):
@@ -219,19 +229,34 @@ class NativeGame(ActivityUI, Preview):
         win.resizable(False, False)
         win.protocol('WM_DELETE_WINDOW', self.close_ui)
         self.ui_window, self.ui_open = win, True
+        self.ui_actions, self.ui_hover, self.ui_pressed = {}, None, None
+        self.ui_close_result = None
         try:
             layer = self.cocos_ui.render(layout, (800, 480), {})
+            self.ui_render_args = {'name': layout, 'size': (800, 480), 'text': {},
+                                   'visible': {}, 'resources': {}}
+            self.ui_base_layer = layer.copy()
+            self.ui_hits = dict(self.cocos_ui.hits)
+            self.ui_buttons = dict(self.cocos_ui.buttons)
+            self.ui_button_text = dict(self.cocos_ui.button_text)
             photo = ImageTk.PhotoImage(layer)
             label = tk.Label(win, image=photo, bg='#101418')
             label.image = photo
             label.pack()
+            label.bind('<ButtonPress-1>', self.on_ui_press)
+            label.bind('<ButtonRelease-1>', self.on_ui_release)
+            label.bind('<Motion>', self.on_ui_motion)
+            label.bind('<Leave>', self.on_ui_leave)
             self.ui_art_label = label
         except (FileNotFoundError, ValueError, KeyError) as error:
+            self.ui_hits, self.ui_buttons, self.ui_button_text = {}, {}, {}
+            self.ui_base_layer = None
             tk.Label(win, text=f'原 UI 布局读取失败：{error}', fg='#ffb0a0',
                      bg='#202b30').pack(padx=20, pady=20)
         body = tk.Frame(win, bg='#202b30')
         body.pack(fill='both', expand=True, padx=12, pady=8)
         info = tk.StringVar()
+        self.ui_info = info
         tk.Label(body, textvariable=info, bg='#202b30', fg='#f2e7cf',
                  font=('Microsoft YaHei UI', 10), justify='left').pack(anchor='w')
         if uiid == 11:
@@ -243,35 +268,159 @@ class NativeGame(ActivityUI, Preview):
                     info.set('全部携带宠物已恢复。')
                 except ValueError as error:
                     info.set(str(error))
+            self.ui_actions['confirm_Button'] = cure
             tk.Button(body, text='治疗全部宠物', bg='#5b7c52', fg='white',
                       command=cure).pack(pady=6)
         elif uiid == 14:
             info.set('保存当前游戏进度。')
-            tk.Button(body, text='保存进度', command=lambda: (self.save(), info.set(self.event_issue))).pack(pady=6)
+            def save_now():
+                self.save()
+                info.set(self.event_issue or '进度已保存。')
+            self.ui_actions['confirm_Button'] = save_now
+            tk.Button(body, text='保存进度', command=save_now).pack(pady=6)
         elif uiid == 4:
             self._bank_body(body, info)
         elif uiid == 6:
             self._skill_body(body, info)
         elif uiid == 5:
             self._hatch_body(body, info)
-        elif uiid == 17:
-            self._pet_shop_body(body, info, parameters.get('par1'))
+        elif uiid in (16, 17):
+            self._pet_shop_body(body, info, parameters.get('par1') or 601)
         elif uiid in (1, 2, 3, 22, 28):
             self._shop_body(body, info, uiid)
         elif uiid == 29:
             self._roulette_body(body, info)
         elif uiid == 30:
             self._cards_body(body, info)
+        elif uiid == 8:
+            self._illustrated_body(body, info)
         elif uiid == 9:
-            info.set('当前地图：'+self.map.info['name']+f'\n世界焦点：{self.state.world_focus}\n'
-                     '原版地区地图会显示已发现城镇和道路。')
+            self._area_map_body(body, info)
+        elif uiid == 10:
+            self._arena_body(body, info)
+        elif uiid == 13:
+            self._trial_body(body, info)
+        elif uiid == 25:
+            self._running_body(body, info)
+        elif uiid == 26:
+            self._rank_body(body, info)
+        elif uiid in (19, 20, 21):
+            self._infinite_body(body, info, uiid)
+        elif uiid == 18:
+            self._merge_body(body, info)
         elif uiid == 23:
             self._breakthrough_body(body, info)
+        elif uiid == 24:
+            info.set('宝藏线索来自原版 Treasure 表；确认后会在主界面出现放大镜入口。')
+            self.ui_actions['use_Button'] = lambda: self.close_ui('yes')
+            self.ui_actions['giveUp_Button'] = lambda: self.close_ui('no')
+        elif uiid in (27, 36):
+            info.set('原版礼包购买入口；支付与奖励表尚未接入，不能伪造发货。')
+            self.ui_actions['buy_Button'] = lambda: info.set('礼包购买与奖励表尚未接入，未扣除货币。')
         elif uiid == 34:
-            info.set('合体需要原版配方中的两只宠物与合体材料。')
+            self._fuse_body(body, info)
         else:
             info.set(f'{name}的交互尚未实现，当前仅显示原版布局。')
         tk.Button(body, text='关闭', command=self.close_ui).pack(side='bottom', pady=6)
+
+    def ui_hit_at(self, x, y):
+        """Return the topmost original Cocos button under an image-space point."""
+        candidates = []
+        for source, is_button in ((self.ui_buttons, True), (self.ui_hits, False)):
+            for name, rect in source.items():
+                if not (rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]):
+                    continue
+                # Both qualified and short names are recorded; prefer the full path.
+                if '/' not in name and any(key.endswith('/'+name) for key in source):
+                    continue
+                area = max(1, (rect[2]-rect[0])*(rect[3]-rect[1]))
+                candidates.append((0 if is_button else 1, area, name))
+        if not candidates:
+            return None
+        name = min(candidates)[2]
+        return name, self.ui_button_text.get(name, '')
+
+    def ui_action_for(self, name):
+        base = name.rsplit('/', 1)[-1]
+        return self.ui_actions.get(name) or self.ui_actions.get(base)
+
+    def on_ui_click(self, event):
+        if not self.ui_window or not self.ui_window.winfo_exists():
+            return
+        hit = self.ui_hit_at(event.x, event.y)
+        if not hit:
+            return
+        name, label = hit
+        base = name.rsplit('/', 1)[-1]
+        callback = self.ui_action_for(name)
+        if callback:
+            try:
+                callback()
+            except (ValueError, KeyError, PendingMechanic) as error:
+                if self.ui_info:
+                    self.ui_info.set(str(error))
+            return
+        if base in {'close_Button', 'closeButton', 'leave_Button', 'cancel_Button',
+                    'cancelButton', 'giveUp_Button', 'takeBack_Button'}:
+            self.close_ui()
+            return
+        if self.ui_info:
+            shown = label or base
+            self.ui_info.set(f'原版按钮「{shown}」尚未接入对应玩法。')
+
+    def on_ui_press(self, event):
+        hit = self.ui_hit_at(event.x, event.y)
+        self.ui_pressed = hit[0] if hit else None
+        self._paint_hover()
+
+    def on_ui_release(self, event):
+        hit = self.ui_hit_at(event.x, event.y)
+        pressed = self.ui_pressed
+        self.ui_pressed = None
+        self._paint_hover()
+        if hit and pressed == hit[0]:
+            self.on_ui_click(event)
+
+    def _paint_hover(self):
+        if not self.ui_base_layer or not hasattr(self, 'ui_art_label'):
+            return
+        if not self.ui_art_label.winfo_exists():
+            return
+        layer = None
+        active = self.ui_pressed or (self.ui_hover[0] if self.ui_hover else None)
+        if active and self.ui_render_args:
+            # Prefer the original pressed texture for the button being pressed.
+            pressed = {active: True}
+            try:
+                args = self.ui_render_args
+                layer = self.cocos_ui.render(args['name'], args['size'], args.get('text'),
+                                             args.get('visible'), args.get('resources'),
+                                             pressed=pressed)
+            except (FileNotFoundError, ValueError, KeyError):
+                layer = None
+        if layer is None:
+            layer = self.ui_base_layer.copy()
+            name = self.ui_pressed or (self.ui_hover[0] if self.ui_hover else None)
+            rect = (self.ui_buttons.get(name) or self.ui_hits.get(name)) if name else None
+            if rect:
+                ImageDraw.Draw(layer).rectangle(
+                    (round(rect[0]), round(rect[1]), round(rect[2]-1), round(rect[3]-1)),
+                    outline='#ffe36e', width=3)
+        photo = ImageTk.PhotoImage(layer)
+        self.ui_art_label.configure(image=photo)
+        self.ui_art_label.image = photo
+
+    def on_ui_motion(self, event):
+        hit = self.ui_hit_at(event.x, event.y)
+        if hit == self.ui_hover:
+            return
+        self.ui_hover = hit
+        self._paint_hover()
+
+    def on_ui_leave(self, event=None):
+        if self.ui_hover is not None:
+            self.ui_hover = None
+            self._paint_hover()
 
     def choose_starter(self, key):
         if self.state.starter_id:
@@ -317,15 +466,26 @@ class NativeGame(ActivityUI, Preview):
     def heal_party(self):
         self.state.cure_party()
 
-    def close_ui(self):
+    def close_ui(self, result=None):
+        choice = result if result in ('yes', 'no') else (self.ui_close_result or 'no')
         if self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.destroy()
         self.ui_window, self.ui_open = None, False
+        self.ui_hits, self.ui_buttons, self.ui_button_text = {}, {}, {}
+        self.ui_actions, self.ui_base_layer, self.ui_hover, self.ui_info = {}, None, None, None
+        self.ui_pressed, self.ui_render_args = None, None
+        pending = self.runtime.pending
         if self.pending_wait:
             self.pending_wait = None
             self.runtime.resume()
-        elif self.runtime.pending and self.runtime.pending.kind in ('openui', 'closeui'):
+        elif pending and pending.kind == 'openui':
+            # The following closeui step decides the no/yes branch.  Keep the
+            # player's choice until that step is reached.
+            self.ui_close_result = choice
             self.runtime.resume()
+        elif pending and pending.kind == 'closeui':
+            self.ui_close_result = None
+            self.runtime.resume(choice)
         self.drive()
 
     def key_down(self, event):
@@ -364,7 +524,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.2')
+        win.title('任务指引 · 原生 0.2.3')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()

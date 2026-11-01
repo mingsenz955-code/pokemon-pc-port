@@ -242,6 +242,11 @@ class EventRuntime:
             target = parameter.get(key)
             if target is None:
                 raise ValueError(f'Original fightover is missing {key} destination')
+        elif request.kind in ('openui', 'closeui'):
+            # The original closeui instruction carries no/yes step targets.
+            # The host records the player's actual confirmation choice.
+            if result in ('yes', 'no'):
+                target = parameter.get(result)
         elif request.kind == 'accepttask':
             if type(result) is not bool:
                 raise ValueError('A real player choice is required')

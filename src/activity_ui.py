@@ -64,6 +64,12 @@ class ActivityUI:
         controls.pack()
         for title, kind in [('放入宠物蛋', 'put'), ('材料孵化', 'normal'), ('金币孵化', 'money'), ('取回蛋／领取宠物', 'take')]:
             tk.Button(controls, text=title, command=lambda k=kind: act(k)).pack(side='left', padx=3, pady=4)
+        self.ui_actions['putIn_Button'] = lambda: act('put')
+        self.ui_actions['takeBackEgg_Button'] = lambda: act('take')
+        self.ui_actions['takeBack_Button'] = lambda: act('take')
+        self.ui_actions['hatch_Button'] = lambda: act('normal')
+        self.ui_actions['moneyHatch_Button'] = lambda: act('money')
+        self.ui_actions['check_Button'] = lambda: act('take')
         refresh()
 
     def _skill_body(self, body, info):
@@ -122,6 +128,8 @@ class ActivityUI:
         chooser.bind('<<ComboboxSelected>>', refresh)
         box.bind('<<ListboxSelect>>', select_skill)
         tk.Button(body, text='学习所选技能', command=learn).pack(pady=4)
+        self.ui_actions['learn_Button'] = learn
+        self.ui_actions['confirm_Button'] = learn
         refresh()
 
     def _cards_body(self, body, info):
@@ -180,6 +188,7 @@ class ActivityUI:
             except (ValueError, KeyError) as error:
                 info.set(str(error))
         tk.Button(body, text='开始新牌局（卡牌券 ×1）', command=lambda: action(activity.start_cards)).pack(pady=4)
+        self.ui_actions['open_Button'] = lambda: action(activity.start_cards)
         refresh()
 
     def _breakthrough_body(self, body, info):
@@ -200,6 +209,371 @@ class ActivityUI:
             except (ValueError, KeyError) as error:
                 info.set(str(error))
         tk.Button(body, text='突破所选宠物', command=apply).pack(pady=4)
+        self.ui_actions['tuPo_Button'] = apply
+
+    def _fuse_body(self, body, info):
+        pets = list(self.state.bank)
+        if not pets:
+            info.set('银行中没有可合体的宠物；出战宠物不能合体。')
+            message = lambda: info.set('先到银行放入两只可合体的宠物。')
+            for key in ('add_1_Button', 'add_2_Button', 'heTi_Button'):
+                self.ui_actions[key] = message
+            return
+        frames = tk.Frame(body)
+        frames.pack(fill='x')
+        boxes = []
+        for title in ('左侧宠物', '右侧宠物'):
+            frame = tk.Frame(frames)
+            frame.pack(side='left', fill='both', expand=True, padx=5)
+            tk.Label(frame, text=title).pack()
+            box = tk.Listbox(frame, width=28, height=6, exportselection=False)
+            box.pack(fill='both')
+            boxes.append(box)
+        chosen = {'a': None, 'b': None}
+        def refresh():
+            names = [f'{self.data.tables["Pet"][p.species]["name"]} Lv.{p.level} +{p.breakthrough}'
+                     for p in pets]
+            for box in boxes:
+                selected = box.curselection()
+                box.delete(0, 'end')
+                for text in names:
+                    box.insert('end', text)
+                if selected:
+                    box.selection_set(selected[0])
+            if not boxes[0].curselection() and pets:
+                boxes[0].selection_set(0)
+            if len(pets) > 1 and not boxes[1].curselection():
+                boxes[1].selection_set(1)
+            preview()
+        def preview(event=None):
+            a = pets[boxes[0].curselection()[0]] if boxes[0].curselection() else None
+            b = pets[boxes[1].curselection()[0]] if boxes[1].curselection() else None
+            chosen['a'], chosen['b'] = a, b
+            if not a or not b:
+                info.set('选择两只银行宠物。')
+                return
+            recipe = None
+            for row in self.data.tables['PetHeTi'].values():
+                if str(row['petAId']) == a.species and str(row['petBId']) == b.species:
+                    recipe = row
+                    break
+            if not recipe:
+                info.set('这两只宠物没有原版合体配方。')
+                return
+            result = self.data.tables['Pet'][str(recipe['petIds'].split(',')[0])]['name']
+            costs = '、'.join(f'{self.data.tables["Item"].get(i, self.data.tables["Money"].get(i, {})).get("name", i)}×{n}'
+                              for i, n in zip(recipe['costItemIds'].split(','), recipe['costItemCounts'].split(',')))
+            info.set(f'结果：{result} Lv.1 · 材料 {costs}')
+        def choose(side):
+            if not boxes[side].curselection():
+                return
+            chosen[side] = pets[boxes[side].curselection()[0]]
+            preview()
+        def fuse():
+            if not chosen['a'] or not chosen['b']:
+                info.set('请先选择左右两只银行宠物。')
+                return
+            try:
+                pet = self.state.fuse_pets(chosen['a'].uid, chosen['b'].uid)
+                pets[:] = list(self.state.bank)
+                for box in boxes:
+                    box.selection_clear(0, 'end')
+                refresh()
+                info.set(f'合体成功：{self.data.tables["Pet"][pet.species]["name"]} Lv.{pet.level}')
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+        for box in boxes:
+            box.bind('<<ListboxSelect>>', preview)
+        controls = tk.Frame(body)
+        controls.pack(pady=4)
+        tk.Button(controls, text='选择左侧', command=lambda: choose(0)).pack(side='left', padx=3)
+        tk.Button(controls, text='选择右侧', command=lambda: choose(1)).pack(side='left', padx=3)
+        tk.Button(controls, text='合体', command=fuse).pack(side='left', padx=3)
+        self.ui_actions['add_1_Button'] = lambda: choose(0)
+        self.ui_actions['add_2_Button'] = lambda: choose(1)
+        self.ui_actions['heTi_Button'] = fuse
+        refresh()
+
+    def _merge_body(self, body, info):
+        pets = list(self.state.bank)
+        if not pets:
+            info.set('银行中没有可融合的宠物；参战宠物不能融合。')
+            message = lambda: info.set('先到银行放入可融合的宠物。')
+            for key in ('add_Button', 'autoAdd_Button', 'merge_Button'):
+                self.ui_actions[key] = message
+            for index in range(6):
+                full = (f'Layer/root_Panel/mergePetNodes_Panel/mergedPetNode_{index+1}'
+                        f'/Layer/root_Panel/add_Button')
+                self.ui_actions[full] = message
+            return
+        frame = tk.Frame(body)
+        frame.pack(fill='both', expand=True)
+        tk.Label(frame, text='银行宠物（选择基础宠物 / 材料）').pack()
+        box = tk.Listbox(frame, width=44, height=7, exportselection=False)
+        box.pack(fill='x')
+        slots = [None]*6
+        state = {'base': None}
+        slot_text = tk.StringVar()
+        def refresh():
+            names = [f'{self.data.tables["Pet"][p.species]["name"]} Lv.{p.level} 品质{p.quality}'
+                     for p in pets]
+            selected = box.curselection()
+            box.delete(0, 'end')
+            for text in names:
+                box.insert('end', text)
+            if selected:
+                box.selection_set(selected[0])
+            elif pets:
+                box.selection_set(0)
+            slot_text.set('材料：' + '、'.join(
+                f'{i+1}.{self.data.tables["Pet"][p.species]["name"]}' if p else f'{i+1}.空'
+                for i, p in enumerate(slots)))
+            preview()
+        def preview():
+            base = state['base']
+            if not base:
+                info.set('先选择基础宠物。')
+                return
+            recipe = next((r for r in self.data.tables['PetMerge'].values()
+                           if int(r['petQuality']) == int(base.quality)), None)
+            if not recipe:
+                info.set('当前品质没有原版融合配方。')
+                return
+            info.set(f'基础：{self.data.tables["Pet"][base.species]["name"]} 品质{base.quality} · '
+                     f'需要 {recipe["petCount"]} 只 Lv.{recipe["petLevel"]}+ 同品质材料 · '
+                     f'货币 {recipe["moneyCount"]}')
+        def choose_base():
+            if not box.curselection():
+                return
+            state['base'] = pets[box.curselection()[0]]
+            refresh()
+        def choose_slot(index):
+            if not box.curselection():
+                return
+            pet = pets[box.curselection()[0]]
+            if pet is state['base'] or pet in slots:
+                info.set('材料不能是基础宠物或已选材料。')
+                return
+            slots[index] = pet
+            refresh()
+        def auto_add():
+            base = state['base']
+            if not base:
+                info.set('先选择基础宠物。')
+                return
+            recipe = next((r for r in self.data.tables['PetMerge'].values()
+                           if int(r['petQuality']) == int(base.quality)), None)
+            if not recipe:
+                info.set('当前品质没有原版融合配方。')
+                return
+            slots[:] = [None]*6
+            chosen = [p for p in pets if p is not base and int(p.quality) == int(base.quality)
+                      and p.level >= int(recipe['petLevel'])]
+            for i, pet in enumerate(chosen[:int(recipe['petCount'])]):
+                slots[i] = pet
+            refresh()
+        def merge():
+            base = state['base']
+            if not base:
+                info.set('先选择基础宠物。')
+                return
+            chosen = [p for p in slots if p]
+            try:
+                result = self.state.merge_pets(base.uid, [p.uid for p in chosen])
+                pets[:] = list(self.state.bank)
+                slots[:] = [None]*6
+                state['base'] = None
+                refresh()
+                info.set(f'融合成功：{self.data.tables["Pet"][result.species]["name"]} '
+                         f'品质{result.quality}，全属性成长 +0.5。')
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+        tk.Label(body, textvariable=slot_text, justify='left').pack(pady=4)
+        controls = tk.Frame(body)
+        controls.pack(pady=4)
+        tk.Button(controls, text='设为基础', command=choose_base).pack(side='left', padx=3)
+        tk.Button(controls, text='自动填充材料', command=auto_add).pack(side='left', padx=3)
+        tk.Button(controls, text='融合', command=merge).pack(side='left', padx=3)
+        self.ui_actions['add_Button'] = choose_base
+        self.ui_actions['autoAdd_Button'] = auto_add
+        self.ui_actions['merge_Button'] = merge
+        for index in range(6):
+            full = (f'Layer/root_Panel/mergePetNodes_Panel/mergedPetNode_{index+1}'
+                    f'/Layer/root_Panel/add_Button')
+            self.ui_actions[full] = lambda index=index: choose_slot(index)
+        refresh()
+
+    def _area_map_body(self, body, info):
+        info.set(f'当前地图：{self.map.info["name"]}（{self.map_id}）\n'
+                 '世界地图列出原版 WorldMap 区域；飞行只前往已经到过的城镇。')
+        def world_map():
+            win = tk.Toplevel(self.root)
+            win.title('原版世界地图')
+            box = tk.Text(win, width=58, height=22, wrap='word')
+            box.pack(fill='both', expand=True)
+            for key, row in sorted(self.data.tables['WorldMap'].items(), key=lambda item: int(item[0])):
+                names = [self.data.tables['VillageMap'].get(mid, {}).get('name', mid)
+                         for mid in str(row['mapIds']).split(',')]
+                box.insert('end', f'{row["name"]}（{key}）\n  ' + '、'.join(names) + '\n\n')
+            box.config(state='disabled')
+        def fly():
+            maps = [mid for mid in self.state.visited_maps
+                    if str(mid) in self.data.tables['VillageMap']
+                    and str(self.data.tables['VillageMap'][str(mid)].get('mapType')) == '2']
+            if self.map_id not in maps and str(self.map_id) in self.data.tables['VillageMap']:
+                maps.append(self.map_id)
+            if not maps:
+                info.set('还没有到过可飞行的城镇。')
+                return
+            win = tk.Toplevel(self.root)
+            win.title('选择飞行目的地')
+            box = tk.Listbox(win, width=40, height=10)
+            box.pack(fill='both', expand=True, padx=8, pady=8)
+            for mid in maps:
+                box.insert('end', f'{mid}  {self.data.tables["VillageMap"][str(mid)]["name"]}')
+            def go():
+                if not box.curselection():
+                    return
+                mid = maps[box.curselection()[0]]
+                win.destroy()
+                self.close_ui()
+                self.load_map(str(mid))
+                self.x, self.y = self.map.width*32, self.map.height*32
+                if self.map.blocked(self.x, self.y):
+                    for radius in range(1, 20):
+                        spots = [(tx*64+32, ty*64+32)
+                                 for tx in range(max(0, int(self.x//64)-radius),
+                                                 min(self.map.width, int(self.x//64)+radius+1))
+                                 for ty in range(max(0, int(self.y//64)-radius),
+                                                 min(self.map.height, int(self.y//64)+radius+1))
+                                 if not self.map.blocked(tx*64+32, ty*64+32)]
+                        if spots:
+                            self.x, self.y = spots[0]
+                            break
+                self.event_issue = f'已飞行到 {self.map.info["name"]}。'
+            tk.Button(win, text='飞行', command=go).pack(pady=4)
+        tk.Button(body, text='世界地图', command=world_map).pack(pady=3)
+        tk.Button(body, text='飞行到已到过的城镇', command=fly).pack(pady=3)
+        self.ui_actions['worldMap_Button'] = world_map
+        self.ui_actions['fly_Button'] = fly
+
+    def _illustrated_body(self, body, info):
+        species = list(dict.fromkeys(self.state.encyclopedia or list(self.data.tables['Pet'])[:1]))
+        box = tk.Listbox(body, width=36, height=8)
+        box.pack(fill='x')
+        for key in species:
+            row = self.data.tables['Pet'].get(str(key), {})
+            box.insert('end', f'{key}  {row.get("name", "")}')
+        if species:
+            box.selection_set(0)
+        def check():
+            if not box.curselection():
+                info.set('先选择一只已记录的宠物。')
+                return
+            key = species[box.curselection()[0]]
+            row = self.data.tables['Pet'][key]
+            skills = '、'.join(self.data.tables['Skill'].get(s, {}).get('name', s)
+                              for s in str(row.get('skillIds', '')).split(',') if s and s != '0')
+            info.set(f'{row["name"]}（{key}）\n属性：{row.get("kind")} · 品质上限：{row.get("quality")}\n'
+                     f'技能：{skills or "无"}')
+        check()
+        self.ui_actions['check_Button'] = check
+        tk.Button(body, text='查看图鉴', command=check).pack(pady=4)
+
+    def _arena_body(self, body, info):
+        arena = next(iter(self.data.tables['Arena'].values()), None)
+        if not arena:
+            info.set('原版 Arena 表为空。')
+            return
+        info.set(f'{arena["name"]}：参加消耗 {arena["moneyCount"]} 枚货币。\n'
+                 '挑战对手来自原版 ArenaNpc 排名区间。')
+        def rule():
+            win = tk.Toplevel(self.root)
+            win.title('竞技场规则')
+            text = tk.Text(win, width=62, height=18, wrap='word')
+            text.pack(fill='both', expand=True)
+            text.insert('1.0', arena.get('rule', ''))
+            text.config(state='disabled')
+        def challenge():
+            rows = [r for r in self.data.tables['ArenaNpc'].values()
+                    if str(r.get('arenaId')) == str(arena['keyId'])]
+            info.set(f'已读取 {len(rows)} 个原版竞技场对手；战斗回合尚未接入，未扣除徽章。')
+        self.ui_actions['ruleInfo_Button'] = rule
+        self.ui_actions['challenge_Button'] = challenge
+        tk.Button(body, text='查看规则', command=rule).pack(pady=3)
+        tk.Button(body, text='读取对手', command=challenge).pack(pady=3)
+
+    def _trial_body(self, body, info):
+        rows = list(self.data.tables['TrialPet'].values())
+        if not rows:
+            info.set('原版 TrialPet 表为空。')
+            return
+        box = tk.Listbox(body, width=38, height=7)
+        box.pack(fill='x')
+        for row in rows:
+            pet = self.data.tables['Pet'].get(str(row['petId']), {})
+            box.insert('end', f'{pet.get("name", row["petId"])} Lv.{row["level"]} 次数{row["trialCount"]}')
+        box.selection_set(0)
+        def trial():
+            if not box.curselection():
+                return
+            row = rows[box.curselection()[0]]
+            pet = self.data.tables['Pet'][str(row['petId'])]['name']
+            info.set(f'试炼宠物：{pet} Lv.{row["level"]}；技能/天赋按 TrialPet 原表登记。')
+        self.ui_actions['trial_Button'] = trial
+        self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
+        tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
+
+    def _running_body(self, body, info):
+        rows = list(self.data.tables['RunningPet'].values())
+        box = tk.Listbox(body, width=36, height=7)
+        box.pack(fill='x')
+        for row in rows:
+            box.insert('end', f'{row["name"]}：{row["des"]}')
+        if rows:
+            box.selection_set(0)
+        def join():
+            if not box.curselection():
+                return
+            row = rows[box.curselection()[0]]
+            info.set(f'赛宠报名：{row["name"]}；原版赛跑小游戏尚未接入。')
+        self.ui_actions['join_Button'] = join
+        tk.Button(body, text='报名', command=join).pack(pady=4)
+
+    def _rank_body(self, body, info):
+        pages = {
+            'fightTag_Button': ('战斗排名', 'FightRank'),
+            'integralTag_Button': ('积分排名', 'PetCollectCountRank'),
+            'receiveTag_Button': ('领取奖励', 'RankReward'),
+            'taoFaTag_Button': ('讨伐', 'RankNpcPet'),
+        }
+        def show(label, table):
+            rows = self.data.tables.get(table, {})
+            info.set(f'{label}：原版 {table} 共 {len(rows)} 行。')
+        for key, (label, table) in pages.items():
+            self.ui_actions[key] = lambda label=label, table=table: show(label, table)
+        self.ui_actions['fight_Button'] = lambda: show('挑战排名', 'RankNpcPet')
+        self.ui_actions['taoFa_Button'] = lambda: show('讨伐目标', 'RankNpcPet')
+        self.ui_actions['monsterInfo_Button'] = lambda: show('怪物资料', 'Pet')
+        tk.Button(body, text='战斗排名', command=lambda: show(*pages['fightTag_Button'])).pack(pady=2)
+        tk.Button(body, text='怪物资料', command=lambda: show('怪物资料', 'Pet')).pack(pady=2)
+
+    def _infinite_body(self, body, info, uiid):
+        row = next(iter(self.data.tables['InfiniteArena'].values()), None)
+        if row:
+            info.set(f'{row["name"]}：{row["rule"]}')
+        def confirm():
+            self.close_ui('yes')
+        def cancel():
+            self.close_ui('no')
+        if uiid == 21:
+            self.ui_actions['confirm_Button'] = confirm
+            self.ui_actions['cancel_Button'] = cancel
+        else:
+            self.ui_actions['confirm_Button'] = confirm
+            self.ui_actions['cancel_Button'] = cancel
+        tk.Button(body, text='确认', command=confirm).pack(pady=3)
+        tk.Button(body, text='取消', command=cancel).pack(pady=3)
 
     def starter_window(self, key):
         win = tk.Toplevel(self.root)
@@ -232,6 +606,7 @@ class ActivityUI:
             except (ValueError, KeyError) as error:
                 info.set(str(error))
         tk.Button(body, text='购买宠物', command=buy).pack(pady=4)
+        self.ui_actions['buy_Button'] = buy
 
     def _bank_body(self, body, info):
         boxes = []
@@ -259,6 +634,7 @@ class ActivityUI:
                 info.set(str(error))
         tk.Button(body, text='存入 →', command=lambda: move(True)).pack(pady=4)
         tk.Button(body, text='← 取出', command=lambda: move(False)).pack(pady=4)
+        self.ui_actions['consign_Button'] = lambda: move(True)
         refresh()
 
     def _roulette_body(self, body, info):
@@ -287,6 +663,8 @@ class ActivityUI:
                 info.set(str(error))
         tk.Button(body, text='开始（1 张轮盘券）', command=spin).pack(side='left', pady=4)
         tk.Button(body, text='刷新（1 枚徽章）', command=lambda: refresh(True)).pack(side='left', padx=8)
+        self.ui_actions['start_Button'] = spin
+        self.ui_actions['refresh_Button'] = lambda: refresh(True)
         refresh()
 
     def lottery_ui(self):

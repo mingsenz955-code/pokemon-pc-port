@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import random
 import uuid
@@ -483,6 +484,105 @@ class GameState:
         self.record_pet(pet.species)
         stats = pet.stats(self.tables)
         pet.hp, pet.energy = min(pet.hp, stats[0]), min(pet.energy, stats[1])
+
+    @atomic_mutation
+    def merge_pets(self, base_uid, material_uids):
+        """Original PetMerge: a bank base pet consumes same-quality materials.
+
+        PetDataManager::petMerge (0x327218) adds attAddition to all ten
+        variation/growth values, then recomputes quality/attributes.  The
+        PlayerDataManager wrapper removes every material from bag or bank.
+        Active party pets are not eligible ("当前参战宠物无法被融合").
+        """
+        material_uids = list(dict.fromkeys(material_uids))
+        if base_uid in material_uids:
+            raise ValueError('基础宠物不能同时作为融合材料。')
+        base = next((p for p in self.bank if p.uid == base_uid), None)
+        if base is None:
+            raise ValueError('基础宠物必须在银行中，出战中不能融合。')
+        materials = []
+        for uid in material_uids:
+            pet = next((p for p in self.bank if p.uid == uid), None)
+            if pet is None:
+                raise ValueError('融合材料必须是银行中的宠物。')
+            materials.append(pet)
+        recipe = next((row for row in self.tables['PetMerge'].values()
+                       if int(row['petQuality']) == int(base.quality)), None)
+        if recipe is None:
+            raise ValueError('当前品质没有原版融合配方。')
+        if len(materials) != int(recipe['petCount']):
+            raise ValueError(f'需要 {recipe["petCount"]} 只同品质材料宠物。')
+        for pet in materials:
+            if int(pet.quality) != int(recipe['petQuality']) or pet.level < int(recipe['petLevel']):
+                raise ValueError('材料宠物品质或等级不符合原版融合条件。')
+        if self.count(recipe['moneyType']) < int(recipe['moneyCount']):
+            raise ValueError('融合所需货币不足。')
+        self.consume([recipe['moneyType']], [int(recipe['moneyCount'])])
+        addition = float(recipe['attAddition'])
+        base.variation = [add(value, addition) for value in base.variation]
+        base.growth = [add(value, addition) for value in base.growth]
+        for pet in materials:
+            self.bank.remove(pet)
+        base.update_quality(self.tables)
+        stats = base.stats(self.tables)
+        base.hp, base.energy = min(base.hp, stats[0]), min(base.energy, stats[1])
+        return base
+
+    @atomic_mutation
+    def fuse_pets(self, uid_a, uid_b):
+        """Original PetHeTi fusion (DataManager::createHeTiPet 0x31dd88).
+
+        Both parents must be in the bank; active-party pets are rejected by the
+        original UI.  The result is level 1, inherits the integer average of
+        both parents' variation/growth, then uses the result pet's born-skill
+        and talent probability tables.  Materials and both parents are removed
+        in the same transaction.
+        """
+        if uid_a == uid_b:
+            raise ValueError('选择两只不同的宠物。')
+        a = next((p for p in self.bank if p.uid == uid_a), None)
+        b = next((p for p in self.bank if p.uid == uid_b), None)
+        if a is None or b is None:
+            raise ValueError('只能合体银行中的宠物；出战宠物不能合体。')
+        recipe = None
+        for row in self.tables['PetHeTi'].values():
+            # getHeTiData key = petA * 1000000 + petB; the recipe order is
+            # significant (the UI has distinct left/right slots).
+            if str(row['petAId']) == a.species and str(row['petBId']) == b.species:
+                recipe = row
+                break
+        if recipe is None:
+            raise ValueError('这两只宠物没有原版合体配方。')
+        item_ids = numbers(recipe['costItemIds'])
+        item_counts = numbers(recipe['costItemCounts'])
+        if len(item_ids) != len(item_counts):
+            raise ValueError('原版合体配方材料数量不一致。')
+        for item, count in zip(item_ids, item_counts):
+            if self.count(item) < count:
+                raise ValueError('合体材料不足。')
+        result_ids = numbers(recipe['petIds'])
+        probabilities = numbers(recipe['pros'])
+        if not result_ids:
+            raise ValueError('原版合体配方没有结果宠物。')
+        if len(result_ids) == 1:
+            species = str(result_ids[0])
+        else:
+            from pet_factory import weighted_choice
+            if len(probabilities) != len(result_ids):
+                raise ValueError('原版合体概率数量不一致。')
+            species = str(weighted_choice(self.rng, result_ids, probabilities))
+        variation = [float(math.floor((a.variation[i]+b.variation[i])/2)) for i in range(5)]
+        growth = [float(math.floor((a.growth[i]+b.growth[i])/2)) for i in range(5)]
+        from pet_factory import generate_pet
+        child = generate_pet(self.tables, self.rng, species, 1,
+                             fixed_attributes=(variation, growth))
+        child.exp = 0
+        self.consume(item_ids, item_counts)
+        self.bank.remove(a)
+        self.bank.remove(b)
+        self.bank.append(child)
+        self.record_pet(child.species)
+        return child
 
     @atomic_mutation
     def breakthrough_pet(self, uid):

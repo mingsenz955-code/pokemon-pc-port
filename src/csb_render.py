@@ -84,15 +84,16 @@ class CocosUI:
         return result
 
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
-               offset=(0, 0)):
+               offset=(0, 0), pressed=None):
         layout = self.layout(name)
         root = layout['tree']
         design = root.get('size', [800, 480])
         if min(design) <= 0:
             design = [800, 480]
         frame = Image.new('RGBA', (round(design[0]), round(design[1])))
-        self.hits, self.rects, self.diagnostics = {}, {}, []
+        self.hits, self.buttons, self.button_text, self.rects, self.diagnostics = {}, {}, {}, {}, []
         text, visible, resources = text or {}, visible or {}, resources or {}
+        pressed = pressed or {}
 
         def visit(node, parent=(0, 0), scale=(1, 1), alpha=1, depth=0, prefix=''):
             if depth > 50:
@@ -123,6 +124,13 @@ class CocosUI:
             image = None
             resource = resolve(resources, node.get('resource', {}).get('path', ''))
             classname = node['class']
+            # Original Cocos Button nodes carry a separate pressed texture.
+            # Hover/press feedback therefore uses the game's own artwork rather
+            # than a host-drawn rectangle.
+            if classname == 'Button' and resolve(pressed, False):
+                pressed_path = node.get('pressed', {}).get('path', '')
+                if pressed_path:
+                    resource = pressed_path
             if resource and classname not in ['TextBMFont', 'Particle']:
                 try:
                     image = self.data.image('res/'+resource).copy()
@@ -180,9 +188,15 @@ class CocosUI:
                                             max(1, round(glyphs.height*abs(sy)))), Image.Resampling.LANCZOS)
                 frame.alpha_composite(glyphs, (round(origin[0]), round(frame.height-origin[1]-height*sy)))
             if node.get('touch') or classname == 'Button':
-                self.hits[qualified] = [origin[0], frame.height-origin[1]-height*sy,
-                                        origin[0]+width*sx, frame.height-origin[1]]
-                self.hits[key] = self.hits[qualified]
+                rect = [origin[0], frame.height-origin[1]-height*sy,
+                        origin[0]+width*sx, frame.height-origin[1]]
+                self.hits[qualified] = rect
+                self.hits[key] = rect
+                if classname == 'Button':
+                    self.buttons[qualified] = rect
+                    self.button_text[qualified] = value
+                    self.buttons[key] = rect
+                    self.button_text[key] = value
             self.rects[qualified] = [origin[0], frame.height-origin[1]-height*sy,
                                      origin[0]+width*sx, frame.height-origin[1]]
             self.rects[key] = self.rects[qualified]
@@ -198,7 +212,7 @@ class CocosUI:
         visit(root, (offset[0]*design[0]/size[0], offset[1]*design[1]/size[1]))
         scale_x, scale_y = size[0]/design[0], size[1]/design[1]
         if (scale_x, scale_y) != (1, 1):
-            for target in (self.hits, self.rects):
+            for target in (self.hits, self.buttons, self.rects):
                 for key, rect in list(target.items()):
                     target[key] = [rect[0]*scale_x, rect[1]*scale_y,
                                    rect[2]*scale_x, rect[3]*scale_y]
