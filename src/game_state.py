@@ -499,6 +499,7 @@ class GameState:
         self.consume(numbers(row['itemIds']), numbers(row['itemCounts']))
         pet.species = str(row['petId'])
         self.record_pet(pet.species)
+        self.activities['evolve_total'] = int(self.activities.get('evolve_total', 0))+1
         stats = pet.stats(self.tables)
         pet.hp, pet.energy = min(pet.hp, stats[0]), min(pet.energy, stats[1])
 

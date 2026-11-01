@@ -47,6 +47,27 @@ assert api.progress('6001')[:2] == (1, 1)
 assert api.claim('3401')['score'] == 5
 assert state.count('210001') == 1
 
+# Action counters feed the additional original condition types without guesses.
+state.activities['caught_total'] = 1
+state.activities['hatch_total'] = 3
+state.activities['evolve_total'] = 10
+state.activities['ride_total'] = 20
+state.activities['save_total'] = 5
+state.activities['play_seconds'] = 600*60
+assert api.progress('201')[:2] == (1, 1)
+assert api.progress('7301')[:2] == (3, 3)
+assert api.progress('6601')[:2] == (10, 10)
+assert api.progress('6301')[:2] == (20, 20)
+assert api.progress('5901')[:2] == (5, 5)
+assert api.progress('3102')[:2] == (600, 600)
+assert api.claim('201')['score'] == 5
+assert state.count('230001') >= 1
+assert api.claim('7301')['score'] == 10
+assert api.claim('6601')['score'] == 10
+assert api.claim('6301')['score'] == 5
+assert api.claim('5901')['score'] == 5
+assert api.claim('3102')['score'] == 15
+
 # Unsupported original condition types must not fabricate progress/rewards.
 before = state.count('260017')
 try:

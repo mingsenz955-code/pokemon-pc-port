@@ -68,6 +68,8 @@ class Activities:
                 fixed = (json.loads(row['attVar'])[picked], json.loads(row['attUp'])[picked])
             pet = generate_pet(self.state.tables, self.state.rng, ids[picked], 1, fixed_attributes=fixed)
             egg['pet'], egg['exp'] = asdict(pet), 0
+            self.state.activities['hatch_total'] = int(
+                self.state.activities.get('hatch_total', 0))+1
         return pet
 
     def take_egg(self, index):

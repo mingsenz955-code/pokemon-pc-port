@@ -61,7 +61,11 @@ class Mounts:
                 raise ValueError('尚未获得这只坐骑。')
             if not self.accepts(row, terrain, map_type):
                 raise ValueError('这只坐骑不能在当前地形或地图使用。')
+        previous = self.state.ride
         self.state.ride = key
+        if key and key != previous:
+            self.state.activities['ride_total'] = int(
+                self.state.activities.get('ride_total', 0))+1
 
     def obstacle_ability(self, kind):
         row = self.active()

@@ -42,9 +42,11 @@
 
 | 支线接受 | `AcceptBTaskUI`、`accept_Button`/`close_Button`、`accepttask` 脚本请求 | 原版 `accepttask` 不再使用系统 messagebox，而是读取 AcceptBTaskUI 布局，写入任务名与描述，保留原 `accept_Button`/`close_Button` 命中区；接受/关闭分别恢复脚本一次，窗口关闭按拒绝处理。接受后的任务状态、计数、奖励仍由原事件 `taskstate`/`submittask` 驱动。`tools/check_accept_task.py` 覆盖原按钮命中区存在、接受/拒绝只恢复一次、窗口清理 |
 
-| 成就 | `Achievement` 142 行、`AchievementUI`、`AchievementItemUI`、`conditionType` 1–24 | `AchievementUI` 的 142 行全部列出；当前只对五类本地可验证条件给出进度：12 破障（`removed_obstacles`）、13 NPC 谈话（`talk_total`）、14 村庄宝箱、15 到达地图（`visited_maps`）、17 支线完成数。可领取时按原 `rewardIds/rewardCounts` 原子发奖并累计 `score`；其余条件类型显示“未接入”，拒绝领取，不伪造进度。原版 `AchievementItemUI` 逐行动画和其余 18 类条件尚未接入。`tools/check_achievements.py` 覆盖 142 行、五类进度、重复领取拒绝、未接入拒绝、UI 打开/关闭 |
+| 成就 | `Achievement` 142 行、`AchievementUI`、`AchievementItemUI`、`conditionType` 1–24 | `AchievementUI` 的 142 行全部列出；当前对 11 类本地可验证条件给出进度：3 野外捕获、4 孵化、5 进化、7 骑乘、8 银行宠物数、12 破障、13 NPC 谈话、14 村庄宝箱、15 到达地图、17 支线完成、22 游戏时间、23 存档次数。可领取时按原 `rewardIds/rewardCounts` 原子发奖并累计 `score`；其余条件类型显示“未接入”，拒绝领取，不伪造进度。原版 `AchievementItemUI` 逐行动画和其余 12 类条件尚未接入。`tools/check_achievements.py` 覆盖 142 行、11 类进度、重复领取拒绝、未接入拒绝、UI 打开/关闭 |
 
 | 战斗商店 | `BattleMainUI.battleShop_Button`、`BattleShopUI`、`BattleShop` 12 行 | 战斗 HUD 左上角原版 `battleShop_Button` 现在真实可点，打开 `BattleShopUI`；商品按原表价格/货币购买，进入背包，购买和关闭按钮均有实际命令。`tools/check_battle_shop.py` 覆盖原按钮命中、打开、购买扣款/入库、关闭；原版商品列表逐行动画仍未复刻 |
+
+| 剧情/地图覆盖 | 1,685 个 `pEvent*.json`、461 个触发器、431 张 `VillageMap` | `tools/check_event_coverage.py` 逐脚本解析原加密事件数据：36 种实际命令全部在 `EventRuntime` 的 PRESENTATION/STATE/INTERACTIVE 分派内，未知命令为 0；461 个触发器类型（tomap/toarea/toexit/talk/fightover/fight）均有宿主通知入口；431 张地图均能由 `OriginalData.load_map` 读取。该测试只证明“可解析/可加载”，不代表每条剧情分支、每个事件 UI 选择和每张地图的完整玩法都已逐帧复刻 |
 
 ## 测试和审计
 

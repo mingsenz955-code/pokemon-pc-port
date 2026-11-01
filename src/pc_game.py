@@ -53,6 +53,7 @@ class NativeGame(ActivityUI, Preview):
         self.teach_nodes = []
         self.encounter_distance = 0.0
         self.encounter_threshold = 0
+        self._play_clock = time.monotonic()
         self.show_map_label = False
         self.data = data
         self.guide = Guide(self)
@@ -79,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.13（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.15（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -784,7 +785,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.13')
+        win.title('任务指引 · 原生 0.2.15')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1095,6 +1096,8 @@ class NativeGame(ActivityUI, Preview):
             land = int(self.data.tables['Pet'][pet.species].get('kind', -1))
             TaskProgress(self.state).update('catch', int(pet.species), land, self.state.map_id)
             DailyTasks(self.state).record('catch')
+            self.state.activities['caught_total'] = int(
+                self.state.activities.get('caught_total', 0))+1
         elif result == 'win' and battle.kind != 'wild' and not arena_battle and not infinite_battle and not budokan_battle:
             TaskProgress(self.state).update('fight', 2, 1, int(battle.source_id), -1)
             self.state.npc_fights[battle.source_id] = 1
@@ -1215,6 +1218,12 @@ class NativeGame(ActivityUI, Preview):
         self.drive()
 
     def tick(self):
+        now = time.monotonic()
+        elapsed = max(0.0, now-self._play_clock)
+        self._play_clock = now
+        if not self.booting:
+            self.state.activities['play_seconds'] = (
+                float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
             self.battle_ui.advance()
         if getattr(self, 'chest_fx', None):
@@ -1359,6 +1368,8 @@ class NativeGame(ActivityUI, Preview):
             'encounter_threshold': self.encounter_threshold,
         }
         self.runtime.persist()
+        self.state.activities['save_total'] = int(
+            self.state.activities.get('save_total', 0))+1
         self.state.save(self.save_path)
         self.event_issue = '已保存独立移植存档，包含当前剧情位置、背包、任务和随机数状态。'
 
