@@ -410,6 +410,9 @@ class GameState:
         result = recovery(effect, pet.hp, pet.energy, *pet.stats(self.tables)[:2])
         pet.hp, pet.energy = result.hp, result.energy
         self.consume([item_id], [1])
+        uses = dict(self.activities.get('heal_items', {}))
+        uses[str(item_id)] = int(uses.get(str(item_id), 0))+1
+        self.activities['heal_items'] = uses
         return f'{row.get("name", item_id)} 已用于 {self.tables["Pet"].get(str(pet.species), {}).get("name", pet.species)}。'
 
     def buy(self, table, key, quantity=1):

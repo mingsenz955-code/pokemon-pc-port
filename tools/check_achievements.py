@@ -17,7 +17,7 @@ state = GameState(data.tables, seed=41)
 api = Achievements(state)
 assert len(api.rows) == 142
 assert api.status('4301') == 'progress'
-assert api.status('6402') == 'unsupported'
+assert api.status('2701') == 'unsupported'
 
 # Map achievement 4301: reach map 308.
 state.visited_maps.append(308)
@@ -88,10 +88,20 @@ assert api.progress('1001')[:2] == (5, 5)
 assert api.claim('1901')['score'] == 20
 assert api.claim('1001')['score'] == 5
 
+# Item-use counters come from GameState.use_item, not from invented progress.
+state.activities['heal_items'] = {'230001': 20}
+assert api.progress('6402')[:2] == (20, 20)
+assert api.claim('6402')['score'] == 5
+# The same counter is incremented by a real recovery item use.
+state.pets[0].hp = 1
+state.inventory['230001'] = 1
+state.use_item('230001', state.pets[0])
+assert state.activities['heal_items']['230001'] == 21
+
 # Unsupported original condition types must not fabricate progress/rewards.
 before = state.count('260017')
 try:
-    api.claim('6402')
+    api.claim('2701')
     raise AssertionError('unsupported achievement claimed')
 except ValueError as error:
     assert '不能伪造' in str(error)
