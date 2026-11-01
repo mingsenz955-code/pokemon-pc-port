@@ -4,6 +4,7 @@ from PIL import ImageTk
 from activities import Activities
 from arena import ArenaProgress
 from infinite_arena import InfiniteArenaProgress
+from treasure import TreasureHunt
 
 
 class ActivityUI:
@@ -598,43 +599,101 @@ class ActivityUI:
         tk.Button(body, text='战斗排名', command=lambda: show(*pages['fightTag_Button'])).pack(pady=2)
         tk.Button(body, text='怪物资料', command=lambda: show('怪物资料', 'Pet')).pack(pady=2)
 
+    def _treasure_buy_body(self, body, info, par1=None):
+        rows = self.data.tables.get('Treasure', {})
+        row = rows.get(str(par1)) or next(iter(rows.values()), None)
+        if not row:
+            info.set('原版 Treasure 表为空。')
+            return
+        clue = TreasureHunt(self.state).clue(row)
+        money = self.data.tables.get('Money', {}).get(clue['money'], {})
+        info.set(f'{clue["text"]}\n需花费 {clue["price"]} {money.get("name", clue["money"])}；'
+                 '购买后获得原版行配置的放大镜。')
+        def buy():
+            try:
+                entry = TreasureHunt(self.state).buy(row['keyId'])
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            self.close_ui('yes')
+        self.ui_actions['buy_Button'] = buy
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        tk.Button(body, text='购买藏宝图', command=buy).pack(pady=3)
+
+    def _treasure_tip_body(self, body, info):
+        hunt = TreasureHunt(self.state)
+        row = None
+        entry = hunt.active()
+        if entry:
+            row = self.data.tables['Treasure'][str(entry['id'])]
+        else:
+            row = next(iter(self.data.tables.get('Treasure', {}).values()), None)
+        if not row:
+            info.set('原版 Treasure 表为空。')
+            return
+        clue = hunt.clue(row)
+        info.set(f'{clue["text"]}\n线索地图：{clue["map"]}')
+        self.ui_actions['confirm_Button'] = lambda: self.close_ui('yes')
+        tk.Button(body, text='确认', command=lambda: self.close_ui('yes')).pack(pady=3)
+
     def _treasure_body(self, body, info, par1=None):
         rows = list(self.data.tables.get('Treasure', {}).values())
+        hunt = TreasureHunt(self.state)
+        entry = hunt.active()
         row = None
-        if par1 and str(par1) in self.data.tables.get('Treasure', {}):
-            row = self.data.tables['Treasure'][str(par1)]
+        if entry:
+            row = self.data.tables['Treasure'][str(entry['id'])]
         if row is None:
-            map_name = str(getattr(getattr(self, 'map', None), 'info', {}).get('name', ''))
-            row = next((r for r in rows if str(r.get('name')) == map_name), None)
-        if row is None:
-            row = rows[0] if rows else None
+            if par1 and str(par1) in self.data.tables.get('Treasure', {}):
+                row = self.data.tables['Treasure'][str(par1)]
+            if row is None:
+                map_name = str(getattr(getattr(self, 'map', None), 'info', {}).get('name', ''))
+                row = next((r for r in rows if str(r.get('name')) == map_name), None)
+            if row is None:
+                row = rows[0] if rows else None
         if not row:
             info.set('原版 Treasure 表为空。')
             return
         magnifier = self.state.count('220007')
-        chests = self.data.tables.get('TChest', {})
-        chest_names = []
-        for key in str(row.get('chestIds', '')).split(','):
-            chest = chests.get(key.strip())
-            if chest:
-                chest_names.append(chest['name'])
-        info.set(f'{row.get("des", "")}\n'
-                 f'线索地图：{row.get("name", "")} · 宝箱类型：{"、".join(chest_names) or "未知"}\n'
-                 f'当前放大镜：{magnifier} 个 · 每次使用消耗 1 个')
-        def use():
-            if magnifier <= 0:
-                info.set('没有放大镜，无法使用。')
+        clue = hunt.clue(row)
+        money = self.data.tables.get('Money', {}).get(clue['money'], {})
+        text = (f'{clue["text"]}\n'
+                f'线索地图：{clue["map"]} · 宝箱类型：{"、".join(clue["chests"]) or "未知"}\n'
+                f'当前放大镜：{magnifier} 个 · 每次使用消耗 1 个')
+        if entry:
+            pos = self.data.tables.get('TChestPos', {}).get(str(entry['pos_id']), {})
+            status = '已显现，请前往地图寻找' if entry.get('revealed') else '尚未显现'
+            text += (f'\n当前宝藏：{pos.get("pos", "?")} 格 · {status}')
+        else:
+            text += (f'\n购买藏宝图需 {clue["price"]} {money.get("name", clue["money"])}，'
+                     '并附赠原版 Treasure 行配置的放大镜。')
+        info.set(text)
+
+        def search():
+            try:
+                current = hunt.active()
+                if not current:
+                    current = hunt.buy(row['keyId'])
+                hunt.use_magnifier(current['pos_id'])
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
                 return
-            # The original TreasureCheckUI consumes one magnifier and then runs
-            # the map search/chest reveal.  That overlay is still missing; do
-            # not consume an item and pretend the search happened.
-            info.set('原版放大镜地图搜索与宝箱显现尚未接入；本次未扣除放大镜。')
+            # The original use button sends the find event and closes the clue
+            # panel; the host then walks the map and opens the revealed chest.
+            self.close_ui('yes')
+
         def give_up():
+            try:
+                hunt.give_up()
+            except ValueError:
+                pass
             self.close_ui('no')
-        self.ui_actions['use_Button'] = use
+
+        self.ui_actions['use_Button'] = search
         self.ui_actions['giveUp_Button'] = give_up
         self.ui_actions['close_Button'] = give_up
-        tk.Button(body, text='使用放大镜（搜索待接入）', command=use).pack(pady=3)
+        label = '使用放大镜' if entry else '购买藏宝图并搜索'
+        tk.Button(body, text=label, command=search).pack(pady=3)
         tk.Button(body, text='放弃', command=give_up).pack(pady=3)
 
     def _infinite_body(self, body, info, uiid, arena_id=None):

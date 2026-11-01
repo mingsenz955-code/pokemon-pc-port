@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.5%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.6%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.5 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.6 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -22,8 +22,10 @@
 属性平均值/加成、品质重算和原子回滚；竞技场已接入原版事件 `openui 10 → closeui yes → fight type=3`
 往返、真实 ArenaNpcPet 队伍、排名/称号/连胜/徽章与 Boss 掉落；无限竞技场已接入
 `openui 19/20 → closeui yes → fight type=5`、五层 IArenaNpc 队伍、徽章消耗、荣誉/层数推进和商店。
+0.2.6 接入原版藏宝图购买、放大镜显现、随机 `TChestPos` 地图宝箱、`TChest` 开箱与开箱光效，
+并补齐内部 UI 37/38；战斗事件现在有突进、受击闪烁、伤害飘字和血条缓动。
 **这些改动仍不代表完整复刻**：赛宠、圣兽使者、礼包发货、
-地图障碍、后期主支线、技能状态细节和原版动态 UI 等仍有大量工作。
+地图障碍、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
 
 核对地址、测试及差异见 [规则核对记录](docs/MECHANICS_EVIDENCE.md)。
 原交接文档保存在 [DeepSeek 交接](docs/DEEPSEEK_HANDOVER.md) 和
@@ -33,8 +35,8 @@
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.5/口袋妖怪-PC移植开发版0.2.5.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.5.zip`](publish/release/pokemon-pc-0.2.5.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.6/口袋妖怪-PC移植开发版0.2.6.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.6.zip`](publish/release/pokemon-pc-0.2.6.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -71,6 +73,7 @@
   - 战斗内回复道具、精灵球分页。
 - **原版战斗 UI**：`BattleMainUI`、`BattleButtonMenuNode`、`BattleSkillMenuNode`、`BattleItemMenuNode`，含原版背景、宠物 Spine 立绘、HP/能量条、状态、队伍点、日志、确认与结算面板。战斗事件会驱动突进、受击抖动/闪红、伤害飘字和血条缓动；这仍不是原版完整 Spine 时间轴。
 - **地图随机遇敌**：按原 `VillageMap.enemyAppearInterval`（30–40 步）和 `enemyProbability` 权重选择 `VillageEnemy`；该逻辑由 `VillageMapControler::checkEnemy` / `DataManager::fightWithVillageMapEnemy` 反汇编核对。
+- **藏宝图与宝藏**：按原 `Treasure` 行扣徽章、附赠放大镜，从 `chestPoss` 随机 `TChestPos` 生成隐藏宝箱；使用放大镜扣 1 个后在地图上显现 `TChest.spriteId` 宝箱，靠近按 `TChest` 概率/数量开箱。UI 24 线索、UI 37 购买确认、UI 38 线索确认均接入。
 - **任务指引与寻路**：按原 `MainTask`/`BranchTask` 的 `conditionType` 解析目标：区域 ID、NPC ID、捕捉地图、目标地图、等级/道具；自动沿已核验出口逐图行走，地图切换后重新计算路线，并在 NPC 交互范围或区域触发处停下。找不到原版对象时明确报告，不编造坐标。
 - **背包/宠物界面**：背包可使用原版回复道具并扣除数量；宠物界面显示等级、生命/能量、五维、品质、突破、亲密度、技能、天赋，并支持数据驱动的进化尝试。
 - **独立存档**：保存剧情位置、地图、背包、任务、事件状态、宠物、随机数状态；原子写入并保留 `.bak`。战斗中存档会明确拒绝，避免写入不一致状态。
@@ -168,6 +171,9 @@ py -3.12 -m venv .venv
 
 # 战斗事件 → 突进/受击/伤害飘字/血条缓动
 .\.venv\Scripts\python.exe tools\check_battle_animation.py
+
+# 藏宝图购买、放大镜显现、地图宝箱、UI 24/37/38
+.\.venv\Scripts\python.exe tools\check_treasure.py
 
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6
 .\.venv\Scripts\python.exe build\_host_debug.py

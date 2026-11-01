@@ -64,10 +64,11 @@ class NativeGame(ActivityUI, Preview):
         self.ui_close_result = None
         self.ui_info = None
         self.arena_summary = None
+        self.chest_fx = None
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.5（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.6（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -75,7 +76,8 @@ class NativeGame(ActivityUI, Preview):
                  font=('Microsoft YaHei UI', 12, 'bold')).pack(side='left', padx=14, pady=10)
         for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui),
                                 ('指引', self.guide_ui), ('抽宠', self.lottery_ui),
-                                ('坐骑', self.mounts_ui), ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
+                                ('坐骑', self.mounts_ui), ('宝藏', self.treasure_ui),
+                                ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
         self.save_path = Path(os.environ.get('POCKET_NATIVE_SAVE_DIR', str(default_save)))/'slot1.json'
@@ -86,6 +88,7 @@ class NativeGame(ActivityUI, Preview):
 
     def load_map(self, mid, x=None, y=None):
         super().load_map(mid, x, y)
+        self.chest_fx = None
         if hasattr(self, 'state') and not self.booting:
             self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
             if self.map_id not in self.state.visited_maps:
@@ -192,12 +195,61 @@ class NativeGame(ActivityUI, Preview):
         for key, row in self.state.temp_npcs.items():
             if row['map'] == self.map_id and row['visible']:
                 result.append(('temp:'+key, str(row['spriteid']), row['x'], row['y']))
+        from treasure import TreasureHunt
+        chest_table = self.data.tables.get('TChest', {})
+        for entry in TreasureHunt(self.state).visible_on(self.map_id):
+            sprite = str(chest_table.get(str(entry.get('chest_id')), {}).get('spriteId', '30002'))
+            result.append((f'treasure:{entry["pos_id"]}', sprite, entry['x'], entry['y']))
+        if getattr(self, 'chest_fx', None):
+            result.append(('fx:treasure', self.chest_fx['sprite'],
+                           self.chest_fx['x'], self.chest_fx['y']))
         return result
 
     def actor_animation(self, oid, sid):
         if str(sid) == '30001' and hasattr(self, 'state'):
             return 'opened' if str(oid) in self.state.activities.get('village_chests', []) else 'closed'
+        if str(oid).startswith('treasure:'):
+            return 'closed'
+        if str(oid) == 'fx:treasure':
+            return 'opened'
         return super().actor_animation(oid, sid)
+
+    def _draw_chest_fx(self, frame):
+        fx = getattr(self, 'chest_fx', None)
+        if not fx:
+            return frame
+        focus = getattr(self, 'camera_focus', None) or (self.x, self.y)
+        camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2,
+                          self.background.width-self.WIDTH))
+        camy = max(0, min(focus[1]*self.SCALE-self.HEIGHT/2,
+                          self.background.height-self.HEIGHT))
+        cx = fx['x']*self.SCALE-camx
+        cy = fx['y']*self.SCALE-camy
+        age = fx.get('age', 0)
+        fade = max(0.0, 1.0-age/26)
+        draw = ImageDraw.Draw(frame, 'RGBA')
+        # The original chest armature plays its opened clip; these short rays
+        # and sparks make the successful find readable without inventing loot.
+        glow = int(90*fade)
+        for radius, alpha in ((58, glow//2), (40, glow)):
+            draw.ellipse((cx-radius, cy-radius, cx+radius, cy+radius),
+                         outline=(255, 224, 120, alpha), width=2)
+        for index in range(12):
+            angle = -math.pi/2 + index*math.pi/6
+            length = 38+16*((index*7) % 5)
+            x1 = cx+math.cos(angle)*20
+            y1 = cy+math.sin(angle)*20
+            x2 = cx+math.cos(angle)*length
+            y2 = cy+math.sin(angle)*length
+            draw.line((x1, y1, x2, y2), fill=(255, 246, 190, int(230*fade)), width=3)
+        for index in range(10):
+            angle = index*math.pi/5+age*.08
+            radius = 30+12*((index*3+age) % 5)
+            x2, y2 = cx+math.cos(angle)*radius, cy+math.sin(angle)*radius
+            size = 2+index % 4
+            draw.rectangle((x2-size, y2-size, x2+size, y2+size),
+                           fill=(255, 250, 210, int(245*fade)))
+        return frame
 
     UI_LAYOUTS = {
         1: ('ShopUI', '商店'), 2: ('EvolutionShopUI', '材料商店'), 3: ('SkillShopUI', '卷轴商店'),
@@ -215,6 +267,7 @@ class NativeGame(ActivityUI, Preview):
         27: ('GiftBagSaleUI', '礼包'), 28: ('MedalShopUI', '奖牌兑换'),
         29: ('RouletteUI', '幸运轮盘'), 30: ('CardLegendUI', '卡牌传说'),
         34: ('PetHeTiUI', '宠物合体'), 36: ('GiftBagSaleUI', '商店礼包'),
+        37: ('TreasureBuyConfirmUI', '购买藏宝图'), 38: ('TreasureGetTipUI', '宝藏线索'),
     }
 
     def open_ui(self, request):
@@ -315,6 +368,10 @@ class NativeGame(ActivityUI, Preview):
             self._breakthrough_body(body, info)
         elif uiid == 24:
             self._treasure_body(body, info, parameters.get('par1'))
+        elif uiid == 37:
+            self._treasure_buy_body(body, info, parameters.get('par1'))
+        elif uiid == 38:
+            self._treasure_tip_body(body, info)
         elif uiid in (27, 36):
             info.set('原版礼包购买入口；支付与奖励表尚未接入，不能伪造发货。')
             self.ui_actions['buy_Button'] = lambda: info.set('礼包购买与奖励表尚未接入，未扣除货币。')
@@ -525,7 +582,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.5')
+        win.title('任务指引 · 原生 0.2.6')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -588,6 +645,27 @@ class NativeGame(ActivityUI, Preview):
             return
         oid = actors[0][0]
         if oid.startswith('temp:'):
+            return
+        if oid.startswith('treasure:'):
+            from treasure import TreasureHunt
+            try:
+                chests = TreasureHunt(self.state)
+                pos_id = oid.split(':', 1)[1]
+                entry = next((e for e in chests.entries()
+                              if str(e.get('pos_id')) == pos_id), None)
+                item_id, count = chests.open(pos_id)
+                row = (self.data.tables['Item'].get(str(item_id))
+                       or self.data.tables['Pet'].get(str(item_id))
+                       or self.data.tables['Money'].get(str(item_id), {}))
+                if entry:
+                    self.chest_fx = {'x': entry['x'], 'y': entry['y'],
+                                     'sprite': str(self.data.tables.get('TChest', {})
+                                                   .get(str(entry.get('chest_id')), {})
+                                                   .get('spriteId', '30002')),
+                                     'age': 0}
+                self.event_issue = f'宝藏获得：{row.get("name", item_id)} × {count}'
+            except (ValueError, KeyError) as error:
+                self.event_issue = str(error)
             return
         if str(actors[0][1]) == '30001':
             from activities import Activities
@@ -918,6 +996,10 @@ class NativeGame(ActivityUI, Preview):
     def tick(self):
         if self.battle and self.battle_ui:
             self.battle_ui.advance()
+        if getattr(self, 'chest_fx', None):
+            self.chest_fx['age'] += 1
+            if self.chest_fx['age'] >= 26:
+                self.chest_fx = None
         old_map, old_x, old_y = self.map_id, self.x, self.y
         if not self.booting:
             TaskProgress(self.state).update()
@@ -975,6 +1057,8 @@ class NativeGame(ActivityUI, Preview):
             self.dialogue = original_dialogue
         if getattr(self, 'screen_black', False):
             frame.paste('#101010', (0, 0, self.WIDTH, self.HEIGHT))
+        if original_dialogue is None:
+            self._draw_chest_fx(frame)
         if original_dialogue is not None:
             name, sep, content = original_dialogue.partition(':')
             if not sep:
@@ -1087,6 +1171,13 @@ class NativeGame(ActivityUI, Preview):
         if self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.destroy()
         self.ui_window, self.ui_open = None, False
+
+    def treasure_ui(self):
+        if self.battle or self.runtime.running or self.ui_open:
+            return
+        from event_runtime import Request
+        self.open_ui(Request('openui', 'treasure-menu', 1,
+                             {'parameters': {'uiid': 37}}))
 
     def listing(self, title, content):
         win = tk.Toplevel(self.root)
