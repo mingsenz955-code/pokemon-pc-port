@@ -658,6 +658,7 @@ class Battle:
                 if buff.kind == 'leech':
                     source = unit
                     source.heal(max(1, int(damage*.1)))
+        was_alive = target.alive
         taken = target.take_damage(damage, source=unit, attribute=attribute)
         self.events.append({'type': 'damage', 'side': target.side, 'name': target.name,
                             'amount': taken, 'crit': crit, 'attribute': attribute,
@@ -673,6 +674,8 @@ class Battle:
         if not target.alive:
             self.messages.append(f'{target.name} 倒下了！')
             self.events.append({'type': 'faint', 'side': target.side, 'name': target.name})
+            if was_alive and unit.side == 'player':
+                self.events.append({'type': 'oneshot', 'side': 'player', 'name': target.name})
 
     def _mitigate(self, raw, target, attribute):
         if attribute in ('power', 'defence', 'speed'):
@@ -714,6 +717,9 @@ class Battle:
                     self.messages.append(f'{receiver.name} 免疫了{STATE_NAMES.get(key, ("状态",))[0]}！')
                     continue
                 self._apply_state(unit, receiver, key, state)
+                if receiver.side != unit.side and key in ('5', '6', '7'):
+                    self.events.append({'type': 'state_applied', 'kind': STATE_NAMES[key][1],
+                                        'name': receiver.name})
 
     def _immune(self, unit, key):
         for talent_id in unit.pet.talents:

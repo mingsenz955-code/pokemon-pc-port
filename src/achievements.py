@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 class Achievements:
-    SUPPORTED = {1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 17, 18, 19, 22, 23, 24}
+    SUPPORTED = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 22, 23, 24}
     COUNTERS = {3: ('caught_total', '野外捕获'),
                 4: ('hatch_total', '孵化'),
                 5: ('evolve_total', '进化'),
@@ -53,6 +53,16 @@ class Achievements:
                 current = sum(int(uses.get(str(item), 0)) for item in values)
                 return current, target, f'已使用指定回复/飞越道具 {current} 次'
             return None
+        if condition_type == 9:
+            current = int(self.state.activities.get('oneshot_wins', 0))
+            return current, target, f'一次攻击击败 {current} 次'
+        if condition_type == 10:
+            names = {'103': 'petrify', '111': 'sleep'}
+            if values and str(values[0]) in names:
+                applied = self.state.activities.get('status_applies', {})
+                current = int(applied.get(names[str(values[0])], 0))
+                return current, target, f'已施加 {current} / {target} 次'
+            return None
         if condition_type == 18:
             # -1,<moneyType>,1 = total spent in any shop; the 5,-1,-1 rows
             # describe a separate mystery-shop counter that is not wired yet.
@@ -67,6 +77,12 @@ class Achievements:
                 talks = self.state.activities.get('shop_talks', {})
                 current = int(talks.get(str(values[0]), 0))
                 return current, target, f'与店员对话 {current} / {target} 次'
+            return None
+        if condition_type == 20:
+            if values:
+                key = str(values[0])
+                current = int(self.state.count(key))
+                return current, target, f'银行格子上限 {current} / {target}'
             return None
         if condition_type == 24:
             if len(values) >= 2 and values[0] == 2:
