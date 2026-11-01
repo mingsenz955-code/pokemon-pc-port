@@ -229,6 +229,12 @@
       "source": "research/evidence/icon.png",
       "bytes": 12804,
       "sha256": "107a9ec158c9d161a14cadd1e8a0a40c4c4ea12d2e59aee9c98fd26ea58e08e7"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.2.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.2.zip",
+      "bytes": 81457707,
+      "sha256": "c7b362ba70fef8f2cc7655bf54d1b45bbf9eca02a808ad06c8e5bc4bb9e36b94"
     }
   ]
 }
