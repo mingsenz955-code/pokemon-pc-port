@@ -68,6 +68,7 @@ class NativeGame(ActivityUI, Preview):
         self.ui_parameters = {}
         self.arena_summary = None
         self.chest_fx = None
+        self.obstacle_fx = None
         self.running_session = None
         self.running_result = None
         self.running_race_token = None
@@ -97,6 +98,7 @@ class NativeGame(ActivityUI, Preview):
     def load_map(self, mid, x=None, y=None):
         super().load_map(mid, x, y)
         self.chest_fx = None
+        self.obstacle_fx = None
         self._apply_removed_obstacles()
         if hasattr(self, 'state') and not self.booting:
             self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
@@ -140,6 +142,9 @@ class NativeGame(ActivityUI, Preview):
             return False
         self.state.removed_obstacles.append([int(self.map_id), int(tx), int(ty), int(obs_type)])
         self.background = self.map.render(self.SCALE)
+        self.obstacle_fx = {'x': int(tx)*self.map.tw+self.map.tw/2,
+                            'y': int(ty)*self.map.th+self.map.th/2,
+                            'type': int(obs_type), 'age': 0}
         TaskProgress(self.state).update('obstacle', int(obs_type))
         if self.pending_wait and self.pending_wait.kind == 'wait':
             params = self.pending_wait.data.get('parameters', {})
@@ -301,6 +306,37 @@ class NativeGame(ActivityUI, Preview):
             size = 2+index % 4
             draw.rectangle((x2-size, y2-size, x2+size, y2+size),
                            fill=(255, 250, 210, int(245*fade)))
+        return frame
+
+    def _draw_obstacle_fx(self, frame):
+        fx = getattr(self, 'obstacle_fx', None)
+        if not fx:
+            return frame
+        focus = getattr(self, 'camera_focus', None) or (self.x, self.y)
+        camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2,
+                          self.background.width-self.WIDTH))
+        camy = max(0, min(focus[1]*self.SCALE-self.HEIGHT/2,
+                          self.background.height-self.HEIGHT))
+        cx = fx['x']*self.SCALE-camx
+        cy = fx['y']*self.SCALE-camy
+        age = fx.get('age', 0)
+        fade = max(0.0, 1.0-age/22)
+        draw = ImageDraw.Draw(frame, 'RGBA')
+        color = (139, 94, 47) if fx.get('type') == 1 else (155, 151, 137)
+        # Short-lived chips and dust after the original obsType object is
+        # removed.  This is presentation only; the collision/task mutation is
+        # already committed before the effect starts.
+        dust = 18+age*2
+        draw.ellipse((cx-dust, cy-dust*.55, cx+dust, cy+dust*.55),
+                     outline=(210, 190, 150, int(80*fade)), width=2)
+        for index in range(14):
+            angle = index*math.pi*2/14+age*.035
+            distance = 7+age*2.8
+            px = cx+math.cos(angle)*distance
+            py = cy-6+math.sin(angle)*distance*.7-age*age*.16
+            size = max(1, 4-age//7)
+            draw.rectangle((px-size, py-size, px+size, py+size),
+                           fill=color+(int(235*fade),))
         return frame
 
     UI_LAYOUTS = {
@@ -1097,6 +1133,10 @@ class NativeGame(ActivityUI, Preview):
             self.chest_fx['age'] += 1
             if self.chest_fx['age'] >= 26:
                 self.chest_fx = None
+        if getattr(self, 'obstacle_fx', None):
+            self.obstacle_fx['age'] += 1
+            if self.obstacle_fx['age'] >= 22:
+                self.obstacle_fx = None
         old_map, old_x, old_y = self.map_id, self.x, self.y
         if not self.booting:
             TaskProgress(self.state).update()
@@ -1156,6 +1196,7 @@ class NativeGame(ActivityUI, Preview):
             frame.paste('#101010', (0, 0, self.WIDTH, self.HEIGHT))
         if original_dialogue is None:
             self._draw_chest_fx(frame)
+            self._draw_obstacle_fx(frame)
         if original_dialogue is not None:
             name, sep, content = original_dialogue.partition(':')
             if not sep:

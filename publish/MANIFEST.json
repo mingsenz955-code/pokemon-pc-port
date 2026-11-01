@@ -287,8 +287,8 @@
     {
       "path": "release/pokemon-pc-0.2.11.zip",
       "source": "outputs/口袋妖怪-PC移植开发版0.2.11.zip",
-      "bytes": 81573168,
-      "sha256": "7276142c5fe9a16c6933978bf3df1042d95f5e0b8b463b1864129faf57372a3f"
+      "bytes": 81575067,
+      "sha256": "3375ddb463daab60051b19f491250cf9cf9c190fc51cda8ca6dfb3303e5bf1c1"
     }
   ]
 }

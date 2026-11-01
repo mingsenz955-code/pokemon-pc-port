@@ -60,6 +60,8 @@ try:
     assert app.x == tx*64+32 and app.y == ty*64+32
     assert app.map.terrain_at(tx*64+32, ty*64+32) == 0
     assert [int(v) for v in state.removed_obstacles[-1][:3]] == [202, tx, ty]
+    assert app.obstacle_fx['type'] == 2
+    app.make_frame()
     assert state.task_counts['main:132'] == [1]
     # Without the matching mount the tile stays solid.
     state.ride = 0
