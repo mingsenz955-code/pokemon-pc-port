@@ -65,10 +65,13 @@ class NativeGame(ActivityUI, Preview):
         self.ui_info = None
         self.arena_summary = None
         self.chest_fx = None
+        self.running_session = None
+        self.running_result = None
+        self.running_race_token = None
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.6（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.7（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -77,6 +80,8 @@ class NativeGame(ActivityUI, Preview):
         for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui),
                                 ('指引', self.guide_ui), ('抽宠', self.lottery_ui),
                                 ('坐骑', self.mounts_ui), ('宝藏', self.treasure_ui),
+                                ('赛跑', self.running_pet_ui),
+                                ('签到', self.login_ui),
                                 ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
@@ -268,6 +273,9 @@ class NativeGame(ActivityUI, Preview):
         29: ('RouletteUI', '幸运轮盘'), 30: ('CardLegendUI', '卡牌传说'),
         34: ('PetHeTiUI', '宠物合体'), 36: ('GiftBagSaleUI', '商店礼包'),
         37: ('TreasureBuyConfirmUI', '购买藏宝图'), 38: ('TreasureGetTipUI', '宝藏线索'),
+        39: ('RunningPetWelUI', '赛宠嘉年华'), 40: ('RunningPetReadyUI', '赛宠押注'),
+        41: ('RunningPetMapUI', '赛宠比赛'), 42: ('RunningPetResultUI', '赛宠结算'),
+        43: ('BuyConfirmUI', '购买赛跑奖牌'),
     }
 
     def open_ui(self, request):
@@ -315,7 +323,9 @@ class NativeGame(ActivityUI, Preview):
         self.ui_info = info
         tk.Label(body, textvariable=info, bg='#202b30', fg='#f2e7cf',
                  font=('Microsoft YaHei UI', 10), justify='left').pack(anchor='w')
-        if uiid == 11:
+        if uiid == 12:
+            self._login_body(body, info)
+        elif uiid == 11:
             currency, cost = self.state.cure_cost()
             info.set(f'治疗全部携带宠物：{cost} {self.data.tables["Money"][currency]["name"]}' if currency else '医疗卡治疗免费。')
             def cure():
@@ -358,6 +368,16 @@ class NativeGame(ActivityUI, Preview):
             self._trial_body(body, info)
         elif uiid == 25:
             self._running_body(body, info)
+        elif uiid == 39:
+            self._running_body(body, info)
+        elif uiid == 40:
+            self._running_ready_body(body, info)
+        elif uiid == 41:
+            self._running_race_body(body, info)
+        elif uiid == 42:
+            self._running_result_body(body, info)
+        elif uiid == 43:
+            self._running_medal_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -582,7 +602,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.6')
+        win.title('任务指引 · 原生 0.2.7')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1178,6 +1198,20 @@ class NativeGame(ActivityUI, Preview):
         from event_runtime import Request
         self.open_ui(Request('openui', 'treasure-menu', 1,
                              {'parameters': {'uiid': 37}}))
+
+    def running_pet_ui(self):
+        if self.battle or self.runtime.running or self.ui_open:
+            return
+        from event_runtime import Request
+        self.open_ui(Request('openui', 'running-pet', 1,
+                             {'parameters': {'uiid': 39}}))
+
+    def login_ui(self):
+        if self.battle or self.runtime.running or self.ui_open:
+            return
+        from event_runtime import Request
+        self.open_ui(Request('openui', 'continuous-login', 1,
+                             {'parameters': {'uiid': 12}}))
 
     def listing(self, title, content):
         win = tk.Toplevel(self.root)

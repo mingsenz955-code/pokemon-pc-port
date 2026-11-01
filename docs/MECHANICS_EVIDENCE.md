@@ -34,6 +34,8 @@
 | 宠物合体 | `DataManager::getHeTiData` 0x31dd50、`createHeTiPet` 0x31dd88 | 配方键为 `petA*1000000+petB`，顺序敏感；结果等级 1，五项 variation/growth 取两亲整数平均，再按结果宠物表生成天赋/技能并重算品质；材料与双亲原子移除。`tools/check_fusion.py` 覆盖正常、反向拒绝、材料不足 |
 | 宠物融合 | `PlayerDataManager::petMerge` 0x3306d2、`PetDataManager::petMerge` 0x327218 | 按基础宠物品质选择 PetMerge 配方，材料须同品质且达到等级；`attAddition` 加到五项 variation 和五项 growth，重算品质/属性；扣货币并移除材料。`tools/check_merge.py` 覆盖成功与原子失败 |
 | 战斗点击与菜单 | `mineMenuPanelRespond` 0x355878、`enemyMenuPanelRespond` 0x3558e4、`energyButtonRespond` 0x355950、`hpButtonRespond` 0x3559a0、`showButtonMenu` 0x3544d0、`showSkillMenu` 0x354a7c；BattleMainUI 的 mine/enemyMenuPos_Panel | 我方区域打开补给菜单，敌方区域打开技能菜单；补蓝筛能量、补血筛生命。菜单使用原 panel 中心；修复命中完整节点路径导致短名动作无法分发，优先命中小的说明按钮，原 SkillInfoNode 展示原表说明。原版发招/特效/结果页、强制引导与菜单显示状态仍未完整对照 |
+| 赛宠嘉年华 | `Formula_GetRunningPetWinProbability` 0x2b5db4、`RunningPetReadyUILayer::getWinnerIndex` 0x3abf78、`handleResult` 0x3abfd0、`getBetMaxMedalCount` 0x3ab664、`RunningPetUILayer::getWinnerRunTime` 0x3ad1e0、`getRandomRunningPetRunTime` 0x3add04、`gameDone` 0x3ad9a8；RunningPet/MedalShop 801 | 胜率 `1/(1.2+倍率/3)`；先掷 1–100，命中则所选宠物夺冠，否则随机一只其他宠物；中奖结算 `int(押注*(倍率-1))`，失败扣押注，货币 700008；默认 10、上限 `min(持有,9999)`，左右按 10/上限循环；冠军时间 8.0 秒，其他选手按 `101–105%` 与 `110–130%` 双界随机；UI 39–42 用四只 `zq1–7` 原始骨架。MedalShop 801 = 1 徽章换 100 奖牌。`tools/check_running_pet.py` 覆盖公式、输赢原子结算、左右循环、存档、UI 39–43、8 秒时间轴转结果页 |
+| 连续登录 | `ContinuousLogin` 7 行、`PlayerDataManager::getContinuousLoginDays` 0x3291c5、`setContinuousLoginDays` 0x3291d9、`ContinuousLoginUILayer::getButtonRespond` 0x36161f | 第 1–7 天原奖励依次为大师球×1、徽章×5、神秘蛋×1、220009×10、220008×10、240012×1、280002×20；同一天不可重复领取；超过一天未登录回到第 1 天；领取与库存写入同一事务。`tools/check_continuous_login.py` 覆盖 7 天表、断签、重复领取、原子失败、真实 UI 12 |
 
 ## 测试和审计
 
@@ -42,7 +44,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：32 个原版 UI 布局、74 个可见 Button 的真实命中区、pressed 纹理、27 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：39 个原版 UI 布局、98 个可见 Button 的真实命中区、pressed 纹理、32 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。
@@ -53,6 +55,9 @@
 - `tools/check_battle_animation.py`：真实战斗事件 → 突进/受击/伤害飘字像素变化 → 时间线结束。
 - `tools/check_treasure.py`：藏宝图购买/附赠放大镜、随机 TChestPos、显现、真实地图 actor 与 TChest 开箱，
   UI 24/37/38，以及重复开启和货币不足的原子拒绝。
+- `tools/check_running_pet.py`：赛宠原概率/倍率结算、押注左右循环、8 秒冠军时间轴、四只 zq 骨架合成、
+  UI 39–43 与 MedalShop 801 的 1 徽章 → 100 奖牌兑换。
+- `tools/check_continuous_login.py`：原版 7 天奖励、同日重复拒绝、断签重置、原子失败和真实 UI 12。
 - `tools/check_native.py`：地图读取和预览；不代表全地图剧情可通关。
 - `tools/check_mounts.py`：5 种坐骑 × 4 种地图 × 6 种地形/越界的 120 项判断，以及自动换乘、手动飞行、试乘、存档和真实移动入口回归；遍历 431 张地图检查 collideTile 保真。不是完整原版步行通关对照。
 - `tools/check_battle_clicks.py`：真实 Tk Canvas 的 Button-1 事件，检查两侧宠物菜单、补血/补蓝/背包/换宠、普通攻击/技能推进真实战斗回合、说明按钮不误发招以及关闭、静态帧复用。尚不是全部按钮/全部分辨率覆盖。
@@ -61,8 +66,9 @@
 
 ## 仍未完成
 
-融合/合体已接入核心逻辑，但完整原版动画、坐骑商店/破障交互、竞技场/无限竞技场/试炼塔、地图障碍、
-赛跑、成就与每日任务、连续登录和礼包发货等交互；
+融合/合体已接入核心逻辑，但完整原版动画、坐骑商店/破障交互、圣兽使者、试炼塔、地图障碍、
+成就与每日任务、排行榜领奖和礼包发货等交互仍未完成；
+赛宠与连续登录已接入核心表与界面，但赛跑原版粒子/音频、连续登录的服务器时间/跨设备校准仍待核对。
 全部技能状态和 AI 的原版对照、全部主支线通关测试、动态 Spine 动画和音频、
 原 Android 存档兼容、全 UI 的原交互与布局。已有实现也仍需要针对原版逐项比较。
 不以占位窗口、自动判胜或手工发奖励视为完成。

@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.6%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.7%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.6 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.7 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -24,7 +24,11 @@
 `openui 19/20 → closeui yes → fight type=5`、五层 IArenaNpc 队伍、徽章消耗、荣誉/层数推进和商店。
 0.2.6 接入原版藏宝图购买、放大镜显现、随机 `TChestPos` 地图宝箱、`TChest` 开箱与开箱光效，
 并补齐内部 UI 37/38；战斗事件现在有突进、受击闪烁、伤害飘字和血条缓动。
-**这些改动仍不代表完整复刻**：赛宠、圣兽使者、礼包发货、
+0.2.7 接入原版赛宠嘉年华：`RunningPet` 数据随机四只赛宠、`Formula_GetRunningPetWinProbability`
+原公式、`RunningPetReadyUILayer::handleResult` 原倍率结算、10–9999 奖牌押注与左右循环、
+8 秒冠军时间轴、四只 `zq` 原始骨架、结果页与 `MedalShop` 801（1 徽章换 100 奖牌）。
+同版本接入原版连续登录 7 天奖励表、同日防重复、断签重置和原奖励原子发放。
+**这些改动仍不代表完整复刻**：圣兽使者、试炼塔、礼包发货、成就/排行榜领奖、
 地图障碍、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
 
 核对地址、测试及差异见 [规则核对记录](docs/MECHANICS_EVIDENCE.md)。
@@ -35,8 +39,8 @@
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.6/口袋妖怪-PC移植开发版0.2.6.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.6.zip`](publish/release/pokemon-pc-0.2.6.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.7/口袋妖怪-PC移植开发版0.2.7.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.7.zip`](publish/release/pokemon-pc-0.2.7.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -174,6 +178,12 @@ py -3.12 -m venv .venv
 
 # 藏宝图购买、放大镜显现、地图宝箱、UI 24/37/38、真实事件 closeui yes
 .\.venv\Scripts\python.exe tools\check_treasure.py
+
+# 赛宠：原公式/原结算/押注循环、四骨架 8 秒比赛、结果页与 MedalShop 801
+.\.venv\Scripts\python.exe tools\check_running_pet.py
+
+# 连续登录：7 天原表、同日防重复、断签重置、原子发放
+.\.venv\Scripts\python.exe tools\check_continuous_login.py
 
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6
 .\.venv\Scripts\python.exe build\_host_debug.py

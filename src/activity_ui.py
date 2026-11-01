@@ -1,13 +1,61 @@
 """Interactive native controls for recovered economy/activity systems."""
+import os
+import time
 import tkinter as tk
-from PIL import ImageTk
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 from activities import Activities
 from arena import ArenaProgress
+from continuous_login import ContinuousLogin
 from infinite_arena import InfiniteArenaProgress
 from treasure import TreasureHunt
+from running_pet import RunningPetGame
 
 
 class ActivityUI:
+    def _login_body(self, body, info):
+        login = ContinuousLogin(self.state)
+        box = tk.Listbox(body, width=76, height=7, exportselection=False)
+        box.pack(fill='x')
+        def name_of(kid):
+            for table in ('Item', 'Money', 'Pet'):
+                if str(kid) in self.data.tables.get(table, {}):
+                    return self.data.tables[table][str(kid)]['name']
+            return str(kid)
+        def refresh():
+            status = login.status()
+            box.delete(0, 'end')
+            for index, row in enumerate(login.rewards(), start=1):
+                mark = '已领取' if index <= status['day'] else (
+                    '今日可领' if index == status['next_day'] and not status['claimed_today']
+                    else '未领取')
+                box.insert('end', f'第 {index} 天 · {name_of(row["rewardKid"])} ×'
+                                  f'{row["rewardCount"]} · {mark}')
+            if status['complete']:
+                info.set('连续登录七天奖励已经全部领取。')
+            elif status['claimed_today']:
+                info.set('今天已经领取；明天再来领取下一天奖励。')
+            elif status['reset']:
+                info.set('中断超过一天，连续登录从第一天重新开始。')
+            else:
+                row = login.rewards()[status['next_day']-1]
+                info.set(f'{row["des"]}{name_of(row["rewardKid"])} × {row["rewardCount"]}')
+        def claim():
+            try:
+                result = login.claim()
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            refresh()
+            info.set(f'领取成功：{name_of(result["reward"])} × {result["count"]}。'
+                     '明天可继续领取。')
+        self.ui_actions['get_Button'] = claim
+        self.ui_actions['receive_Button'] = claim
+        self.ui_actions['confirm_Button'] = claim
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        tk.Button(body, text='领取今日奖励', command=claim).pack(pady=4)
+        refresh()
+
     def _hatch_body(self, body, info):
         from tkinter import ttk
         activity = Activities(self.state)
@@ -565,21 +613,285 @@ class ActivityUI:
         self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
         tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
 
+    def _running_open(self, uiid):
+        from event_runtime import Request
+        self.open_ui(Request('openui', 'running-pet', 1,
+                             {'parameters': {'uiid': uiid}}))
+
     def _running_body(self, body, info):
-        rows = list(self.data.tables['RunningPet'].values())
-        box = tk.Listbox(body, width=36, height=7)
-        box.pack(fill='x')
-        for row in rows:
-            box.insert('end', f'{row["name"]}：{row["des"]}')
-        if rows:
-            box.selection_set(0)
+        """RunningPetWelUI: original medal gate and join button."""
+        game = RunningPetGame(self.state)
+        medals = self.state.count(game.MEDAL)
+        info.set(f'参加宠物赛跑可以获得游戏奖牌，换取精美礼品。\n'
+                 f'当前游戏奖牌：{medals}\n报名至少需要 {game.MIN_BET} 枚；'
+                 f'押注获胜按每只赛宠的原始倍率结算。')
         def join():
-            if not box.curselection():
+            if not game.can_enter():
+                self._running_open(43)
                 return
-            row = rows[box.curselection()[0]]
-            info.set(f'赛宠报名：{row["name"]}；原版赛跑小游戏尚未接入。')
+            self.running_session = game.new_session()
+            self._running_open(40)
         self.ui_actions['join_Button'] = join
-        tk.Button(body, text='报名', command=join).pack(pady=4)
+        self.ui_actions['confirm_Button'] = join
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        tk.Button(body, text='参加赛跑', command=join).pack(pady=4)
+
+    def _running_medal_body(self, body, info):
+        """Original MedalShop row 801: 1 badge -> 100 running-pet medals."""
+        row = self.data.tables.get('MedalShop', {}).get('801')
+        if not row:
+            info.set('原版 MedalShop 缺少 801 奖牌商品。')
+            self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+            return
+        money = self.data.tables['Money'][str(row['moneyType'])]['name']
+        goods = self.data.tables['Money'][str(row['goodsKid'])]['name']
+        price, count_got = int(row['price']), int(row['gotCount'])
+        info.set(f'{row["name"]}：{row.get("des", "")}\n'
+                 f'花费 {price} {money}，获得 {count_got} {goods}；'
+                 f'当前{money} {self.state.count(row["moneyType"])}。')
+        def buy():
+            if self.state.count(row['moneyType']) < price:
+                info.set(f'{money}不足，无法购买 {count_got} 枚奖牌。')
+                return
+            with self.state.transaction():
+                self.state.consume([row['moneyType']], [price])
+                self.state.grant(row['goodsKid'], count_got)
+            self.running_session = None
+            self.running_result = None
+            self._running_open(39)
+        self.ui_actions['confirm_Button'] = buy
+        self.ui_actions['buy_Button'] = buy
+        for key in ('left_Button', 'right_Button'):
+            self.ui_actions[key] = lambda: info.set('原版奖牌商品固定购买 1 组（100 枚）。')
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        tk.Button(body, text=f'购买 {count_got} 枚奖牌', command=buy).pack(pady=4)
+
+    def _running_ready_body(self, body, info):
+        game = RunningPetGame(self.state)
+        if not self.running_session or self.running_session.get('settled'):
+            try:
+                self.running_session = game.new_session()
+            except ValueError:
+                info.set('游戏奖牌不足 10 枚，无法报名赛跑。')
+                for key in ('left_Button', 'right_Button', 'confirm_Button'):
+                    self.ui_actions[key] = lambda: info.set('游戏奖牌不足 10 枚，无法报名赛跑。')
+                self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+                return
+        session = self.running_session
+        choices = tk.Frame(body)
+        choices.pack(fill='x')
+        buttons = []
+        def update_art():
+            label = getattr(self, 'ui_art_label', None)
+            if label is None:
+                return
+            row = session['contenders'][session['selected']]
+            layer = self.cocos_ui.render(
+                'RunningPetReadyUI', (800, 480),
+                {'num_BitmapFontLabel': str(session['selected']+1),
+                 'override_BitmapFontLabel': f'{row["override"]:.1f}',
+                 'count_BitmapFontLabel': str(session['bet']),
+                 'have_BitmapFontLabel': f'x{self.state.count(game.MEDAL)}'})
+            self.ui_base_layer = layer.copy()
+            self.ui_hits = dict(self.cocos_ui.hits)
+            self.ui_buttons = dict(self.cocos_ui.buttons)
+            self.ui_button_text = dict(self.cocos_ui.button_text)
+            photo = ImageTk.PhotoImage(layer)
+            label.config(image=photo)
+            label.image = photo
+        def refresh():
+            for button in buttons:
+                button.destroy()
+            buttons.clear()
+            selected = session['selected']
+            for contender in session['contenders']:
+                mark = '▶ ' if contender['index'] == selected else ''
+                button = tk.Button(
+                    choices, text=(f'{mark}{contender["index"]+1}号 '
+                                   f'{contender["name"]} · 倍率 {contender["override"]:.1f}'),
+                    command=lambda i=contender['index']: choose(i))
+                button.pack(side='left', padx=2, pady=2)
+                buttons.append(button)
+            row = session['contenders'][selected]
+            update_art()
+            info.set(f'请选择 1–4 号赛宠；当前选择 {selected+1} 号 {row["name"]}。\n'
+                     f'原始胜率公式 1/(1.2+倍率/3)，当前约 '
+                     f'{game.win_probability(row["override"])*100:.1f}%；'
+                     f'押注 {session["bet"]}，上限 {game.max_bet()}。')
+        def choose(index):
+            game.select(session, index)
+            refresh()
+        def step(delta):
+            game.adjust_bet(session, delta)
+            refresh()
+        def confirm():
+            try:
+                game.settle(session)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            self.running_result = session
+            self._running_open(41)
+        self.ui_actions['left_Button'] = lambda: step(-1)
+        self.ui_actions['right_Button'] = lambda: step(1)
+        self.ui_actions['confirm_Button'] = confirm
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        refresh()
+        tk.Button(body, text='押注 -1', command=lambda: step(-1)).pack(side='left', padx=3)
+        tk.Button(body, text='押注 +1', command=lambda: step(1)).pack(side='left', padx=3)
+        tk.Button(body, text='开始比赛', command=confirm).pack(side='left', padx=8)
+
+    def _running_result_body(self, body, info):
+        session = getattr(self, 'running_result', None)
+        if not session:
+            info.set('当前没有赛跑结果。')
+            self.ui_actions['confirm_Button'] = lambda: info.set('当前没有赛跑结果。')
+            self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+            return
+        game = RunningPetGame(self.state)
+        info.set(game.result_text(session)
+                 + f'\n连胜：{self.state.activities.get("running_pet", {}).get("streak", 0)} 次'
+                 + f' · 当前拥有：{self.state.count(game.MEDAL)} 枚。')
+        won = bool(session.get('winner') == session.get('selected'))
+        stats = self.state.activities.get('running_pet', {})
+        label = getattr(self, 'ui_art_label', None)
+        if label is not None:
+            mapping = {
+                'winTimes_BitmapFontLabel': str(stats.get('streak', 0)),
+                'get_BitmapFontLabel': f'x{abs(int(session.get("delta", 0)))}',
+                'have_BitmapFontLabel': f'x{self.state.count(game.MEDAL)}',
+            }
+            visible = {
+                'winTitle_Text': won, 'winTip_Text': won,
+                'winTimesTag_Text': False, 'winTimes_BitmapFontLabel': False,
+                'times_Text': False, 'getTag_Text': won, 'get_Sprite': won,
+                'get_BitmapFontLabel': won,
+                'loseTitle_Text': not won, 'loseTip_Text': not won,
+            }
+            layer = self.cocos_ui.render('RunningPetResultUI', (800, 480),
+                                         mapping, visible)
+            self.ui_base_layer = layer.copy()
+            self.ui_hits = dict(self.cocos_ui.hits)
+            self.ui_buttons = dict(self.cocos_ui.buttons)
+            self.ui_button_text = dict(self.cocos_ui.button_text)
+            photo = ImageTk.PhotoImage(layer)
+            label.config(image=photo)
+            label.image = photo
+        def again():
+            try:
+                self.running_session = game.new_session()
+            except ValueError as error:
+                info.set(str(error))
+                return
+            self.running_result = None
+            self._running_open(40)
+        self.ui_actions['confirm_Button'] = again
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        tk.Button(body, text='继续参赛', command=again).pack(pady=4)
+
+    def _running_race_body(self, body, info):
+        """RunningPetMapUI: four original armatures, 8s winner timeline."""
+        session = getattr(self, 'running_result', None)
+        if not session or not session.get('times'):
+            info.set('没有正在进行的赛跑。')
+            self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+            for key in ('num_Button', 'numSelected_Button'):
+                self.ui_actions[key] = lambda: info.set('没有正在进行的赛跑。')
+            return
+        label = getattr(self, 'ui_art_label', None)
+        if label is None:
+            info.set('原版赛跑地图未加载。')
+            self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+            for key in ('num_Button', 'numSelected_Button'):
+                self.ui_actions[key] = lambda: info.set('原版赛跑地图未加载。')
+            return
+        base = self.ui_base_layer.copy()
+        # RunningPetMapUI serialises its four RunnerNode placeholders and a
+        # static countdown "3" in the layout. The original scene replaces those
+        # at runtime; erase the placeholder art with track texture and draw the
+        # live HUD/countdown on top instead of leaving duplicated labels.
+        try:
+            clean_track = base.crop((500, 145, 660, 300))
+            base.paste(clean_track, (325, 145))
+        except ValueError:
+            pass
+        token = object()
+        self.running_race_token = token
+        started = time.monotonic()
+        self.running_race_done = False
+        font_path = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'
+        try:
+            font = ImageFont.truetype(str(font_path), 16)
+            small = ImageFont.truetype(str(font_path), 12)
+            big = ImageFont.truetype(str(font_path), 64)
+        except OSError:
+            font = small = big = ImageFont.load_default()
+        def draw_race():
+            if (getattr(self, 'running_race_token', None) is not token
+                    or not self.ui_window or not self.ui_window.winfo_exists()):
+                return
+            elapsed = time.monotonic()-started
+            frame = base.copy()
+            draw = ImageDraw.Draw(frame)
+            # Left lane HUD covers the serialised placeholder number/odds nodes.
+            draw.rectangle((0, 0, 207, 480), fill=(25, 36, 29, 238))
+            draw.line((207, 0, 207, 480), fill=(255, 226, 130, 180), width=2)
+            # Start countdown occupies the area where the layout stores its
+            # static "3" sprite; after three seconds only clean track remains.
+            if elapsed < 3.0:
+                count = max(1, 3-int(elapsed))
+                draw.rounded_rectangle((360, 170, 448, 270), radius=18,
+                                       fill=(25, 36, 29, 214),
+                                       outline=(255, 226, 130, 220), width=3)
+                draw.text((392, 178), str(count), font=big, fill='#ffe36e')
+            for index, contender in enumerate(session['contenders']):
+                run_time = session['times'][index]
+                ratio = min(1.0, elapsed/run_time)
+                x0, x1 = 226, 724
+                x = x0 + (x1-x0)*ratio
+                y = 132 + index*78
+                image = self.data.armature(contender['filePath'], 'standdown')
+                if image is not None:
+                    image = image.copy()
+                    image.thumbnail((88, 60), Image.Resampling.LANCZOS)
+                    frame.alpha_composite(image, (round(x-image.width/2),
+                                                  round(y-image.height)))
+                selected = index == session['selected']
+                color = '#ffe36e' if selected else '#f2e7cf'
+                draw.rounded_rectangle((12, y-52, 198, y-24), radius=5,
+                                       fill=(48, 62, 47, 235))
+                draw.text((18, y-51), f'{index+1} {contender["name"]}  '
+                                      f'×{contender["override"]:.1f}',
+                          font=small, fill=color)
+                if selected:
+                    draw.polygon(((211, y-8), (223, y), (211, y+8)),
+                                 fill='#ffe36e')
+                draw.line((x0, y, x1, y), fill=(255, 230, 130, 110), width=2)
+                draw.ellipse((x-5, y-5, x+5, y+5), fill=color)
+                if ratio >= 1.0:
+                    draw.text((x1-3, y-50), '冠军', font=small, fill='#ffe36e')
+            draw.rounded_rectangle((260, 12, 540, 46), radius=8,
+                                   fill=(32, 43, 36, 210))
+            draw.text((272, 18), f'赛跑中… {elapsed:4.1f}s / 8.0s',
+                      font=font, fill='#fff3d0')
+            photo = ImageTk.PhotoImage(frame)
+            self.running_race_frame = frame
+            label.config(image=photo)
+            label.image = photo
+            if elapsed >= RunningPetGame.WINNER_RUN_TIME and not self.running_race_done:
+                self.running_race_done = True
+                self.root.after(350, finish)
+                return
+            self.root.after(40, draw_race)
+        def finish():
+            if getattr(self, 'running_race_token', None) is not token:
+                return
+            self._running_open(42)
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        for key in ('num_Button', 'numSelected_Button'):
+            self.ui_actions[key] = lambda: info.set('比赛已经开始，不能更改选择。')
+        info.set('比赛进行中：冠军将在 8 秒内到达终点。')
+        draw_race()
 
     def _rank_body(self, body, info):
         pages = {
