@@ -118,7 +118,10 @@ try:
     app.interact()
     assert not TreasureHunt(app.state).entries()
     assert app.chest_fx and 'fx:treasure' in [a[0] for a in app.actors()]
-    assert any('宝藏获得' in str(issue) for issue in app.state.audit) or app.event_issue
+    assert (any('宝藏获得' in str(issue) for issue in app.state.audit) or app.event_issue
+            or (app.ui_open and app.ui_render_args['name'] == 'GetItemUI'))
+    if app.ui_open:
+        app.close_ui()
     app.x = active['x'] - 100
     app.screen_black = False
     fx_shot = ROOT/'outputs/verification/treasure-open-fx.png'

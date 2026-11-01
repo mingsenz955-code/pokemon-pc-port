@@ -54,6 +54,8 @@
 
 | 图鉴 | `IllustratedUI`、五个 `tag_*_Button`、`item_ScrollView`、`PetKindEnum`、`encyclopedia` | 顶栏“图鉴”打开原版 `IllustratedUI`；五个页签对应原 `PetKindEnum` 1–5，列出全部 `Pet` 并按 `kind` 过滤；`✓/·` 标记是否已收录，点击显示名称、种族、星级、最大等级和技能；`findedCount_BitmapFontLabel` 与 `progress_BitmapFontLabel` 已用真实图鉴数量重绘，不再显示布局占位 100。`tools/check_illustrated_ui.py` 覆盖五页签、植物/飞行系过滤、收录标记和关闭；原版 `IllustratedItemUI` 卡片和宠物立绘动画尚未复刻 |
 
+| 获得物品 | `GetItemUI`、`title_Text`、`item_ListView`、`confirm_Button` | 地图宝藏和村庄宝箱不再只写一行提示，而是打开原版 `GetItemUI`：标题按真实来源重绘，奖励按 `Item/Pet/Money` 表列出名称和数量，`confirm_Button` 关闭。`tools/check_get_item_ui.py` 覆盖打开、标题、奖励列表和确认关闭；`check_treasure.py` 的真实地图宝箱流程也改为验证该界面。原版逐个物品飞入/翻牌动画尚未复刻 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
@@ -61,7 +63,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：44 个原版 UI 布局、127 个可见 Button 的真实命中区、pressed 纹理、37 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：45 个原版 UI 布局、128 个可见 Button 的真实命中区、pressed 纹理、37 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。

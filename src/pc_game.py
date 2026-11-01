@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.20（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.21（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -371,6 +371,7 @@ class NativeGame(ActivityUI, Preview):
         46: ('BagUI', '背包'),
         47: ('PetListUI', '宠物'),
         48: ('IllustratedUI', '图鉴'),
+        49: ('GetItemUI', '获得物品'),
     }
 
     def open_ui(self, request):
@@ -488,6 +489,8 @@ class NativeGame(ActivityUI, Preview):
             self._pet_list_body(body, info)
         elif uiid == 48:
             self._illustrated_overview_body(body, info)
+        elif uiid == 49:
+            self._get_item_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -795,7 +798,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.20')
+        win.title('任务指引 · 原生 0.2.21')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -876,7 +879,7 @@ class NativeGame(ActivityUI, Preview):
                                                    .get(str(entry.get('chest_id')), {})
                                                    .get('spriteId', '30002')),
                                      'age': 0}
-                self.event_issue = f'宝藏获得：{row.get("name", item_id)} × {count}'
+                self.show_reward('宝藏获得', [(item_id, count)])
             except (ValueError, KeyError) as error:
                 self.event_issue = str(error)
             return
@@ -884,12 +887,7 @@ class NativeGame(ActivityUI, Preview):
             from activities import Activities
             try:
                 rewards = Activities(self.state).open_village_chest(oid)
-                names = []
-                for key, count in rewards:
-                    row = (self.data.tables['Item'].get(str(key)) or self.data.tables['Pet'].get(str(key))
-                           or self.data.tables['Money'].get(str(key), {}))
-                    names.append(f'{row.get("name", key)} × {count}')
-                self.event_issue = '宝箱获得：'+'、'.join(names)
+                self.show_reward('宝箱获得', rewards)
             except (ValueError, KeyError) as error:
                 self.event_issue = str(error)
             return
@@ -1465,6 +1463,47 @@ class NativeGame(ActivityUI, Preview):
         box.insert('1.0', content)
         box.config(state='disabled')
         return win
+
+    def show_reward(self, title, items):
+        """Open the original GetItemUI for a real reward list."""
+        if not items:
+            return
+        if self.ui_open:
+            self.event_issue = title + '：' + '、'.join(
+                f'{self.data.tables["Item"].get(str(key), self.data.tables["Pet"].get(str(key), self.data.tables["Money"].get(str(key), {}))).get("name", key)} × {count}'
+                for key, count in items)
+            return
+        self.open_ui(Request('openui', 'get-item', 1, {
+            'parameters': {'uiid': 49, 'title': title, 'items': list(items)}}))
+
+    def _get_item_body(self, body, info):
+        parameters = self.ui_parameters
+        title = str(parameters.get('title', '获得物品'))
+        items = list(parameters.get('items', []))
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('GetItemUI', (800, 480), {'title_Text': title})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        rect = self.ui_hits.get('item_ListView') or self.ui_rects.get('item_ListView')
+        if rect:
+            frame.place(x=rect[0], y=rect[1], width=max(120, rect[2]-rect[0]),
+                        height=max(100, rect[3]-rect[1]))
+            frame.lift()
+        else:
+            frame.pack(fill='both', expand=True)
+        box = tk.Listbox(frame, width=36, height=7, font=('Microsoft YaHei UI', 10),
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        box.pack(fill='both', expand=True)
+        for key, count in items:
+            row = (self.data.tables['Item'].get(str(key))
+                   or self.data.tables['Pet'].get(str(key))
+                   or self.data.tables['Money'].get(str(key), {}))
+            box.insert('end', f'{row.get("name", key)} × {count}')
+        info.set(f'{title}：{len(items)} 项奖励')
+        self.ui_actions['confirm_Button'] = self.close_ui
+        self.ui_actions['close_Button'] = self.close_ui
 
     def illustrated_ui(self):
         if self.battle or self.ui_open:
