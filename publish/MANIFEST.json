@@ -1,0 +1,162 @@
+{
+  "files": [
+    {
+      "path": "release/pokemon-pc-0.1.zip.part01",
+      "source": "outputs/口袋妖怪-PC移植验证版.zip",
+      "bytes": 36700160,
+      "sha256": "30cd11981c5b5175cdef2b12b82b914d36e7de13179db32b9b852689ee613eff",
+      "part": 1,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.1.zip.part02",
+      "source": "outputs/口袋妖怪-PC移植验证版.zip",
+      "bytes": 36700160,
+      "sha256": "e8920bc3e980c225ff40605bb15c5fb6f6c387a8202483b3a6c4a1023df88e79",
+      "part": 2,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.1.zip.part03",
+      "source": "outputs/口袋妖怪-PC移植验证版.zip",
+      "bytes": 8591846,
+      "sha256": "125ae6303847e0ce02ed6081c659fda1638552cbd6d75495e16a462a235ac30c",
+      "part": 3,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.2.zip.part01",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.zip",
+      "bytes": 36700160,
+      "sha256": "03716cc73fcd871ae13e8fa6235d77e071b8af0015a99ae15aedffcf1466309d",
+      "part": 1,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.2.zip.part02",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.zip",
+      "bytes": 36700160,
+      "sha256": "8d3fc7c3e55ff809594840ef752bb63a7c9cf44cf932c120ead3fcebf67add0c",
+      "part": 2,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.2.zip.part03",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.zip",
+      "bytes": 7945410,
+      "sha256": "aa41c3454be25c51df5974234c785cccbfe7544d79ea4fd434cbd4df7b3f8c65",
+      "part": 3,
+      "of": 3
+    },
+    {
+      "path": "resources/pokemon-1.20.4-original.apk.part01",
+      "source": "resources/口袋妖怪_1.20.4_候选旧版.apk",
+      "bytes": 36700160,
+      "sha256": "f83e6475e52ee80eeb11a9bdb371dbe5f24eae57905397efd9e0bebb16f768e9",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "resources/pokemon-1.20.4-original.apk.part02",
+      "source": "resources/口袋妖怪_1.20.4_候选旧版.apk",
+      "bytes": 29779336,
+      "sha256": "6161f6c6b8bde95bd58712badc2db4d351dc537ff5f7841d06e379b005c33378",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "resources/pokemon-1.33.0-mod.apk.part01",
+      "source": "resources/口袋妖怪_1.33.0_玩家修改包.apk",
+      "bytes": 36700160,
+      "sha256": "7ccfc9fd86796e8b9a98a55013dc06f0f44f5ab756aff8ee3048226cb331c53a",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "resources/pokemon-1.33.0-mod.apk.part02",
+      "source": "resources/口袋妖怪_1.33.0_玩家修改包.apk",
+      "bytes": 15697712,
+      "sha256": "640af3aa7ae40e5e89ee7e2ee9e53e0ee08ee269f13cef640b0ab309be055380",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "research/early_mod_1.1.0.apk.part01",
+      "source": "research/early_mod_1.1.0.apk",
+      "bytes": 36700160,
+      "sha256": "98297fb0b4ba9dc7d80057ecf19263d2acf90f565d0be7da419c586c41d1392c",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "research/early_mod_1.1.0.apk.part02",
+      "source": "research/early_mod_1.1.0.apk",
+      "bytes": 1356084,
+      "sha256": "7f6bd6ebf85280e17440849e89bd720c9c8f551abe90175293e7a71032752c37",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "archive/original-1.20.4.zip.part01",
+      "source": "archive/original-1.20.4.zip",
+      "bytes": 36700160,
+      "sha256": "3e2018a168beb89f734dd19f48b6ea5ce871c0300dddb5bd3bcefa678ba4f543",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "archive/original-1.20.4.zip.part02",
+      "source": "archive/original-1.20.4.zip",
+      "bytes": 9175436,
+      "sha256": "9569a3954ac031aba5a4b49ef3fc2fa4fa3f77cd312a6ad5d7ccc44f10c4e9bf",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "archive/research-extracted.zip.part01",
+      "source": "archive/research-extracted.zip",
+      "bytes": 36700160,
+      "sha256": "09b7939077316b25908ecf4be9d3db6fce20722153335a78f60c7a43c75da2a1",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "archive/research-extracted.zip.part02",
+      "source": "archive/research-extracted.zip",
+      "bytes": 11922521,
+      "sha256": "dfe99dd8de5842f6987d04ff7685dfbce82112b4abf84ccf1e9df03f756e9e26",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "archive/outputs-verification.zip",
+      "source": "archive/outputs-verification.zip",
+      "bytes": 19243279,
+      "sha256": "cfcd968a47c04bd705395254197889ece629ceff01ed1f9a51eccd4749bc5ffe"
+    },
+    {
+      "path": "archive/research-root.zip",
+      "source": "archive/research-root.zip",
+      "bytes": 3039844,
+      "sha256": "c86c52a2174b173b16b6b2af98aa207faf6f94334225a217862602b8be8850d9"
+    },
+    {
+      "path": "research/original-core.so",
+      "source": "research/original-core.so",
+      "bytes": 8226468,
+      "sha256": "4580d73ae47e66f67c7d12afd8bfaedf321279db5720a9befeb833d2a142d0cc"
+    },
+    {
+      "path": "research/demangled-symbols.json",
+      "source": "research/demangled-symbols.json",
+      "bytes": 5447220,
+      "sha256": "2c533b520c892e5e833579e2c1991bfda0289168dc4eb28bc856e3001dfadcca"
+    },
+    {
+      "path": "research/original-symbols.json",
+      "source": "research/original-symbols.json",
+      "bytes": 2839745,
+      "sha256": "81c0d82be048eb983529291e221a06b59befd490293b863e835bf6202df6e54c"
+    }
+  ]
+}
