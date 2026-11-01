@@ -20,6 +20,7 @@ from csb_render import CocosUI
 from battle import make_npc_battle, make_wild_battle
 from arena import ArenaProgress, make_arena_battle
 from infinite_arena import InfiniteArenaProgress, make_infinite_arena_battle
+from budokan import BudokanProgress, make_budokan_battle
 from battle_ui import BattleUI
 from activity_ui import ActivityUI
 from task_progress import TaskProgress
@@ -71,7 +72,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.7（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.8（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -263,7 +264,7 @@ class NativeGame(ActivityUI, Preview):
         9: ('AreaMapUI', '地区地图'), 10: ('ArenaInfoUI', '竞技场'),
         11: ('CureConfirmUI', '宠物治疗'), 12: ('ContinuousLoginUI', '连续登录'),
         13: ('TrialPetUI', '宠物使者'), 14: ('SaveConfirmUI', '保存进度'),
-        15: ('TrialTowerUI', '试炼塔'), 16: ('BuyPetUI', '坐骑商店'),
+        15: ('TrialTowerUI', '道馆试练'), 16: ('BuyPetUI', '坐骑商店'),
         17: ('BuyPetUI', '宠物商店'), 18: ('MergePetUI', '宠物融合'),
         19: ('InfiniteArenaUI', '无限竞技场'), 20: ('InfiniteArenaEnterConfirmUI', '无限竞技场入场'),
         21: ('InfiniteArenaQuitConfirmUI', '无限竞技场退出'), 22: ('InfiniteArenaShopUI', '竞技场商店'),
@@ -322,7 +323,8 @@ class NativeGame(ActivityUI, Preview):
         info = tk.StringVar()
         self.ui_info = info
         tk.Label(body, textvariable=info, bg='#202b30', fg='#f2e7cf',
-                 font=('Microsoft YaHei UI', 10), justify='left').pack(anchor='w')
+                 font=('Microsoft YaHei UI', 10), justify='left',
+                 wraplength=760).pack(anchor='w')
         if uiid == 12:
             self._login_body(body, info)
         elif uiid == 11:
@@ -366,6 +368,8 @@ class NativeGame(ActivityUI, Preview):
             self._arena_body(body, info, parameters.get('par1'), int(parameters.get('par2', 1) or 1))
         elif uiid == 13:
             self._trial_body(body, info)
+        elif uiid == 15:
+            self._budokan_body(body, info, parameters.get('par1') or 1)
         elif uiid == 25:
             self._running_body(body, info)
         elif uiid == 39:
@@ -602,7 +606,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.7')
+        win.title('任务指引 · 原生 0.2.8')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -848,6 +852,13 @@ class NativeGame(ActivityUI, Preview):
                 battle = make_infinite_arena_battle(self.data.tables, self.state.pets,
                                                     npcid, self.state.rng,
                                                     level=progress.level(npcid))
+        elif kind == 'budokan':
+            progress = BudokanProgress(self.state)
+            npc = progress.next_npc(npcid)
+            if not npc:
+                raise PendingMechanic(f'{progress.gym(npcid)["name"]} 二十场试练已经完成')
+            battle = make_budokan_battle(self.data.tables, self.state.pets,
+                                         npcid, npc['keyId'], self.state.rng)
         else:
             battle = make_npc_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
@@ -868,6 +879,7 @@ class NativeGame(ActivityUI, Preview):
         result = battle.result
         arena_battle = battle.kind == 'arena'
         infinite_battle = battle.kind == 'infinite_arena'
+        budokan_battle = battle.kind == 'budokan'
         arena_summary = None
         if result in ('win', 'caught'):
             battle.apply_rewards(self.state)
@@ -888,11 +900,22 @@ class NativeGame(ActivityUI, Preview):
                 self.battle_tips.append(
                     f'无限竞技场第 {arena_summary["level_before"]} 层通过，'
                     f'进入第 {arena_summary["level_after"]} 层，荣誉 +1。')
+        elif budokan_battle:
+            budokan_summary = BudokanProgress(self.state).finish(
+                battle.budokan_id, battle.budokan_npc_id, result)
+            self.budokan_summary = budokan_summary
+            if result == 'win':
+                drops = '、'.join(
+                    f'{self.data.tables["Item"].get(i, self.data.tables["Money"].get(i, {})).get("name", i)}×{n}'
+                    for i, n in battle.drops) or '无'
+                self.battle_tips.append(
+                    f'{budokan_summary["npc_name"]} 通过：'
+                    f'{budokan_summary["after"]} / {budokan_summary["total"]}，奖励：{drops}')
         if result == 'caught':
             pet = battle.caught_pet
             land = int(self.data.tables['Pet'][pet.species].get('kind', -1))
             TaskProgress(self.state).update('catch', int(pet.species), land, self.state.map_id)
-        elif result == 'win' and battle.kind != 'wild' and not arena_battle and not infinite_battle:
+        elif result == 'win' and battle.kind != 'wild' and not arena_battle and not infinite_battle and not budokan_battle:
             TaskProgress(self.state).update('fight', 2, 1, int(battle.source_id), -1)
             self.state.npc_fights[battle.source_id] = 1
         TaskProgress(self.state).update()
@@ -962,7 +985,7 @@ class NativeGame(ActivityUI, Preview):
                             self.runtime.resume('no')
                             continue
                     fight_type = int(parameters.get('type', 0) or 0)
-                    self.start_battle(npcid, kind={3: 'arena', 5: 'infinite_arena'}.get(fight_type))
+                    self.start_battle(npcid, kind={3: 'arena', 4: 'budokan', 5: 'infinite_arena'}.get(fight_type))
                     self.runtime.resume('start')
                     self.drive()
                     return

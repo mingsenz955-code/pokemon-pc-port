@@ -6,7 +6,9 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 from activities import Activities
 from arena import ArenaProgress
+from budokan import BudokanProgress
 from continuous_login import ContinuousLogin
+from game_state import numbers
 from infinite_arena import InfiniteArenaProgress
 from treasure import TreasureHunt
 from running_pet import RunningPetGame
@@ -612,6 +614,88 @@ class ActivityUI:
         self.ui_actions['trial_Button'] = trial
         self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
         tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
+
+    def _budokan_body(self, body, info, budokan_id=1):
+        """TrialTowerUI: twenty ordered gym battles, original event gate."""
+        progress = BudokanProgress(self.state)
+        try:
+            gym = progress.gym(budokan_id)
+            rows = progress.opponents(budokan_id)
+        except KeyError as error:
+            info.set(str(error))
+            self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+            return
+        wins = progress.wins(budokan_id)
+        total = progress.total(budokan_id)
+        current = progress.next_npc(budokan_id)
+        current_text = (f'下一位：{current.get("name", current["keyId"])}'
+                        if current else '二十场试练已全部完成')
+        info.set(f'{gym["name"]}：{wins} / {total} 场胜利。'
+                 f'{current_text}\n'
+                 '全部挑战胜利可以获得本道馆的高级进化材料；'
+                 '只能按原表顺序挑战下一位试练人。')
+        # The original TrialTowerUI serializes only its title; the twenty
+        # TrialTowerItemUI rows are created dynamically by the original
+        # layer.  Draw those rows inside the original frame rather than
+        # appending a second, unrelated Tk list below the art.
+        base = getattr(self, 'ui_base_layer', None)
+        if base is not None:
+            draw = ImageDraw.Draw(base, 'RGBA')
+            font_path = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'
+            try:
+                font = ImageFont.truetype(str(font_path), 13)
+                small = ImageFont.truetype(str(font_path), 11)
+                head = ImageFont.truetype(str(font_path), 15)
+            except OSError:
+                font = small = head = ImageFont.load_default()
+            draw.rounded_rectangle((88, 88, 780, 442), radius=8,
+                                   fill=(25, 30, 28, 235),
+                                   outline=(230, 190, 120, 180), width=2)
+            draw.text((108, 99), f'{gym["name"]}   {wins} / {total}',
+                      font=head, fill='#ffe3a0')
+            draw.text((610, 101), current_text, font=small, fill='#d9d0bd')
+            for index, npc in enumerate(rows):
+                column, row = divmod(index, 10)
+                x = 108+column*344
+                y = 130+row*30
+                if index < wins:
+                    color, mark = (142, 200, 130, 255), '✓'
+                elif index == wins:
+                    color, mark = (255, 220, 110, 255), '▶'
+                else:
+                    color, mark = (150, 150, 145, 255), '·'
+                if index == wins:
+                    draw.rounded_rectangle((x-10, y-4, x+326, y+23), radius=5,
+                                           fill=(80, 70, 35, 210))
+                pets = []
+                for key in numbers(npc.get('petIds')):
+                    pet = self.data.tables['BudokanNpcPet'].get(str(key), {})
+                    species = self.data.tables['Pet'].get(str(pet.get('petId')), {})
+                    if species:
+                        pets.append(species.get('name', pet.get('petId')))
+                text = f'{mark} {index+1:02d}  {npc.get("name", "")}'
+                if pets:
+                    text += f'  {pets[0]}等{len(pets)}只'
+                draw.text((x, y), text, font=font, fill=color)
+                draw.text((x+274, y+1), '已通过' if index < wins else (
+                    '挑战' if index == wins else '未解锁'), font=small, fill=color)
+            photo = ImageTk.PhotoImage(base)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        def accept():
+            if progress.complete(budokan_id):
+                info.set('本道馆二十场试练已经全部完成。')
+                return
+            self.close_ui('yes')
+        def leave():
+            self.close_ui('no')
+        self.ui_actions['confirm_Button'] = accept
+        self.ui_actions['challenge_Button'] = accept
+        self.ui_actions['yes_Button'] = accept
+        self.ui_actions['close_Button'] = leave
+        self.ui_actions['no_Button'] = leave
+        tk.Button(body, text='开始下一场试练', bg='#5b7c52', fg='white',
+                  command=accept).pack(pady=4)
 
     def _running_open(self, uiid):
         from event_runtime import Request
