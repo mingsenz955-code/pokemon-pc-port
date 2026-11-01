@@ -85,7 +85,8 @@ class BattleUI:
 
     def _capture_events(self):
         events = getattr(self.battle, 'events', [])
-        fresh = events[self._event_cursor:]
+        cursor = getattr(self, '_event_cursor', 0)
+        fresh = events[cursor:]
         self._event_cursor = len(events)
         if not fresh:
             return
