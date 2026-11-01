@@ -210,6 +210,9 @@ class Preview:
     def actor_animation(self, oid, sid):
         return 'closed' if str(sid) == '30001' else 'standdown'
 
+    def player_image(self, face):
+        return self.data.village_sprite(getattr(self, 'player_sprite', '10001'), face)
+
     def make_frame(self):
         focus = getattr(self, 'camera_focus', None) or (self.x, self.y)
         camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2, self.background.width-self.WIDTH))
@@ -219,12 +222,12 @@ class Preview:
         frame.alpha_composite(crop)
         entities = [(sid, x, y, self.actor_animation(oid, sid)) for oid, sid, x, y in self.actors()]
         if getattr(self, 'player_visible', True):
-            entities.append((getattr(self, 'player_sprite', '10001'), self.x, self.y, self.face))
+            entities.append((None, self.x, self.y, self.face))
         for sid, x, y, face in sorted(entities, key=lambda a: a[2]):
             sx, sy = x*self.SCALE-camx, y*self.SCALE-camy
             if not (-150 < sx < self.WIDTH+150 and -150 < sy < self.HEIGHT+150):
                 continue
-            sprite = self.data.village_sprite(sid, face)
+            sprite = self.player_image(face) if sid is None else self.data.village_sprite(sid, face)
             if sprite is None:
                 continue
             size = (max(1, round(sprite.width*self.SCALE)), max(1, round(sprite.height*self.SCALE)))
@@ -269,16 +272,14 @@ class Preview:
             dx = int(bool(self.keys & {'right', 'd'}))-int(bool(self.keys & {'left', 'a'}))
             dy = int(bool(self.keys & {'down', 's'}))-int(bool(self.keys & {'up', 'w'}))
             if dx or dy:
-                speed = 230*dt/(1.4142 if dx and dy else 1)
+                speed = self.movement_speed()*dt/(1.4142 if dx and dy else 1)
                 if dx:
                     self.face = 'standleft' if dx < 0 else 'standright'
                 elif dy:
                     self.face = 'standup' if dy < 0 else 'standdown'
                 nx, ny = self.x+dx*speed, self.y+dy*speed
-                if self.noclip or not self.map.blocked(nx, self.y):
-                    self.x = max(0, min(nx, self.map.width*64-1))
-                if self.noclip or not self.map.blocked(self.x, ny):
-                    self.y = max(0, min(ny, self.map.height*64-1))
+                self.move_to(nx, self.y)
+                self.move_to(self.x, ny)
                 self.try_exit()
         self.frame = self.make_frame()
         self.tk_image = ImageTk.PhotoImage(self.frame)
@@ -290,6 +291,14 @@ class Preview:
                                             + (' · F3穿墙核验开启' if self.noclip else '')
                                             + '   |   开发验证版：战斗、养成、任务流程尚未完成'))
         self.root.after(40, self.tick)
+
+    def move_to(self, x, y):
+        if self.noclip or not self.map.blocked(x, y):
+            self.x = max(0, min(x, self.map.width*self.map.tw-1))
+            self.y = max(0, min(y, self.map.height*self.map.th-1))
+
+    def movement_speed(self):
+        return 320.0
 
     def choose(self, title, rows, callback):
         win = tk.Toplevel(self.root)

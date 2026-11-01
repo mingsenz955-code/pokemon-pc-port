@@ -9,7 +9,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from original_data import OriginalData
 from pc_preview import Preview, data_root
@@ -20,6 +20,7 @@ from battle import make_npc_battle, make_wild_battle
 from battle_ui import BattleUI
 from activity_ui import ActivityUI
 from task_progress import TaskProgress
+from mounts import Mounts
 
 
 class NativeGame(ActivityUI, Preview):
@@ -49,14 +50,14 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.2（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
         tk.Label(top, text='口袋妖怪 · PC 移植开发版', fg='#f5d492', bg='#202b30',
                  font=('Microsoft YaHei UI', 12, 'bold')).pack(side='left', padx=14, pady=10)
         for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui), ('抽宠', self.lottery_ui),
-                                ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
+                                ('坐骑', self.mounts_ui), ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
         self.save_path = Path(os.environ.get('POCKET_NATIVE_SAVE_DIR', str(default_save)))/'slot1.json'
@@ -84,6 +85,44 @@ class NativeGame(ActivityUI, Preview):
         low = interval[0]
         high = interval[-1] if len(interval) > 1 else interval[0]
         self.encounter_threshold = self.state.rng.randint(min(low, high), max(low, high))
+
+    def move_to(self, x, y):
+        mounts = Mounts(self.state)
+        if self.noclip:
+            return super().move_to(x, y)
+        if self.map.blocked(x, y, mounts):
+            return
+        mounts.enter(self.map.terrain_at(x, y), int(self.map.info['mapType']))
+        self.x, self.y = x, y
+
+    def movement_speed(self):
+        row = Mounts(self.state).active()
+        # VillagePlayerControler::setMoveSpeed @ 0x2e0b5c.
+        return 320.0 * (int(row['speed'])/100 if row else 1)
+
+    def mounts_ui(self):
+        if self.battle or self.runtime.running or self.ui_open:
+            return
+        rows = [(0, '步行 / 下坐骑')]
+        for key, row in self.data.tables['Ride'].items():
+            owned = int(key) in [int(k) for k in self.state.rides]
+            rows.append((int(key), row['name'] + (' · 已获得' if owned else ' · 未获得')))
+        def select(key):
+            try:
+                Mounts(self.state).select(key, self.map.terrain_at(self.x, self.y),
+                                          int(self.map.info['mapType']))
+            except ValueError as error:
+                messagebox.showinfo('坐骑', str(error), parent=self.root)
+        self.choose('坐骑', rows, select)
+
+    def player_image(self, face):
+        row = Mounts(self.state).active()
+        if row:
+            animation = 'standleft' if face == 'standright' else face
+            image = self.data.armature(row['filePath'], animation)
+            if image is not None:
+                return image.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if face == 'standright' else image
+        return super().player_image(face)
 
     def check_encounter(self):
         if self.battle or self.runtime.running or self.ui_open or self.display_request or self.pending_wait:
@@ -629,7 +668,8 @@ class NativeGame(ActivityUI, Preview):
                 return
         if self.battle:
             self.steps = [1]
-            self.status.set('战斗中：点击右侧指令选择技能/道具/换宠/逃跑 · 原版技能与状态数据')
+            message = self.battle.messages[-1] if self.battle.messages else ''
+            self.status.set('点击我方宠物打开补给/换宠，点击对方宠物打开技能/捕捉 | '+message)
             return
         self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
         areas = set()

@@ -43,6 +43,9 @@ class BattleUI:
         self.ball_page = 0
         self.selected = None
         self._hud_rects = {}
+        self.target_hits = {}
+        self.item_filter = None
+        self.info = ''
 
     # -- HUD ----------------------------------------------------------------
     def _hud_layer(self, enemy):
@@ -68,6 +71,9 @@ class BattleUI:
                 5: 'speed', 6: 'all'}.get(relation, 'power')
         resources = {'kindIcon_Sprite': f'UI/pet_kind_{kind}.png'}
         layer = self.app.cocos_ui.render('BattleMainUI', (W, H), text, visible, resources)
+        for name in ('mineMenuPos_Panel', 'enemyMenuPos_Panel'):
+            if name in self.app.cocos_ui.rects:
+                self.target_hits[name] = self.app.cocos_ui.rects[name]
         self._hud_rects[side] = {
             key: value for key, value in self.app.cocos_ui.rects.items()
             if key.endswith('/hp_LoadingBar') or key.endswith('/energy_LoadingBar')}
@@ -91,6 +97,10 @@ class BattleUI:
         crop = layer.crop(bbox)
         hits = {}
         for key, (x1, y1, x2, y2) in self.app.cocos_ui.hits.items():
+            # The renderer exposes both qualified paths and short aliases.
+            # Only actionable short names belong in this dispatch table.
+            if '/' in key or not ('Button' in key):
+                continue
             if x1 >= bbox[0] and y1 >= bbox[1] and x2 <= bbox[2] and y2 <= bbox[3]:
                 hits[key] = (x1-bbox[0], y1-bbox[1], x2-bbox[0], y2-bbox[1])
         return crop, bbox[:2], hits
@@ -109,6 +119,16 @@ class BattleUI:
 
     # -- frame ---------------------------------------------------------------
     def render(self):
+        signature = (self.screen, self.page, self.ball_page, self.notice, self.info,
+                     self.item_filter, repr(self.selected), self.battle.result,
+                     self.battle.player_index, self.battle.enemy_index,
+                     tuple(self.battle.messages), repr(getattr(self.app, 'battle_tips', [])),
+                     repr(self.app.state.inventory),
+                     tuple((u.hp, u.energy, repr(u.buffs), u.pet.level) for u in
+                           self.battle.player+self.battle.enemy))
+        if self.frame is not None and getattr(self, '_signature', None) == signature:
+            return self.frame
+        self._signature = signature
         frame = Image.new('RGBA', (W, H), (20, 24, 30, 255))
         land = str(getattr(getattr(self.app, 'map', None), 'info', {}).get('landType', '1'))
         background = None
@@ -136,6 +156,8 @@ class BattleUI:
         if self.battle.result:
             self._draw_result(frame, draw)
         elif self.screen == 'main':
+            pass  # Original: tap own pet for items, opponent for skills.
+        elif self.screen == 'commands':
             self._draw_main_menu(frame)
         elif self.screen == 'skills':
             self._draw_skill_menu(frame)
@@ -154,6 +176,11 @@ class BattleUI:
         if getattr(self.app, 'battle_tips', None):
             draw.rectangle((40, 82, W-40, 124), fill=(0, 0, 0, 185))
             self._label(draw, (W//2, 103), self.app.battle_tips[-1], 18, anchor='mm')
+        if self.info:
+            layer, _, _ = self._crop_layout('SkillInfoNode', {'info_Text': self.info},
+                                            offset=(W*.35, H*.35))
+            if layer:
+                frame.alpha_composite(layer, ((W-layer.width)//2, (H-layer.height)//2))
         self.frame = frame
         return frame
 
@@ -219,15 +246,8 @@ class BattleUI:
         layer, origin, hits = self._crop_layout(
             'BattleButtonMenuNode',
             visible={'runAway_Button': bool(self.battle.can_escape)},
-            offset=(W*.82, H*.52))
+            offset=(W*168/800, H*180/480))
         self._paste(frame, layer, origin, hits)
-        draw = ImageDraw.Draw(frame, 'RGBA')
-        labels = {'energy_Button': '技能', 'bag_Button': '道具',
-                  'pet_Button': '换宠', 'runAway_Button': '逃跑'}
-        for key, label in labels.items():
-            rect = self.hits.get(key)
-            if rect:
-                self._label(draw, ((rect[0]+rect[2])//2, rect[1]-17), label, 15, anchor='ma')
 
     def _skills(self):
         unit = self.battle.player_active
@@ -248,7 +268,7 @@ class BattleUI:
             else:
                 visible[key] = False
         layer, origin, hits = self._crop_layout('BattleSkillMenuNode', text, visible,
-                                                offset=(W*.78, H*.50))
+                                                offset=(W*613/800, H*269/480))
         self._paste(frame, layer, origin, hits)
         draw = ImageDraw.Draw(frame, 'RGBA')
         for index in range(1, 5):
@@ -278,6 +298,14 @@ class BattleUI:
                 continue
             if not balls and int(row.get('useType', 0) or 0) not in (1, 2, 3):
                 continue
+            effect = self.app.data.tables.get('PetItem', {}).get(str(item_id))
+            if not balls:
+                if not effect or int(effect['type']) not in (1, 2, 3, 4):
+                    continue
+                if self.item_filter in (1, 2) and int(effect['type']) != 4:
+                    pairs = str(effect['parameters']).split(',')
+                    if str(self.item_filter) not in pairs[::2]:
+                        continue
             rows.append((str(item_id), row, count))
         return rows
 
@@ -296,18 +324,15 @@ class BattleUI:
             else:
                 visible[key] = False
         layer, origin, hits = self._crop_layout('BattleItemMenuNode', text, visible,
-                                                offset=(W*.78, H*.50))
+                                                offset=(W*168/800, H*180/480))
         self._paste(frame, layer, origin, hits)
         draw = ImageDraw.Draw(frame, 'RGBA')
         if balls:
             self._label(draw, (30, H-118), '选择精灵球；点击空白处返回', 15)
         else:
             self._label(draw, (30, H-118), f'选择战斗道具  第{page+1}页（点击中央切换）', 15)
-        centers = [self.hits.get(f'itemMenu_{i}_Button') for i in range(1, 5)]
-        centers = [r for r in centers if r]
-        if centers:
-            cx = sum((r[0]+r[2])//2 for r in centers)//len(centers)
-            cy = sum((r[1]+r[3])//2 for r in centers)//len(centers)
+        if len(all_rows) > 4:
+            cx, cy = W*168/800, H*(1-180/480)
             self.hits['item_center'] = (cx-38, cy-38, cx+38, cy+38)
 
     def _draw_pet_menu(self, frame, draw):
@@ -360,22 +385,27 @@ class BattleUI:
         self._label(draw, (512, 354), '继续', 19, anchor='mm')
 
     def _draw_log(self, frame, draw):
-        lines = self.battle.messages[-3:]
-        if not lines:
-            return
-        draw.rounded_rectangle((26, H-106, W-26, H-18), 8, fill=(0, 0, 0, 175))
-        for index, line in enumerate(lines):
-            self._label(draw, (42, H-92+index*27), line, 16, (245, 245, 245, 255))
+        # Diagnostics live in the desktop status bar, not over the original HUD.
+        return
 
     # -- input ---------------------------------------------------------------
     def click(self, x, y):
+        if self.info:
+            self.info = ''
+            return 'refresh'
         if self.battle.result:
             if self._inside(self.hits.get('result_continue'), x, y):
                 return 'finish'
             return None
-        for key, rect in self.hits.items():
+        for key, rect in sorted(self.hits.items(), key=lambda pair:
+                                (pair[1][2]-pair[1][0])*(pair[1][3]-pair[1][1])):
             if self._inside(rect, x, y):
                 return self._action(key)
+        for key, rect in self.target_hits.items():
+            if self._inside(rect, x, y):
+                self.screen = 'pets' if self.battle.force_switch else (
+                    'commands' if key == 'mineMenuPos_Panel' else 'skills')
+                return 'refresh'
         if self.screen != 'main':
             self.screen = 'main'
             return 'refresh'
@@ -387,10 +417,22 @@ class BattleUI:
 
     def _action(self, key):
         b = self.battle
-        if key == 'energy_Button':
-            self.screen = 'skills'
+        if key.startswith('skillInfo_Button_'):
+            index = int(key.rsplit('_', 1)[1])-1
+            entries = self._skills()
+            if index < len(entries):
+                row = entries[index]['row']
+                self.info = str(row.get('des', row.get('name', '')))
+        elif key.startswith('itemInfo_Button_'):
+            rows = self._battle_items(balls=self.screen == 'balls')
+            page = self.ball_page if self.screen == 'balls' else self.page
+            index = page*4+int(key.rsplit('_', 1)[1])-1
+            if index < len(rows):
+                self.info = str(rows[index][1].get('des', rows[index][1].get('name', '')))
+        elif key == 'energy_Button':
+            self.item_filter, self.page, self.screen = 2, 0, 'items'
         elif key == 'bag_Button':
-            self.screen = 'items'
+            self.item_filter, self.page, self.screen = None, 0, 'items'
         elif key == 'pet_Button':
             self.screen = 'pets'
         elif key == 'runAway_Button':
@@ -399,7 +441,7 @@ class BattleUI:
                 return self._after_action()
             self.notice = '训练师对战中不能逃跑'
         elif key == 'hp_Button':
-            self.screen = 'items'
+            self.item_filter, self.page, self.screen = 1, 0, 'items'
         elif key.startswith('skillMenu_'):
             b.choose_skill(int(key.split('_')[1]))
             self._after_action()

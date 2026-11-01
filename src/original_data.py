@@ -296,12 +296,19 @@ class OriginalMap:
                                                round(float(obj['y']))-tile.height))
         return out.resize((round(size[0]*scale), round(size[1]*scale)), Image.Resampling.LANCZOS)
 
-    def blocked(self, x, y):
+    def terrain_at(self, x, y):
+        """Original collideTile category, or None outside the map."""
         tx, ty = int(x//self.tw), int(y//self.th)
         if not (0 <= tx < self.width and 0 <= ty < self.height):
-            return True
+            return None
         for name, vals, _ in self.layers:
             if name == 'collideLayer':
                 gid = vals[ty*self.width+tx]
-                return self.tile_properties(gid).get('collideTile') == '1'
-        return False
+                return int(self.tile_properties(gid).get('collideTile', 0))
+        return 0
+
+    def blocked(self, x, y, mounts=None):
+        terrain = self.terrain_at(x, y)
+        if mounts is None:
+            return terrain != 0
+        return not mounts.can_enter(terrain, int(self.info['mapType']))

@@ -200,6 +200,10 @@ class GameState:
     def record_pet(self, species):
         if str(species) not in self.encyclopedia:
             self.encyclopedia.append(str(species))
+        # Ride.petId connects captured/evolved/purchased pets to their mount.
+        for key, row in self.tables.get('Ride', {}).items():
+            if str(row['petId']) == str(species) and int(key) not in self.rides:
+                self.rides.append(int(key))
 
     def main_matches(self, task_id, state):
         """TaskManager::compareMainTaskId: past=5, future=2; current exact."""
@@ -539,4 +543,6 @@ class GameState:
         for pet in result.pets+result.bank:
             if pet.species not in tables['Pet']:
                 raise ValueError('存档中的宠物不存在')
+        for species in list(result.encyclopedia):
+            result.record_pet(species)
         return result
