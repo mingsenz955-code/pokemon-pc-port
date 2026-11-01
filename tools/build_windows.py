@@ -7,7 +7,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
-parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.8')
+parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.9')
 parser.add_argument('--dist-dir', type=Path, default=root/'outputs')
 args = parser.parse_args()
 name = args.name
@@ -17,7 +17,7 @@ command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed', '--
            '--name', name, '--distpath', str(args.dist_dir),
            '--workpath', str(root/'build'),
            '--hidden-import', 'battle', '--hidden-import', 'battle_ui',
-           '--hidden-import', 'pet_factory']
+           '--hidden-import', 'pet_factory', '--hidden-import', 'daily_tasks']
 for library in ['ffi.dll', 'tcl86t.dll', 'tk86t.dll', 'yaml.dll', 'zlib.dll',
                 'libexpat.dll', 'libssl-3-x64.dll', 'libcrypto-3-x64.dll']:
     candidate = Path(sys.base_prefix)/'Library/bin'/library

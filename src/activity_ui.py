@@ -8,6 +8,7 @@ from activities import Activities
 from arena import ArenaProgress
 from budokan import BudokanProgress
 from continuous_login import ContinuousLogin
+from daily_tasks import DailyTasks
 from game_state import numbers
 from infinite_arena import InfiniteArenaProgress
 from treasure import TreasureHunt
@@ -614,6 +615,96 @@ class ActivityUI:
         self.ui_actions['trial_Button'] = trial
         self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
         tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
+
+    def _daily_body(self, body, info):
+        """TaskUI daily page: eight original DailyTask rows and claim state."""
+        daily = DailyTasks(self.state)
+        win = body.master
+        for child in body.winfo_children():
+            if isinstance(child, tk.Label):
+                child.pack_forget()
+        panel = tk.Frame(win, bg='#2b211b', bd=0, highlightthickness=0)
+        panel.place(x=104, y=104, width=588, height=302)
+        tk.Label(win, text=f'每日 {daily.normal_completed()}/7', bg='#c98b62',
+                 fg='#3a2418', font=('Microsoft YaHei UI', 10, 'bold')
+                 ).place(x=68, y=66, width=220, height=26)
+        box = tk.Listbox(panel, width=44, height=10, exportselection=False,
+                         bg='#211b17', fg='#f1e2c4', selectbackground='#8a5730',
+                         selectforeground='#fff6dd', bd=0, highlightthickness=0,
+                         font=('Microsoft YaHei UI', 10))
+        box.place(x=8, y=8, width=318, height=286)
+        detail = tk.StringVar()
+        tk.Label(panel, textvariable=detail, bg='#2b211b', fg='#f1e2c4',
+                 justify='left', anchor='nw', wraplength=232,
+                 font=('Microsoft YaHei UI', 10)).place(x=334, y=8, width=246, height=286)
+        rows = []
+        def item_name(item_id):
+            for table in ('Item', 'Money', 'Pet'):
+                row = self.data.tables.get(table, {}).get(str(item_id))
+                if row:
+                    return row.get('name', str(item_id))
+            return str(item_id)
+        def selected():
+            selection = box.curselection()
+            return rows[selection[0]] if selection and selection[0] < len(rows) else None
+        def show():
+            row = selected()
+            if not row:
+                detail.set('请选择一个每日任务。')
+                info.set('请选择一个每日任务。')
+                return
+            rewards = '、'.join(f'{item_name(i)}×{n}'
+                                for i, n in zip(row['reward_ids'], row['reward_counts']))
+            state = '已领取' if row['claimed'] else ('可领取' if row['ready'] else '进行中')
+            text = (f'{row["name"]} · {state}\n{row["des"]}\n'
+                    f'进度：{row["progress"]} / {row["required"]}\n奖励：{rewards}')
+            detail.set(text)
+            info.set(text)
+        def refresh(select=None):
+            rows.clear()
+            rows.extend(daily.status())
+            box.delete(0, 'end')
+            for row in rows:
+                mark = '✓' if row['claimed'] else ('★' if row['ready'] else '·')
+                box.insert('end', f'{mark} {row["name"]}  {row["progress"]}/{row["required"]}')
+            if rows:
+                box.selection_set(min(select if select is not None else 0, len(rows)-1))
+                box.see(box.curselection()[0])
+            show()
+        def claim():
+            row = selected()
+            if not row:
+                detail.set('请选择一个每日任务。')
+                info.set('请选择一个每日任务。')
+                return
+            try:
+                result = daily.claim(row['id'])
+            except (ValueError, KeyError) as error:
+                detail.set(str(error))
+                info.set(str(error))
+                return
+            refresh()
+            rewards = '、'.join(f'{item_name(i)}×{n}' for i, n in result['rewards'])
+            text = f'领取成功：{rewards}。明天可再次完成每日任务。'
+            detail.set(text)
+            info.set(text)
+        def tag(page):
+            labels = {
+                1: '每日任务：捕捉、战斗、聊天、消费、轮盘、卡牌、赛宠，共七项；全部完成后可领全能训练。',
+                2: '当前宿主界面显示每日任务；主线任务请在“任务”入口查看。',
+                3: '当前宿主界面显示每日任务；支线任务请在“任务”入口查看。',
+            }
+            info.set(labels.get(page, ''))
+            detail.set(labels.get(page, ''))
+        self.ui_actions['receive_Button'] = claim
+        self.ui_actions['tag_1_Button'] = lambda: tag(1)
+        self.ui_actions['tag_2_Button'] = lambda: tag(2)
+        self.ui_actions['tag_3_Button'] = lambda: tag(3)
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        box.bind('<<ListboxSelect>>', lambda event: show())
+        tk.Button(body, text='领取选中任务', bg='#5b7c52', fg='white',
+                  command=claim).pack(pady=4)
+        refresh()
 
     def _budokan_body(self, body, info, budokan_id=1):
         """TrialTowerUI: twenty ordered gym battles, original event gate."""

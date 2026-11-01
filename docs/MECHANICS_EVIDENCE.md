@@ -37,6 +37,7 @@
 | 赛宠嘉年华 | `Formula_GetRunningPetWinProbability` 0x2b5db4、`RunningPetReadyUILayer::getWinnerIndex` 0x3abf78、`handleResult` 0x3abfd0、`getBetMaxMedalCount` 0x3ab664、`RunningPetUILayer::getWinnerRunTime` 0x3ad1e0、`getRandomRunningPetRunTime` 0x3add04、`gameDone` 0x3ad9a8；RunningPet/MedalShop 801 | 胜率 `1/(1.2+倍率/3)`；先掷 1–100，命中则所选宠物夺冠，否则随机一只其他宠物；中奖结算 `int(押注*(倍率-1))`，失败扣押注，货币 700008；默认 10、上限 `min(持有,9999)`，左右按 10/上限循环；冠军时间 8.0 秒，其他选手按 `101–105%` 与 `110–130%` 双界随机；UI 39–42 用四只 `zq1–7` 原始骨架。MedalShop 801 = 1 徽章换 100 奖牌。`tools/check_running_pet.py` 覆盖公式、输赢原子结算、左右循环、存档、UI 39–43、8 秒时间轴转结果页 |
 | 连续登录 | `ContinuousLogin` 7 行、`PlayerDataManager::getContinuousLoginDays` 0x3291c5、`setContinuousLoginDays` 0x3291d9、`ContinuousLoginUILayer::getButtonRespond` 0x36161f | 第 1–7 天原奖励依次为大师球×1、徽章×5、神秘蛋×1、220009×10、220008×10、240012×1、280002×20；同一天不可重复领取；超过一天未登录回到第 1 天；领取与库存写入同一事务。`tools/check_continuous_login.py` 覆盖 7 天表、断签、重复领取、原子失败、真实 UI 12 |
 | 道馆试练 | 事件 `pEvent590199`/`pEvent5901012`、`Budokan` 5 行、`BudokanNpc` 100 行、`BudokanNpcPet` 335 行；`fight type=4 npcid=<budokanId>` | `openui 15 par1=<道馆>` 后 `closeui yes` 才进入战斗，`type=4` 的 `npcid` 是道馆编号而非 `NpcFight` 编号。每个道馆按 `Budokan.npcIds` 顺序挑战二十位 `BudokanNpc`，队伍逐只读取 `BudokanNpcPet` 的等级/技能/天赋/属性；胜利推进 `GameState.budokans`，失败不推进；第二十位按原表 `dropItemIds/dropItemCounts` 发放高级进化材料。UI 15 目前用原布局标题和动态列表，尚未逐帧复刻原版动态 item 动画。`tools/check_budokan.py` 覆盖 20 场顺序、越序拒绝、失败不推进、最终材料只发一次、存档和真实 `openui 15 → closeui yes → fight type=4` 往返 |
+| 每日任务 | `DailyTask` 8 行、`DailyTaskRefreshEvent::handle` 0x2f08f9、`DailyTaskItem::process` 0x2fd727、`addReachCount` 0x2fd743、`TaskUI` 的 `tag_1/2/3` 与 `receive_Button` | 七项日常条件为捕捉 1、NPC 战斗 3、聊天 10、购买 3、轮盘 1、卡牌获胜 1、赛宠获胜 3；第八行“全能训练”需七项全部完成。完成与领取分离，同日不可重复领取，奖励按 `rewardIds/rewardCounts` 原表原子发放；本地日期变化清空计数与领取记录。TaskUI 每日页已可真实领取；服务器时间校准和原版逐帧 item 动画仍未复刻。`tools/check_daily_tasks.py` 覆盖八行表、七类计数、上限、重置、奖励精确值、存档、购买/轮盘钩子与 TaskUI 领取 |
 
 ## 测试和审计
 
@@ -45,7 +46,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：39 个原版 UI 布局、98 个可见 Button 的真实命中区、pressed 纹理、32 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：40 个原版 UI 布局、103 个可见 Button 的真实命中区、pressed 纹理、33 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。
@@ -61,6 +62,8 @@
 - `tools/check_continuous_login.py`：原版 7 天奖励、同日重复拒绝、断签重置、原子失败和真实 UI 12。
 - `tools/check_budokan.py`：五座道馆的二十场顺序、`BudokanNpcPet` 真实队伍、胜利/失败进度、
   最终进化材料唯一发放、存档和 `openui 15 → closeui yes → fight type=4` 事件往返。
+- `tools/check_daily_tasks.py`：DailyTask 八行、七类计数与上限、跨日重置、同日重复拒绝、
+  原表奖励精确发放、购买/轮盘钩子、存档与 TaskUI 真实领取。
 - `tools/check_native.py`：地图读取和预览；不代表全地图剧情可通关。
 - `tools/check_mounts.py`：5 种坐骑 × 4 种地图 × 6 种地形/越界的 120 项判断，以及自动换乘、手动飞行、试乘、存档和真实移动入口回归；遍历 431 张地图检查 collideTile 保真。不是完整原版步行通关对照。
 - `tools/check_battle_clicks.py`：真实 Tk Canvas 的 Button-1 事件，检查两侧宠物菜单、补血/补蓝/背包/换宠、普通攻击/技能推进真实战斗回合、说明按钮不误发招以及关闭、静态帧复用。尚不是全部按钮/全部分辨率覆盖。
@@ -70,8 +73,8 @@
 ## 仍未完成
 
 融合/合体已接入核心逻辑，但完整原版动画、坐骑商店/破障交互、宠物使者付费试用/发货、
-地图障碍、成就与每日任务、排行榜领奖和礼包发货等交互仍未完成；
-道馆试练、赛宠与连续登录已接入核心表与界面，但原版动态 item/粒子/音频、服务器时间校准仍待核对。
+地图障碍、成就、排行榜领奖和礼包发货等交互仍未完成；
+道馆试练、每日任务、赛宠与连续登录已接入核心表与界面，但原版动态 item/粒子/音频、服务器时间校准仍待核对。
 全部技能状态和 AI 的原版对照、全部主支线通关测试、动态 Spine 动画和音频、
 原 Android 存档兼容、全 UI 的原交互与布局。已有实现也仍需要针对原版逐项比较。
 不以占位窗口、自动判胜或手工发奖励视为完成。

@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.8%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.9%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.8 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.9 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -31,7 +31,10 @@
 0.2.8 接入原版道馆试练：`openui 15 par1=<道馆>` → `closeui yes` → `fight type=4 npcid=<道馆>`
 往返，按 `Budokan` / `BudokanNpc` / `BudokanNpcPet` 顺序生成二十场真实战斗；
 胜利推进 `GameState.budokans`，失败不推进，第二十场按原表发放该道馆高级进化材料。
-**这些改动仍不代表完整复刻**：宠物使者付费试用/发货、试炼塔、礼包发货、成就/每日任务、
+0.2.9 接入原版每日任务 `DailyTask` 八行（七项日常 + 全能训练），按原条件接入捕捉、NPC 战斗、
+聊天、购买、轮盘、卡牌获胜、赛宠获胜计数；每天重置，完成与领取分离，奖励原子发放。
+TaskUI 的每日页可用真实按钮领取；原版任务页的逐帧 item 动画和服务器时间校准仍未完成。
+**这些改动仍不代表完整复刻**：宠物使者付费试用/发货、试炼塔、礼包发货、成就、
 排行榜领奖、地图障碍、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
 
 核对地址、测试及差异见 [规则核对记录](docs/MECHANICS_EVIDENCE.md)。
@@ -42,8 +45,8 @@
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.8/口袋妖怪-PC移植开发版0.2.8.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.8.zip`](publish/release/pokemon-pc-0.2.8.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.9/口袋妖怪-PC移植开发版0.2.9.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.9.zip`](publish/release/pokemon-pc-0.2.9.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -99,6 +102,10 @@
 - **道馆试练**：`Budokan` 五座道馆，每馆二十位 `BudokanNpc` 按顺序挑战；队伍读取
   `BudokanNpcPet`，胜利推进 `GameState.budokans`，失败不推进；第二十场发放原表进化材料。
   UI 15 与 `openui 15 → closeui yes → fight type=4` 已实测，原版动态 item 动画仍待继续对照。
+- **每日任务**：`DailyTask` 八行按原条件统计捕捉、NPC 战斗、聊天、购买、轮盘、卡牌获胜、
+  赛宠获胜；七项日常全部完成后“全能训练”可领取。每天按本地日期重置，完成与领取分离，
+  奖励走原表 `rewardIds/rewardCounts` 和事务发放。TaskUI 每日页、任务按钮已接通；
+  原版任务页逐帧 item 动画与服务器时间校准仍未完成。
 - **地图交互**：出口、传送、区域触发已接入；部分场景障碍/骑乘/采集仍会停止并提示。
 
 ### 明确未完成
@@ -106,7 +113,7 @@
 - 战斗内存档与战斗中断恢复；
 - 全部 57 种 `SkillState` 的完整语义、天赋/携带物全结算；
 - 宠物图鉴、训练、放生、仓库整理；
-- 完整背包、任务列表/追踪、每日任务、商店货架、道馆/赛宠的原版逐帧界面；
+- 完整背包、任务列表/追踪、商店货架、道馆/赛宠/每日任务的原版逐帧界面；
 - 圣兽使者（付费试用/发货）、成就、排行榜领奖、礼包发货；
 - 全支线、全地图、结局与全流程回归；
 - Spine 时间线动画、FFD/IK、全部技能表现；
@@ -195,6 +202,9 @@ py -3.12 -m venv .venv
 # 道馆试练：Budokan 20 场顺序、BudokanNpcPet 队伍、type=4 原事件与最终材料
 .\.venv\Scripts\python.exe tools\check_budokan.py
 
+# 每日任务：DailyTask 八行、七类计数、每日重置、原子领取与 TaskUI
+.\.venv\Scripts\python.exe tools\check_daily_tasks.py
+
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6
 .\.venv\Scripts\python.exe build\_host_debug.py
 
@@ -216,6 +226,7 @@ src/
   pc_game.py          原生 Tk 宿主：地图、事件、任务、UI、遇敌、存档
   event_runtime.py    461 条触发规则与请求式事件解释器
   task_progress.py    原版任务条件计数
+  daily_tasks.py      原版 DailyTask 八行、每日重置与领取
   guide.py            任务目标解析、跨地图路线、逐格自动移动
   activity_ui.py      抽宠/轮盘/孵化/商店/训练等界面
   mounts.py           原版坐骑地形规则

@@ -10,6 +10,7 @@ from dataclasses import asdict
 
 from game_state import numbers, Pet
 from pet_factory import generate_pet, weighted_choice
+from daily_tasks import DailyTasks
 
 
 class Activities:
@@ -142,6 +143,8 @@ class Activities:
                     raise ValueError('Invalid original CardLegend reward pool')
                 reward = weighted_choice(state.rng, list(range(len(ids))), weights)
                 match['reward'] = {'item': str(ids[reward]), 'count': counts[reward]}
+        if match['result'] == 1:
+            DailyTasks(state).record('cards_win')
         return match
 
     def claim_cards(self):
@@ -233,4 +236,5 @@ class Activities:
             state.grant(reward['item'], reward['count'])
             state.activities['roulette_count'] = state.activities.get('roulette_count', 0)+1
             state.activities['roulette_last_index'] = index
+        DailyTasks(state).record('roulette')
         return index, reward

@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import random
 
+from daily_tasks import DailyTasks
+
 
 class RunningPetGame:
     MEDAL = '700008'
@@ -167,6 +169,8 @@ class RunningPetGame:
             stats['best_streak'] = max(int(stats.get('best_streak', 0)), stats['streak'])
         else:
             stats['streak'] = 0
+        if winner == selected:
+            DailyTasks(self.state).record('running_win')
         return {
             'winner': winner,
             'selected': selected,

@@ -23,6 +23,7 @@ from infinite_arena import InfiniteArenaProgress, make_infinite_arena_battle
 from budokan import BudokanProgress, make_budokan_battle
 from battle_ui import BattleUI
 from activity_ui import ActivityUI
+from daily_tasks import DailyTasks
 from task_progress import TaskProgress
 from mounts import Mounts
 from guide import Guide
@@ -72,7 +73,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.8（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.9（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -82,7 +83,7 @@ class NativeGame(ActivityUI, Preview):
                                 ('指引', self.guide_ui), ('抽宠', self.lottery_ui),
                                 ('坐骑', self.mounts_ui), ('宝藏', self.treasure_ui),
                                 ('赛跑', self.running_pet_ui),
-                                ('签到', self.login_ui),
+                                ('签到', self.login_ui), ('每日', self.daily_ui),
                                 ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
@@ -277,6 +278,7 @@ class NativeGame(ActivityUI, Preview):
         39: ('RunningPetWelUI', '赛宠嘉年华'), 40: ('RunningPetReadyUI', '赛宠押注'),
         41: ('RunningPetMapUI', '赛宠比赛'), 42: ('RunningPetResultUI', '赛宠结算'),
         43: ('BuyConfirmUI', '购买赛跑奖牌'),
+        44: ('TaskUI', '每日任务'),
     }
 
     def open_ui(self, request):
@@ -382,6 +384,8 @@ class NativeGame(ActivityUI, Preview):
             self._running_result_body(body, info)
         elif uiid == 43:
             self._running_medal_body(body, info)
+        elif uiid == 44:
+            self._daily_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -606,7 +610,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.8')
+        win.title('任务指引 · 原生 0.2.9')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -915,9 +919,11 @@ class NativeGame(ActivityUI, Preview):
             pet = battle.caught_pet
             land = int(self.data.tables['Pet'][pet.species].get('kind', -1))
             TaskProgress(self.state).update('catch', int(pet.species), land, self.state.map_id)
+            DailyTasks(self.state).record('catch')
         elif result == 'win' and battle.kind != 'wild' and not arena_battle and not infinite_battle and not budokan_battle:
             TaskProgress(self.state).update('fight', 2, 1, int(battle.source_id), -1)
             self.state.npc_fights[battle.source_id] = 1
+            DailyTasks(self.state).record('fight')
         TaskProgress(self.state).update()
         if battle.kind == 'wild' and result in ('win', 'caught'):
             self.runtime.notify('fightover', type=1, result=1,
@@ -958,6 +964,8 @@ class NativeGame(ActivityUI, Preview):
                         continue
                     return
                 if request.kind in ['talk', 'aside', 'airtalk']:
+                    if request.kind == 'talk':
+                        DailyTasks(self.state).record('talk')
                     self.display_request = request
                     self.dialogue = request.data.get('text') or '\n'.join(request.data.get('texts', []))
                     if request.kind == 'aside':
@@ -1235,6 +1243,13 @@ class NativeGame(ActivityUI, Preview):
         from event_runtime import Request
         self.open_ui(Request('openui', 'continuous-login', 1,
                              {'parameters': {'uiid': 12}}))
+
+    def daily_ui(self):
+        if self.battle or self.runtime.running or self.ui_open:
+            return
+        from event_runtime import Request
+        self.open_ui(Request('openui', 'daily-task', 1,
+                             {'parameters': {'uiid': 44}}))
 
     def listing(self, title, content):
         win = tk.Toplevel(self.root)
