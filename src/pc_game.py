@@ -24,6 +24,7 @@ from budokan import BudokanProgress, make_budokan_battle
 from battle_ui import BattleUI
 from activity_ui import ActivityUI
 from daily_tasks import DailyTasks
+from achievements import Achievements
 from task_progress import TaskProgress
 from mounts import Mounts
 from guide import Guide
@@ -56,6 +57,7 @@ class NativeGame(ActivityUI, Preview):
         self.data = data
         self.guide = Guide(self)
         self.ui_hits = {}
+        self.ui_rects = {}
         self.ui_buttons = {}
         self.ui_button_text = {}
         self.ui_actions = {}
@@ -77,7 +79,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.12（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.13（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -88,6 +90,7 @@ class NativeGame(ActivityUI, Preview):
                                 ('坐骑', self.mounts_ui), ('宝藏', self.treasure_ui),
                                 ('赛跑', self.running_pet_ui),
                                 ('签到', self.login_ui), ('每日', self.daily_ui),
+                                ('成就', self.achievements_ui),
                                 ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
@@ -362,6 +365,7 @@ class NativeGame(ActivityUI, Preview):
         41: ('RunningPetMapUI', '赛宠比赛'), 42: ('RunningPetResultUI', '赛宠结算'),
         43: ('BuyConfirmUI', '购买赛跑奖牌'),
         44: ('TaskUI', '每日任务'),
+        45: ('AchievementUI', '成就'),
     }
 
     def open_ui(self, request):
@@ -388,6 +392,7 @@ class NativeGame(ActivityUI, Preview):
                                    'visible': {}, 'resources': {}}
             self.ui_base_layer = layer.copy()
             self.ui_hits = dict(self.cocos_ui.hits)
+            self.ui_rects = dict(self.cocos_ui.rects)
             self.ui_buttons = dict(self.cocos_ui.buttons)
             self.ui_button_text = dict(self.cocos_ui.button_text)
             photo = ImageTk.PhotoImage(layer)
@@ -400,7 +405,7 @@ class NativeGame(ActivityUI, Preview):
             label.bind('<Leave>', self.on_ui_leave)
             self.ui_art_label = label
         except (FileNotFoundError, ValueError, KeyError) as error:
-            self.ui_hits, self.ui_buttons, self.ui_button_text = {}, {}, {}
+            self.ui_hits, self.ui_rects, self.ui_buttons, self.ui_button_text = {}, {}, {}, {}
             self.ui_base_layer = None
             tk.Label(win, text=f'原 UI 布局读取失败：{error}', fg='#ffb0a0',
                      bg='#202b30').pack(padx=20, pady=20)
@@ -470,6 +475,8 @@ class NativeGame(ActivityUI, Preview):
             self._running_medal_body(body, info)
         elif uiid == 44:
             self._daily_body(body, info)
+        elif uiid == 45:
+            self._achievement_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -724,6 +731,7 @@ class NativeGame(ActivityUI, Preview):
             self.ui_window.destroy()
         self.ui_window, self.ui_open = None, False
         self.ui_hits, self.ui_buttons, self.ui_button_text = {}, {}, {}
+        self.ui_rects = {}
         self.ui_actions, self.ui_base_layer, self.ui_hover, self.ui_info = {}, None, None, None
         self.ui_pressed, self.ui_render_args = None, None
         pending = self.runtime.pending
@@ -776,7 +784,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.12')
+        win.title('任务指引 · 原生 0.2.13')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -875,6 +883,7 @@ class NativeGame(ActivityUI, Preview):
                 self.event_issue = str(error)
             return
         self.advance_main_condition('talk', oid)
+        self.state.activities['talk_total'] = int(self.state.activities.get('talk_total', 0))+1
         if self.runtime.notify('talk', npcid=int(oid)):
             self.drive()
         else:
@@ -1416,6 +1425,13 @@ class NativeGame(ActivityUI, Preview):
         from event_runtime import Request
         self.open_ui(Request('openui', 'daily-task', 1,
                              {'parameters': {'uiid': 44, 'page': 'daily'}}))
+
+    def achievements_ui(self):
+        if self.battle or self.runtime.running or self.ui_open:
+            return
+        from event_runtime import Request
+        self.open_ui(Request('openui', 'achievement-list', 1,
+                             {'parameters': {'uiid': 45}}))
 
     def listing(self, title, content):
         win = tk.Toplevel(self.root)

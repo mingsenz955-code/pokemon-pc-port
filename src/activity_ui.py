@@ -2,9 +2,11 @@
 import os
 import time
 import tkinter as tk
+from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 from activities import Activities
+from achievements import Achievements
 from arena import ArenaProgress
 from budokan import BudokanProgress
 from continuous_login import ContinuousLogin
@@ -615,6 +617,137 @@ class ActivityUI:
         self.ui_actions['trial_Button'] = trial
         self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
         tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
+
+    def _achievement_body(self, body, info):
+        """Original AchievementUI list; only locally verified rows are claimable."""
+        from game_state import numbers
+        api = Achievements(self.state)
+        status_names = {'ready': '可领取', 'progress': '未完成',
+                        'claimed': '已领取', 'unsupported': '未接入'}
+        filters = [('全部', None), ('已接入', 'supported'), ('可领取', 'ready'),
+                   ('未完成', 'progress'), ('已领取', 'claimed'), ('未接入', 'unsupported')]
+        rows = []
+
+        def reward_text(row):
+            parts = []
+            for item_id, count in zip(numbers(row.get('rewardIds')),
+                                      numbers(row.get('rewardCounts'))):
+                item = (self.data.tables.get('Item', {}).get(str(item_id))
+                        or self.data.tables.get('Pet', {}).get(str(item_id))
+                        or self.data.tables.get('Money', {}).get(str(item_id), {}))
+                parts.append(f'{item.get("name", item_id)}×{count}')
+            return '、'.join(parts) or '无'
+
+        frame = tk.Frame(body, bg='#202b30')
+        frame.pack(fill='both', expand=True)
+        top = tk.Frame(frame, bg='#202b30')
+        top.pack(fill='x')
+        tk.Label(top, text='筛选', bg='#202b30', fg='#e8d8b8').pack(side='left')
+        choice = tk.StringVar(value='全部')
+        combo = ttk.Combobox(top, textvariable=choice, state='readonly',
+                             values=[name for name, _ in filters], width=10)
+        combo.pack(side='left', padx=6)
+        tk.Label(top, text='金色=可领取 · 灰色=条件未接入',
+                 bg='#202b30', fg='#8fa3a8').pack(side='right')
+        list_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        scroll_rect = self.ui_hits.get('item_ScrollView') or self.ui_rects.get('item_ScrollView')
+        if scroll_rect:
+            list_frame.place(x=scroll_rect[0], y=scroll_rect[1],
+                             width=max(80, scroll_rect[2]-scroll_rect[0]),
+                             height=max(60, scroll_rect[3]-scroll_rect[1]))
+            list_frame.lift()
+        else:
+            list_frame.pack(fill='both', expand=True, pady=4)
+        box = tk.Listbox(list_frame, width=82, height=9, exportselection=False,
+                         font=('Microsoft YaHei UI', 9), bg='#182125',
+                         fg='#e8d8b8', selectbackground='#49606a')
+        bar = tk.Scrollbar(list_frame, command=box.yview)
+        box.configure(yscrollcommand=bar.set)
+        box.pack(side='left', fill='both', expand=True)
+        bar.pack(side='right', fill='y')
+        score_rect = self.ui_hits.get('score_BitmapFontLabel') or self.ui_rects.get('score_BitmapFontLabel')
+        score_var = tk.StringVar(value=f'{api.score()}')
+        if score_rect:
+            score_label = tk.Label(self.ui_window, textvariable=score_var,
+                                   bg='#d88a43', fg='#fff2cf',
+                                   font=('Microsoft YaHei UI', 10, 'bold'),
+                                   padx=0, pady=0)
+            score_label.place(x=score_rect[0], y=score_rect[1],
+                              width=max(110, score_rect[2]-score_rect[0]),
+                              height=max(16, score_rect[3]-score_rect[1]))
+            score_label.lift()
+
+        def selected_row():
+            if not box.curselection() or not rows:
+                return None
+            return rows[box.curselection()[0]]
+
+        def show(_=None):
+            entry = selected_row()
+            if not entry:
+                return
+            current = entry['current']
+            progress = '未接入' if current is None else f'{current}/{entry["target"]}'
+            info.set(f'原版成就共 {len(api.rows)} 行 · 已领取 {len(api.claimed())} 行 · 积分 {api.score()}\n\n'
+                     f'{entry["name"]} · {status_names[entry["status"]]}\n'
+                     f'{entry["des"]}\n'
+                     f'条件类型：{entry["condition_type"]} · 进度：{progress} · '
+                     f'积分：{entry["score"]}\n'
+                     f'{entry["detail"]}\n'
+                     f'奖励：{reward_text(entry["row"])}')
+
+        def refresh():
+            nonlocal rows
+            chosen = selected_row()
+            chosen_id = chosen['id'] if chosen else None
+            wanted = dict(filters)[choice.get()]
+            rows = api.entries(wanted)
+            box.delete(0, 'end')
+            for entry in rows:
+                current = entry['current']
+                progress = '未接入' if current is None else f'{current}/{entry["target"]}'
+                box.insert('end', f'[{status_names[entry["status"]]}] {entry["name"]}'
+                                 f'  {progress}  +{entry["score"]}分')
+            info.set(f'原版成就共 {len(api.rows)} 行 · 当前显示 {len(rows)} 行 · '
+                     f'已领取 {len(api.claimed())} 行 · 积分 {api.score()}')
+            score_var.set(str(api.score()))
+            index = next((i for i, entry in enumerate(rows)
+                          if entry['id'] == chosen_id), None)
+            if index is None and rows:
+                index = 0
+            if index is not None:
+                box.selection_set(index)
+                box.see(index)
+            show()
+
+        def claim():
+            entry = selected_row()
+            if not entry:
+                info.set('请先选择一个成就。')
+                return
+            try:
+                result = api.claim(entry['id'])
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            refresh()
+            info.set(f'领取成功：{entry["name"]} · 积分 +{result["score"]} · '
+                     f'奖励已进入背包/宠物栏。')
+
+        def changed(_=None):
+            refresh()
+
+        box.bind('<<ListboxSelect>>', show)
+        combo.bind('<<ComboboxSelected>>', changed)
+        buttons = tk.Frame(body, bg='#202b30')
+        buttons.pack(fill='x', pady=4)
+        tk.Button(buttons, text='领取选中成就', bg='#5b7c52', fg='white',
+                  command=claim).pack(side='left')
+        tk.Button(buttons, text='刷新', command=refresh).pack(side='left', padx=6)
+        self.ui_actions['receive_Button'] = claim
+        self.ui_actions['achievement_receive'] = claim
+        self.ui_actions['close_Button'] = self.close_ui
+        refresh()
 
     def _daily_body(self, body, info):
         """TaskUI's main/branch/daily pages and their original list entries.

@@ -42,6 +42,8 @@
 
 | 支线接受 | `AcceptBTaskUI`、`accept_Button`/`close_Button`、`accepttask` 脚本请求 | 原版 `accepttask` 不再使用系统 messagebox，而是读取 AcceptBTaskUI 布局，写入任务名与描述，保留原 `accept_Button`/`close_Button` 命中区；接受/关闭分别恢复脚本一次，窗口关闭按拒绝处理。接受后的任务状态、计数、奖励仍由原事件 `taskstate`/`submittask` 驱动。`tools/check_accept_task.py` 覆盖原按钮命中区存在、接受/拒绝只恢复一次、窗口清理 |
 
+| 成就 | `Achievement` 142 行、`AchievementUI`、`AchievementItemUI`、`conditionType` 1–24 | `AchievementUI` 的 142 行全部列出；当前只对五类本地可验证条件给出进度：12 破障（`removed_obstacles`）、13 NPC 谈话（`talk_total`）、14 村庄宝箱、15 到达地图（`visited_maps`）、17 支线完成数。可领取时按原 `rewardIds/rewardCounts` 原子发奖并累计 `score`；其余条件类型显示“未接入”，拒绝领取，不伪造进度。原版 `AchievementItemUI` 逐行动画和其余 18 类条件尚未接入。`tools/check_achievements.py` 覆盖 142 行、五类进度、重复领取拒绝、未接入拒绝、UI 打开/关闭 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
@@ -49,7 +51,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：40 个原版 UI 布局、103 个可见 Button 的真实命中区、pressed 纹理、33 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：41 个原版 UI 布局、104 个可见 Button 的真实命中区、pressed 纹理、34 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。
