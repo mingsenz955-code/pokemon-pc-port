@@ -371,6 +371,7 @@ class Guide:
         self._last_map = None
         self._last_time = 0
         self._visited_exit = None
+        self._stuck = 0
 
     def refresh(self):
         self.target = self.resolver.target()
@@ -398,6 +399,7 @@ class Guide:
         self.route = []
         self._last_map = None
         self._visited_exit = None
+        self._stuck = 0
         self.message = f'正在前往 {self.target.label}'
         return True
 
@@ -521,7 +523,9 @@ class Guide:
         dx, dy = wx-app.x, wy-app.y
         if abs(dx) < 4 and abs(dy) < 4:
             self.waypoints.pop(0)
+            self._stuck = 0
             return
+        before = (app.x, app.y)
         speed = app.movement_speed()/60.0
         if abs(dx) >= abs(dy):
             nx = app.x + max(-speed, min(speed, dx))
@@ -529,6 +533,13 @@ class Guide:
         else:
             ny = app.y + max(-speed, min(speed, dy))
             app.move_to(app.x, ny)
+        if abs(app.x-before[0]) < .01 and abs(app.y-before[1]) < .01:
+            self._stuck += 1
+            if self._stuck > 120:
+                self.stop('自动移动被地形或动态对象阻挡，已停止。')
+                return
+        else:
+            self._stuck = 0
         if app.map_id != self._last_map:
             self.waypoints = []
             return
