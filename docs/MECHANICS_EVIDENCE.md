@@ -58,6 +58,8 @@
 
 | 确认/提示 | `SecondConfirmUI`、`TipConfirmUI`、`confirm_Button`、`cancel_Button` | 战斗前确认改为原版 `SecondConfirmUI`：确认才 `start_battle` 并 `runtime.resume('start')`，取消 `resume('no')`；顶栏“当前进度”改为原版 `TipConfirmUI`，不再弹 Tk messagebox。`tools/check_confirm_ui.py` 覆盖两个原版布局、按钮绑定、取消/确认关闭；原版弹窗缩放动画尚未复刻 |
 
+| 商店详情/购买确认 | `ShopGoodsUI`、`GoodsBuyConfirmUI`、`buy_Button` | `ShopUI` 的 `goods_ListView` 改为原版位置列表，双击/“详情”打开 `ShopGoodsUI` 卡片：名称、价格、数量按商品行重绘；卡片按钮打开 `GoodsBuyConfirmUI`，确认后才调用真实 `GameState.buy`，取消不扣款。`tools/check_shop_goods_ui.py` 覆盖 商品详情 → 购买确认 → 库存/扣款 → 返回商店，并验证缩放后的 `buy_Button` 命中区 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
@@ -65,7 +67,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：47 个原版 UI 布局、131 个可见 Button 的真实命中区、pressed 纹理、37 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：49 个原版 UI 布局、133 个可见 Button 的真实命中区、pressed 纹理、38 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。

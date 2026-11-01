@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.23（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.24（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -374,6 +374,8 @@ class NativeGame(ActivityUI, Preview):
         49: ('GetItemUI', '获得物品'),
         50: ('SecondConfirmUI', '二次确认'),
         51: ('TipConfirmUI', '提示'),
+        52: ('ShopGoodsUI', '商品详情'),
+        53: ('GoodsBuyConfirmUI', '购买确认'),
     }
 
     def open_ui(self, request):
@@ -497,6 +499,10 @@ class NativeGame(ActivityUI, Preview):
             self._second_confirm_body(body, info)
         elif uiid == 51:
             self._tip_body(body, info)
+        elif uiid == 52:
+            self._shop_goods_body(body, info)
+        elif uiid == 53:
+            self._goods_confirm_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -636,19 +642,32 @@ class NativeGame(ActivityUI, Preview):
     def _shop_body(self, body, info, uiid):
         table = {1: 'Shop', 2: 'EvolutionShop', 3: 'SkillShop',
                  22: 'IArenaShop', 28: 'MedalShop'}[uiid]
+        self.shop_uiid = uiid
         goods = []
         for key, row in sorted(self.data.tables[table].items(), key=lambda pair: int(pair[0])):
             if str(row.get('repeat', '1')) == '0' and self.state.shop_purchases.get(f'{table}:{key}'):
                 continue
             goods.append((str(key), row))
-        info.set(f'商店共 {len(goods)} 件商品 · 持有金币 {self.state.count("700001")}')
-        frame = tk.Frame(body, bg='#202b30')
-        frame.pack(fill='both', expand=True)
+        info.set(f'商店共 {len(goods)} 件商品 · 持有金币 {self.state.count("700001")} · 双击商品查看原版详情')
+        frame = tk.Frame(self.ui_window, bg='#202b30')
+        rect = self.ui_hits.get('goods_ListView') or self.ui_rects.get('goods_ListView')
+        if rect:
+            frame.place(x=rect[0], y=rect[1], width=max(220, rect[2]-rect[0]),
+                        height=max(120, rect[3]-rect[1]))
+            frame.lift()
+        else:
+            frame = tk.Frame(body, bg='#202b30')
+            frame.pack(fill='both', expand=True)
         box = tk.Listbox(frame, width=58, height=6, font=('Microsoft YaHei UI', 10))
         box.pack(side='left', fill='both', expand=True)
         for key, row in goods:
             currency = self.data.tables['Money'].get(str(row['moneyType']), {}).get('name', row['moneyType'])
             box.insert('end', f'{row["name"]}  {row["price"]} {currency}  — {row.get("des", "")}')
+        def detail(event=None):
+            if not box.curselection():
+                return
+            key, row = goods[box.curselection()[0]]
+            self.open_goods_detail(uiid, table, key, row)
         def buy():
             if not box.curselection():
                 return
@@ -658,7 +677,105 @@ class NativeGame(ActivityUI, Preview):
                 info.set(f'购买 {row["name"]} 成功 · 剩余 {self.state.count(row["moneyType"])}')
             except (ValueError, KeyError, NotImplementedError) as error:
                 info.set(str(error))
+        box.bind('<Double-Button-1>', detail)
         tk.Button(frame, text='购买', command=buy).pack(side='left', padx=8, anchor='n')
+        tk.Button(frame, text='详情', command=detail).pack(side='left', padx=8, anchor='n')
+        self.ui_actions['shop_buy'] = buy
+        self.ui_actions['shop_detail'] = detail
+
+    def open_goods_detail(self, shop_uiid, table, key, row):
+        self.open_ui(Request('openui', 'shop-goods', 1, {
+            'parameters': {'uiid': 52, 'table': table, 'key': key,
+                           'shop_uiid': shop_uiid}}))
+
+    def _back_to_shop(self, shop_uiid):
+        self.close_ui()
+        self.open_ui(Request('openui', 'shop-return', 1, {
+            'parameters': {'uiid': shop_uiid}}))
+
+    def render_component(self, name, size=(800, 480), text=None):
+        """Render a prefab layout on a full canvas instead of its tiny node size."""
+        layout = self.cocos_ui.layout(name)
+        root = layout['tree']
+        old = root.get('size')
+        root['size'] = list(size)
+        try:
+            return self.cocos_ui.render(name, size, text or {})
+        finally:
+            if old is None:
+                root.pop('size', None)
+            else:
+                root['size'] = old
+
+    def _shop_goods_body(self, body, info):
+        parameters = self.ui_parameters
+        table = str(parameters.get('table', 'Shop'))
+        key = parameters.get('key')
+        if key is None:
+            key = sorted(self.data.tables[table].items(), key=lambda pair: int(pair[0]))[0][0]
+        key = str(key)
+        shop_uiid = int(parameters.get('shop_uiid', 1))
+        row = self.data.tables[table][key]
+        currency = self.data.tables['Money'].get(str(row['moneyType']), {}).get('name', row['moneyType'])
+        if getattr(self, 'ui_art_label', None) is not None:
+            base = self.cocos_ui.render('ShopUI', (800, 480), {})
+            base_buttons = dict(self.cocos_ui.buttons)
+            card = self.cocos_ui.render('ShopGoodsUI', (153, 233), {
+                'name_Text': row['name'],
+                'cost_BitmapFontLabel': str(row['price']),
+                'count_BitmapFontLabel': f'x{row.get("count", 1)}',
+            })
+            card_buttons = dict(self.cocos_ui.buttons)
+            card = card.resize((184, 280), Image.Resampling.LANCZOS)
+            base.alpha_composite(card, (320, 90))
+            photo = ImageTk.PhotoImage(base)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+            self.ui_buttons = {key: rect for key, rect in base_buttons.items()
+                               if key in ('close_Button', 'Layer/close_Button')}
+            self.ui_hits = dict(self.ui_buttons)
+            buy_rect = card_buttons.get('buy_Button') or card_buttons.get(
+                'Layer/root_Panel/buy_Button')
+            if buy_rect:
+                shifted = [320+buy_rect[0]*1.2, 90+buy_rect[1]*1.2,
+                           320+buy_rect[2]*1.2, 90+buy_rect[3]*1.2]
+                self.ui_buttons['buy_Button'] = shifted
+                self.ui_hits['buy_Button'] = shifted
+        info.set(f'{row["name"]} · {row["price"]} {currency}\n{row.get("des", "")}')
+        def buy():
+            self.open_ui(Request('openui', 'goods-confirm', 1, {
+                'parameters': {'uiid': 53, 'table': table, 'key': key,
+                               'shop_uiid': shop_uiid}}))
+        self.ui_actions['buy_Button'] = buy
+        self.ui_actions['close_Button'] = self.close_ui
+
+    def _goods_confirm_body(self, body, info):
+        parameters = self.ui_parameters
+        table = str(parameters.get('table', 'Shop'))
+        key = parameters.get('key')
+        if key is None:
+            key = sorted(self.data.tables[table].items(), key=lambda pair: int(pair[0]))[0][0]
+        key = str(key)
+        shop_uiid = int(parameters.get('shop_uiid', 1))
+        row = self.data.tables[table][key]
+        currency = self.data.tables['Money'].get(str(row['moneyType']), {}).get('name', row['moneyType'])
+        text = f'购买 {row["name"]}？\n需要 {row["price"]} {currency}'
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('GoodsBuyConfirmUI', (800, 480), {'info_Text': text})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(text)
+        def confirm():
+            try:
+                self.state.buy(table, key)
+            except (ValueError, KeyError, NotImplementedError) as error:
+                info.set(str(error))
+                return
+            self._back_to_shop(shop_uiid)
+        self.ui_actions['buy_Button'] = confirm
+        self.ui_actions['buy_2_Button'] = confirm
+        self.ui_actions['close_Button'] = self.close_ui
 
     def heal_party(self):
         self.state.cure_party()
@@ -804,7 +921,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.23')
+        win.title('任务指引 · 原生 0.2.24')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
