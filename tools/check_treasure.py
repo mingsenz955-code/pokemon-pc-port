@@ -91,7 +91,20 @@ try:
                         {'parameters': {'uiid': 24, 'par1': 1}}))
     assert app.ui_actions.get('use_Button')
     app.ui_actions['use_Button']()
+    assert app.ui_open and '没有正在寻找的藏宝图' in app.ui_info.get()
+    app.close_ui()
+
+    app.open_ui(Request('openui', 'treasure-buy', 1,
+                        {'parameters': {'uiid': 37, 'par1': 1}}))
+    assert app.ui_actions.get('buy_Button')
+    app.ui_actions['buy_Button']()
     assert app.state.count('700002') == 15
+    assert app.state.count('220007') == 3
+    active = TreasureHunt(app.state).active()
+    assert active and not active['revealed']
+    app.open_ui(Request('openui', 'treasure-test', 1,
+                        {'parameters': {'uiid': 24, 'par1': 1}}))
+    app.ui_actions['use_Button']()
     assert app.state.count('220007') == 2
     active = TreasureHunt(app.state).active()
     assert active and active['revealed']
@@ -141,6 +154,34 @@ try:
     shot = ROOT/'outputs/verification/treasure-map.png'
     shot.parent.mkdir(parents=True, exist_ok=True)
     frame.save(shot)
+
+    app.open_ui(Request('openui', 'treasure-test', 1,
+                        {'parameters': {'uiid': 24, 'par1': 1}}))
+    app.ui_actions['giveUp_Button']()
+    assert not TreasureHunt(app.state).entries()
+    assert not app.ui_open
+
+    # The original talk event drives UI 24's closeui yes branch, not just a
+    # direct button call.
+    event_app = NativeGame(root, data)
+    event_app.runtime.file = ''
+    event_app.display_request = None
+    event_app.state.grant('700002', 20)
+    event_app.state.activities.pop('treasure_maps', None)
+    event_app.state.inventory['220007'] = 0
+    TreasureHunt(event_app.state).buy('1')
+    event_app.runtime.start('pEventTalk50319.json')
+    event_app.drive()
+    for _ in range(6):
+        if event_app.ui_open:
+            break
+        event_app.next_step()
+    assert event_app.ui_open
+    event_app.ui_actions['use_Button']()
+    while event_app.dialogue is not None:
+        event_app.next_step()
+    assert not event_app.runtime.running
+    assert TreasureHunt(event_app.state).active()
     print('UI 24 purchase/search and map chest: PASS')
 finally:
     root.destroy()
@@ -155,6 +196,8 @@ report = {
     'insufficient_money_atomic': True,
     'save_round_trip': True,
     'ui24_flow': True,
+    'event_flow': True,
+    'give_up_ui': True,
     'treasure_buy_ui': True,
     'treasure_tip_ui': True,
 }

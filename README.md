@@ -172,7 +172,7 @@ py -3.12 -m venv .venv
 # 战斗事件 → 突进/受击/伤害飘字/血条缓动
 .\.venv\Scripts\python.exe tools\check_battle_animation.py
 
-# 藏宝图购买、放大镜显现、地图宝箱、UI 24/37/38
+# 藏宝图购买、放大镜显现、地图宝箱、UI 24/37/38、真实事件 closeui yes
 .\.venv\Scripts\python.exe tools\check_treasure.py
 
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6

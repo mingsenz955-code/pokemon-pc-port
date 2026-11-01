@@ -656,7 +656,6 @@ class ActivityUI:
             return
         magnifier = self.state.count('220007')
         clue = hunt.clue(row)
-        money = self.data.tables.get('Money', {}).get(clue['money'], {})
         text = (f'{clue["text"]}\n'
                 f'线索地图：{clue["map"]} · 宝箱类型：{"、".join(clue["chests"]) or "未知"}\n'
                 f'当前放大镜：{magnifier} 个 · 每次使用消耗 1 个')
@@ -665,15 +664,15 @@ class ActivityUI:
             status = '已显现，请前往地图寻找' if entry.get('revealed') else '尚未显现'
             text += (f'\n当前宝藏：{pos.get("pos", "?")} 格 · {status}')
         else:
-            text += (f'\n购买藏宝图需 {clue["price"]} {money.get("name", clue["money"])}，'
-                     '并附赠原版 Treasure 行配置的放大镜。')
+            text += '\n当前没有正在寻找的藏宝图，请先在藏宝图购买页取得一张。'
         info.set(text)
 
         def search():
+            current = hunt.active()
+            if not current:
+                info.set('当前没有正在寻找的藏宝图；请先购买藏宝图。')
+                return
             try:
-                current = hunt.active()
-                if not current:
-                    current = hunt.buy(row['keyId'])
                 hunt.use_magnifier(current['pos_id'])
             except (ValueError, KeyError) as error:
                 info.set(str(error))
@@ -685,14 +684,15 @@ class ActivityUI:
         def give_up():
             try:
                 hunt.give_up()
-            except ValueError:
-                pass
+            except ValueError as error:
+                info.set(str(error))
+                return
             self.close_ui('no')
 
         self.ui_actions['use_Button'] = search
         self.ui_actions['giveUp_Button'] = give_up
-        self.ui_actions['close_Button'] = give_up
-        label = '使用放大镜' if entry else '购买藏宝图并搜索'
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        label = '使用放大镜' if entry else '需要藏宝图'
         tk.Button(body, text=label, command=search).pack(pady=3)
         tk.Button(body, text='放弃', command=give_up).pack(pady=3)
 
