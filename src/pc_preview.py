@@ -179,6 +179,50 @@ class Preview:
         if actors and (actors[0][2]-self.x)**2+(actors[0][3]-self.y)**2 < 150**2:
             self.play_event('pEventTalk'+actors[0][0]+'.json')
 
+    def exit_spawn(self, game_map, obj):
+        """Return a walkable point just inside the destination map.
+
+        The TMX ``face`` field points from the exit into the map it leaves;
+        a player arriving through it must stand on the opposite side of the
+        rectangle.  The old code offset the centre *toward* ``face`` and could
+        place the player at negative coordinates on top-edge exits.
+        """
+        x = float(obj.get('x', 0))+float(obj.get('width', 64))/2
+        y = float(obj.get('y', 0))+float(obj.get('height', 64))/2
+        w = float(obj.get('width', 64))
+        h = float(obj.get('height', 64))
+        face = str(obj.get('props', {}).get('face', '2'))
+        if face == '1':       # exit points up: arrive below it
+            y = float(obj.get('y', 0))+h+32
+        elif face == '2':     # exit points down: arrive above it
+            y = float(obj.get('y', 0))-32
+        elif face == '3':     # exit points left: arrive on its right
+            x = float(obj.get('x', 0))+w+32
+        elif face == '4':     # exit points right: arrive on its left
+            x = float(obj.get('x', 0))-32
+        x = max(32.0, min(x, game_map.width*64-32.0))
+        y = max(32.0, min(y, game_map.height*64-32.0))
+        if not game_map.blocked(x, y):
+            return x, y
+        # Exits are sometimes drawn over a blocked decorative tile.  Pick the
+        # nearest passable tile centre rather than spawning inside a wall.
+        tx, ty = int(x//64), int(y//64)
+        for radius in range(1, 8):
+            candidates = []
+            for dx in range(-radius, radius+1):
+                for dy in range(-radius, radius+1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue
+                    nx, ny = tx+dx, ty+dy
+                    if not (0 <= nx < game_map.width and 0 <= ny < game_map.height):
+                        continue
+                    px, py = nx*64+32, ny*64+32
+                    if not game_map.blocked(px, py):
+                        candidates.append((abs(px-x)+abs(py-y), px, py))
+            if candidates:
+                return min(candidates)[1:]
+        return x, y
+
     def try_exit(self):
         if time.monotonic() < self.exit_time:
             return
@@ -197,12 +241,8 @@ class Preview:
                 dest = self.data.load_map(mid)
                 candidates = [o for o in dest.objects if o.get('name') == target and 'toExit' in o['props']]
                 if candidates:
-                    o = candidates[0]
-                    tx = float(o.get('x', 0))+float(o.get('width', 64))/2
-                    ty = float(o.get('y', 0))+float(o.get('height', 64))/2
-                    offsets = {'1': (0, -64), '2': (0, 64), '3': (-64, 0), '4': (64, 0)}
-                    dx, dy = offsets.get(o['props'].get('face'), (0, 0))
-                    self.load_map(mid, tx+dx, ty+dy)
+                    tx, ty = self.exit_spawn(dest, candidates[0])
+                    self.load_map(mid, tx, ty)
                 else:
                     self.load_map(mid)
                 return

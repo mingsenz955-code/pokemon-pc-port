@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from original_data import OriginalData
 from pc_preview import Preview, data_root
@@ -21,6 +22,7 @@ from battle_ui import BattleUI
 from activity_ui import ActivityUI
 from task_progress import TaskProgress
 from mounts import Mounts
+from guide import Guide
 
 
 class NativeGame(ActivityUI, Preview):
@@ -47,6 +49,8 @@ class NativeGame(ActivityUI, Preview):
         self.encounter_distance = 0.0
         self.encounter_threshold = 0
         self.show_map_label = False
+        self.data = data
+        self.guide = Guide(self)
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
@@ -56,7 +60,8 @@ class NativeGame(ActivityUI, Preview):
             child.destroy()
         tk.Label(top, text='口袋妖怪 · PC 移植开发版', fg='#f5d492', bg='#202b30',
                  font=('Microsoft YaHei UI', 12, 'bold')).pack(side='left', padx=14, pady=10)
-        for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui), ('抽宠', self.lottery_ui),
+        for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui),
+                                ('指引', self.guide_ui), ('抽宠', self.lottery_ui),
                                 ('坐骑', self.mounts_ui), ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
             ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
@@ -333,11 +338,76 @@ class NativeGame(ActivityUI, Preview):
             self.save()
         elif key == 'f9':
             self.restore()
+        elif key == 'g':
+            self.guide_toggle()
         elif key not in ['m', 'f3', 'escape']:
+            if key in {'up', 'down', 'left', 'right', 'w', 'a', 's', 'd'}:
+                self.guide.stop('已停止自动指引。')
             self.keys.add(key)
 
     def advance_main_condition(self, kind, value):
         TaskProgress(self.state).update(kind, int(value))
+
+    def guide_toggle(self):
+        if self.battle:
+            return
+        if self.guide.active:
+            self.guide.stop('已停止自动指引。')
+        else:
+            target = self.guide.refresh()
+            if target:
+                self.guide.start(target)
+
+    def guide_ui(self):
+        if self.battle:
+            self.event_issue = '战斗中不能自动前往，请先结束战斗。'
+            return
+        win = tk.Toplevel(self.root)
+        win.title('任务指引 · 原生 0.2.2')
+        win.transient(self.root)
+        targets = self.guide.resolver.targets()
+        text = tk.StringVar()
+        tk.Label(win, textvariable=text, justify='left', anchor='w', wraplength=620,
+                 font=('Microsoft YaHei UI', 10)).pack(fill='x', padx=10, pady=8)
+        box = tk.Listbox(win, width=82, height=min(8, max(3, len(targets))),
+                         font=('Microsoft YaHei UI', 10))
+        box.pack(fill='both', expand=True, padx=10)
+        for target in targets:
+            box.insert('end', f'[{target.task_kind}] {target.label}')
+        detail = tk.Text(win, width=82, height=6, wrap='word', font=('Microsoft YaHei UI', 10))
+        detail.pack(fill='x', padx=10, pady=6)
+        selected = {'target': targets[0] if targets else None}
+        def show(_=None):
+            if not box.curselection() or not targets:
+                return
+            target = targets[box.curselection()[0]]
+            selected['target'] = target
+            route = self.guide.graph.route(self.map_id, target.map_id) if target.map_id else []
+            detail.delete('1.0', 'end')
+            detail.insert('1.0', f'{target.detail}\n任务：{target.task_name or target.task_id}\n'
+                                 f'{target.description}\n'
+                                 f'目标地图：{target.map_id or "无"}  路线：{" → ".join(map(str, route)) or "无需移动"}')
+            text.set(f'当前地图：{self.map_id} {self.map.info["name"]}\n'
+                     f'自动前往时会沿原版出口逐图行走；按 G 再次停止。')
+        def start():
+            target = selected['target']
+            if target:
+                self.guide.start(target)
+                detail.delete('1.0', 'end')
+                detail.insert('1.0', self.guide.message)
+        box.bind('<<ListboxSelect>>', show)
+        if targets:
+            box.selection_set(0)
+            show()
+        else:
+            text.set(f'当前地图：{self.map_id} {self.map.info["name"]}\n'
+                     '当前主线/支线没有可解析的空间目标。请先推进任务或检查任务条件。')
+            detail.insert('1.0', '指引只使用原版任务表、地图事件区域和 NPC 对象；找不到对象时不会编造坐标。')
+        buttons = tk.Frame(win)
+        buttons.pack(fill='x', padx=10, pady=(0, 10))
+        tk.Button(buttons, text='自动前往', command=start).pack(side='left')
+        tk.Button(buttons, text='停止', command=lambda: self.guide.stop('已停止自动指引。')).pack(side='left', padx=6)
+        tk.Button(buttons, text='关闭', command=win.destroy).pack(side='right')
 
     def interact(self):
         if self.booting:
@@ -399,11 +469,8 @@ class NativeGame(ActivityUI, Preview):
         if not found:
             raise PendingMechanic(f'原出口 {target} 在目标地图 {mid} 没有落点对象')
         obj = found[0]
-        x = float(obj.get('x', 0))+float(obj.get('width', 64))/2
-        y = float(obj.get('y', 0))+float(obj.get('height', 64))/2
-        offsets = {'1': (0, -64), '2': (0, 64), '3': (-64, 0), '4': (64, 0)}
-        dx, dy = offsets.get(obj['props'].get('face'), (0, 0))
-        self.load_map(mid, x+dx, y+dy)
+        x, y = self.exit_spawn(destination, obj)
+        self.load_map(mid, x, y)
         self.advance_main_condition('map', int(mid))
         self.runtime.notify('tomap', map=int(mid))
         self.inside_areas = set()
@@ -657,6 +724,7 @@ class NativeGame(ActivityUI, Preview):
             TaskProgress(self.state).update()
             self.drive()
             self.steps = [1] if self.runtime.running or self.runtime_error else []
+            self.guide.step()
         super().tick()
         if self.booting:
             return
@@ -687,7 +755,15 @@ class NativeGame(ActivityUI, Preview):
                     break
         self.inside_areas = areas
         self.event_issue = self.runtime_error
-        self.status.set(self.runtime_error or '方向键/WASD移动 · 空格/E对话 · F5保存 · F9读取 | 原剧情状态机、战斗核心与原版战斗UI已接入')
+        guide_note = ''
+        if self.guide.target:
+            guide_note = f' | 指引：{self.guide.target.label}'
+            if self.guide.active:
+                guide_note += f'（自动前往，剩余 {max(0, len(self.guide.route)-1)} 张地图）'
+            elif self.guide.message:
+                guide_note += f'（{self.guide.message}）'
+        self.status.set(self.runtime_error or ('方向键/WASD移动 · 空格/E对话 · F5保存 · F9读取 · G指引'
+                                               ' | 原剧情状态机、战斗核心与原版战斗UI已接入' + guide_note))
 
     def make_frame(self):
         if self.battle and self.battle_ui:
@@ -717,10 +793,47 @@ class NativeGame(ActivityUI, Preview):
                 text={side+'Name_Text': name, side+'Dialog_Text': content},
                 visible={'leftDialog_Panel': is_player, 'rightDialog_Panel': not is_player})
             frame.alpha_composite(overlay)
+        else:
+            self.draw_guide(frame)
         if time.monotonic() < getattr(self, 'flash_until', 0):
             from PIL import Image
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'), .7)
         return frame
+
+    def draw_guide(self, frame):
+        target = getattr(self.guide, 'target', None)
+        if not target or self.runtime.running or self.battle:
+            return
+        point = self.guide.point()
+        if not point:
+            return
+        focus = self.camera_focus or (self.x, self.y)
+        camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2, self.background.width-self.WIDTH))
+        camy = max(0, min(focus[1]*self.SCALE-self.HEIGHT/2, self.background.height-self.HEIGHT))
+        sx, sy = point[0]*self.SCALE-camx, point[1]*self.SCALE-camy
+        draw = ImageDraw.Draw(frame)
+        try:
+            font = ImageFont.truetype(str(Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'), 15)
+        except OSError:
+            font = ImageFont.load_default()
+        label = '目标' if self.map_id == target.map_id else '出口'
+        if 30 < sx < self.WIDTH-30 and 30 < sy < self.HEIGHT-30:
+            draw.ellipse((sx-14, sy-14, sx+14, sy+14), outline='#ffe36e', width=4)
+            draw.ellipse((sx-4, sy-4, sx+4, sy+4), fill='#ffe36e')
+            draw.rounded_rectangle((sx+18, sy-24, sx+18+len(label)*16+12, sy-2),
+                                   radius=5, fill=(35, 40, 32, 210))
+            draw.text((sx+24, sy-23), label, font=font, fill='#ffe36e')
+        else:
+            cx, cy = self.WIDTH/2, self.HEIGHT/2
+            angle = math.atan2(sy-cy, sx-cx)
+            radius = min(self.WIDTH, self.HEIGHT)*.38
+            ax, ay = cx+math.cos(angle)*radius, cy+math.sin(angle)*radius
+            draw.line((cx, cy, ax, ay), fill='#ffe36e', width=4)
+            wing = 16
+            left = (ax-math.cos(angle-.55)*wing, ay-math.sin(angle-.55)*wing)
+            right = (ax-math.cos(angle+.55)*wing, ay-math.sin(angle+.55)*wing)
+            draw.polygon((ax, ay, left, right), fill='#ffe36e')
+            draw.text((ax-18, ay+14), label, font=font, fill='#ffe36e')
 
     def save(self):
         if self.booting:
@@ -753,6 +866,7 @@ class NativeGame(ActivityUI, Preview):
             runtime.restore(state.pending_runtime)
             self.close_transient_ui()
             self.state, self.runtime = state, runtime
+            self.guide.rebind(state)
             self.load_map(state.map_id, state.x, state.y)
             self.runtime_error, self.display_request, self.dialogue = '', None, None
             self.pending_wait, self.wait_until = None, 0

@@ -16,6 +16,7 @@
 按原 ARM 回调恢复“点我方打开补给/换宠，点敌方打开技能”的入口，补蓝/补血各筛选对应道具，
 保留原图标与菜单坐标，技能/道具说明可点击。取消遮挡敌方血条的自制日志框；静态战斗帧复用以减少无效重绘。
 坐骑现在按原表区分地形通行、地图禁用、自动换乘和手动飞行；基础移动速度 320，坐骑按 speed/100 缩放。
+任务指引已接入原版任务条件解析、跨地图出口路线和逐格实际移动，修正出口落点在地图外或墙内的旧问题。
 **这些改动仍不代表完整复刻**：竞技场、合体、完整坐骑交互、
 地图障碍、后期主支线、技能状态细节和原版动态 UI 等仍有大量工作。
 
@@ -45,9 +46,9 @@
 | --- | --- |
 | ![技能菜单](docs/screenshots/battle-skills.png) | ![野外遭遇](docs/screenshots/wild-encounter.png) |
 
-| 序章 · 十年前迪尼斯城 |
-| --- |
-| ![序章](docs/screenshots/prologue.png) |
+| 序章 · 十年前迪尼斯城 | 任务指引 · 原版区域目标 |
+| --- | --- |
+| ![序章](docs/screenshots/prologue.png) | ![任务指引](docs/screenshots/guide-marker.png) |
 
 ## 当前完成度
 
@@ -63,6 +64,7 @@
   - 战斗内回复道具、精灵球分页。
 - **原版战斗 UI**：`BattleMainUI`、`BattleButtonMenuNode`、`BattleSkillMenuNode`、`BattleItemMenuNode`，含原版背景、宠物 Spine 立绘、HP/能量条、状态、队伍点、日志、确认与结算面板。
 - **地图随机遇敌**：按原 `VillageMap.enemyAppearInterval`（30–40 步）和 `enemyProbability` 权重选择 `VillageEnemy`；该逻辑由 `VillageMapControler::checkEnemy` / `DataManager::fightWithVillageMapEnemy` 反汇编核对。
+- **任务指引与寻路**：按原 `MainTask`/`BranchTask` 的 `conditionType` 解析目标：区域 ID、NPC ID、捕捉地图、目标地图、等级/道具；自动沿已核验出口逐图行走，地图切换后重新计算路线，并在 NPC 交互范围或区域触发处停下。找不到原版对象时明确报告，不编造坐标。
 - **背包/宠物界面**：背包可使用原版回复道具并扣除数量；宠物界面显示等级、生命/能量、五维、品质、突破、亲密度、技能、天赋，并支持数据驱动的进化尝试。
 - **独立存档**：保存剧情位置、地图、背包、任务、事件状态、宠物、随机数状态；原子写入并保留 `.bak`。战斗中存档会明确拒绝，避免写入不一致状态。
 
@@ -111,7 +113,8 @@ py -3.12 -m venv .venv
 | WASD / 方向键 | 移动 |
 | 空格 / E / 鼠标单击 | 对话、交互、确认 |
 | F5 / F9 | 保存 / 读取独立存档 |
-| 顶部按钮 | 宠物、背包、任务、保存、读取、关于 |
+| G | 开始/停止自动任务指引 |
+| 顶部按钮 | 宠物、背包、任务、指引、抽宠、坐骑、保存、读取、关于 |
 | 战斗界面 | 点击右侧指令：攻击、技能、道具、换宠、逃跑、捕捉 |
 
 ## 构建 Windows 包
@@ -134,6 +137,9 @@ py -3.12 -m venv .venv
 # 战斗核心与捕捉
 .\.venv\Scripts\python.exe tools\check_battle_runtime.py
 
+# 任务目标解析、路线和真实逐格移动
+.\.venv\Scripts\python.exe tools\check_guide.py
+
 # Tk 宿主实跑：序章 → 初始宠物 → 主线 1–6
 .\.venv\Scripts\python.exe build\_host_debug.py
 ```
@@ -151,6 +157,10 @@ py -3.12 -m venv .venv
 src/
   pc_game.py          原生 Tk 宿主：地图、事件、任务、UI、遇敌、存档
   event_runtime.py    461 条触发规则与请求式事件解释器
+  task_progress.py    原版任务条件计数
+  guide.py            任务目标解析、跨地图路线、逐格自动移动
+  activity_ui.py      抽宠/轮盘/孵化/商店/训练等界面
+  mounts.py           原版坐骑地形规则
   game_state.py       宠物/背包/任务/事件/随机数状态
   battle.py           回合制战斗核心
   battle_ui.py        原版 Cocos 战斗 UI 渲染与点击

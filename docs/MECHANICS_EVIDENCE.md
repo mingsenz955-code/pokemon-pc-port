@@ -25,6 +25,7 @@
 | 护士治疗 | `confirmButtonRespond` 0x365238、`cureAllPets` 0x329fe4 | 医疗卡 70201 免费，否则优先扣免费医疗 700006 一次，再否则金币 100；只治疗携带宠物 |
 | 普通地图宝箱 | `VillageChestControler::open` 0x2d65dc、VillageChest | 原表整批奖励、永久开启状态与 opened 图像；藏宝图生成宝箱仍待接入 |
 | 任务 | `MainTaskItemTalk::acceptTask` 0x300264、`PlotEventItemSubmitTask::begin` 0x2f5a04 | 主线对话任务接受即就绪；mtask 为提交当前主线的标志，不是任务编号；收集、捕捉、战斗、多条件计数。支线类型 8/9 待接入 |
+| 任务指引 | MainTask/BranchTask 条件字段、VillageMap.exitIds、TMX 出口对象、eventLayer 区域对象 | conditionType 1 按区域 ID 拆地图并进入区域；3 的第三字段是捕捉地图；4 查 NPC 对象；5 直达地图。跨图路线从 TMX `toExit` 与目标地图 `exitIds` 建图，逐格 BFS，移动调用宿主 `move_to` 以保留坐骑地形限制。已修正出口 `face` 落点算反导致负坐标/墙内落点的问题。`tools/check_guide.py` 核对 8 个主线目标、真实区域移动、NPC 接近和一次出口切换 |
 | 坐骑地形通行 | `compareRideCollidesAble` 0x32ad48、`compareRideMapTypeAble` 0x32ad88、`compareRidesCollidesAble` 0x32ae44、`onRideWithCollideTile` 0x32adc8、`VillagePlayerControler::rideProcess` 0x2e1108、`setMoveSpeed` 0x2e0b5c | 读取 Ride.collidesAble 白名单及 mapTypeDisable 黑名单；步行仅 0；当前坐骑优先，其次已获得的 kind=2/3 自动换乘；飞行需手动骑乘。陆行鸟/护城龙 0、乘龙 2、芭叶虫 0/3、飞龙 0/1/2/3；所有坐骑禁地图类型 1，飞龙额外禁类型 3。已获得宠物按 Ride.petId 关联解锁，旧移植存档从获得图鉴补回。试乘不写入永久所有权。基础速度 320，乘以 speed/100。原骨骼静态站立图接入显示；完整骑乘动画、破障事件尚未复刻 |
 | 战斗点击与菜单 | `mineMenuPanelRespond` 0x355878、`enemyMenuPanelRespond` 0x3558e4、`energyButtonRespond` 0x355950、`hpButtonRespond` 0x3559a0、`showButtonMenu` 0x3544d0、`showSkillMenu` 0x354a7c；BattleMainUI 的 mine/enemyMenuPos_Panel | 我方区域打开补给菜单，敌方区域打开技能菜单；补蓝筛能量、补血筛生命。菜单使用原 panel 中心；修复命中完整节点路径导致短名动作无法分发，优先命中小的说明按钮，原 SkillInfoNode 展示原表说明。原版发招/特效/结果页、强制引导与菜单显示状态仍未完整对照 |
 
@@ -38,6 +39,7 @@
 - `tools/check_native.py`：地图读取和预览；不代表全地图剧情可通关。
 - `tools/check_mounts.py`：5 种坐骑 × 4 种地图 × 6 种地形/越界的 120 项判断，以及自动换乘、手动飞行、试乘、存档和真实移动入口回归；遍历 431 张地图检查 collideTile 保真。不是完整原版步行通关对照。
 - `tools/check_battle_clicks.py`：真实 Tk Canvas 的 Button-1 事件，检查两侧宠物菜单、补血/补蓝/背包/换宠、普通攻击/技能推进真实战斗回合、说明按钮不误发招以及关闭、静态帧复用。尚不是全部按钮/全部分辨率覆盖。
+- `tools/check_guide.py`：8 个主线目标解析、7401→101 地图路线、区域 BFS、真实 NPC 接近、出口切换和 11 条路线边落点边界检查；不是 431 张地图的完整步行回归。
 - `build/_host_debug.py`：有直接触发和传送的序章集成测试；不是玩家全程步行测试。
 
 ## 仍未完成
