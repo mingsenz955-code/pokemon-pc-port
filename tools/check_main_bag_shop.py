@@ -65,13 +65,16 @@ with tempfile.TemporaryDirectory() as saves:
         'four-arrow HUD button did not return after collapsing 功能')
     assert 'community_Button' not in app.scene_ui.hits
 
-    # Up-side shop/bookmark menu must actually toggle open by clicking 指引 too.
-    up_hit = app.scene_ui.hits['mainUp_Button']
-    assert app.scene_ui.click((up_hit[0]+up_hit[2])/2, (up_hit[1]+up_hit[3])/2)
-    app.scene_ui.groups['up']['clock'] = time.monotonic() - 1
-    app.scene_ui.cached_key = None
-    app.scene_ui.render(frame)
-    assert app.scene_ui.value('up') == 1.0, 'mainUp_Button did not open the original up menu'
+    # User-requested 指引 starts the current task route, not a shop submenu.
+    app.runtime.file, app.runtime.sequence, app.runtime.pending = '', [], None
+    app.display_request, app.pending_wait = None, None
+    app.guide.rebind(app.state)
+    app.state.main_task, app.state.main_state = 4, 4
+    app.load_map(5801, 660, 529)
+    app.scene_ui.action('mainUp_Button')
+    assert app.guide.active
+    assert app.scene_ui.value('up') == 0.0
+    app.guide.stop()
 
     # The main-store button is a direct original shop page and must show real
     # currency values, not the embedded 8888888 editor placeholder.

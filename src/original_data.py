@@ -131,10 +131,12 @@ class OriginalData:
         image = render_pose(str(path), animation, int(frame), loop).copy()
         scale = float(row.get('scale', 1) or 1)
         if scale != 1:
+            bone_points = image.info.get('bone_points', {})
             origin = image.info['origin']
             image = image.resize((max(1, round(image.width*scale)), max(1, round(image.height*scale))),
                                  Image.Resampling.LANCZOS)
             image.info['origin'] = tuple(v*scale for v in origin)
+            image.info['bone_points'] = {key: tuple(v*scale for v in point) for key, point in bone_points.items()}
         return image
 
     @lru_cache(maxsize=64)

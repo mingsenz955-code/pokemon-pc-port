@@ -126,7 +126,7 @@ class SceneChecks(unittest.TestCase):
     def test_original_main_ui_button_hits_and_page_callbacks(self):
         calls = []
         app = SimpleNamespace(WIDTH=960, HEIGHT=576, cocos_ui=CocosUI(DATA), data=DATA)
-        for name in ('save', 'tasks_ui', 'guide_toggle', 'lottery_ui', 'bag_ui', 'pets_ui', 'illustrated_ui', 'achievements_ui', 'treasure_ui'):
+        for name in ('save', 'save_ui', 'store_ui', 'recharge_ui', 'tasks_ui', 'guide_toggle', 'lottery_ui', 'bag_ui', 'pets_ui', 'illustrated_ui', 'achievements_ui', 'treasure_ui'):
             setattr(app, name, lambda name=name: calls.append(name))
         app.guide_shop = lambda kind: calls.append(('shop', kind))
         app.map, app.data = DATA.load_map(101), DATA
