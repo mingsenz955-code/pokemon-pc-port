@@ -155,6 +155,8 @@ class EventRuntime:
                 continue
             step = self.sequence[self.index]
             kind, parameter = step['type'], step.get('parameters', {})
+            if isinstance(step.get('sound'), (int, str)) and getattr(self, 'play_sound', None):
+                self.play_sound(step['sound'])
             if kind not in self.PRESENTATION | self.STATE_COMMANDS | self.INTERACTIVE:
                 raise PendingMechanic(f'Unknown original command {kind}')
             if kind == 'fightover':

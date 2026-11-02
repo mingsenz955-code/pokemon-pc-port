@@ -69,7 +69,16 @@ class PetPages:
                 return
             self.close_ui('yes')
         def buy():
-            self._page_tip('此入口需要原版付费服务，当前未接入，未扣费。', paint)
+            store = self.data.tables['Store'][row['storeId']]
+            money = self.data.tables['Money'][store['costMoneyType']]['name']
+            def confirm():
+                try:
+                    pet = self.state.buy_trial_pet(key)
+                except ValueError as error:
+                    self._page_tip(str(error), paint)
+                    return
+                self.reward_overlay([(pet.species, 1)], back=paint, title='获得宠物', underlay=False)
+            self._choice_page(f"花费 {store['costCount']} {money}购买这只永久宠物？", confirm, paint)
         paint()
 
     def _evolution_page(self, body, info):
@@ -110,11 +119,16 @@ class PetPages:
             page.animated_pets.extend([(pet.species, (348, 363), (280, 295, 415, 365), 70),
                                        (target, (538, 363), (470, 295, 608, 365), 70)])
             page.actions.update({'evolution_Button': evolve, 'close_Button': back})
+            rect = (490, 430, 700, 467)
+            ImageDraw.Draw(page.layer).rounded_rectangle(rect, radius=12, fill='#06b7df', outline='#fff2bd', width=2)
+            ImageDraw.Draw(page.layer).text((595, 448), '金币进化 50000', font=self.cocos_ui.font('', 18), anchor='mm', fill='white')
+            page.hit('gold_evolution', rect, lambda: self._choice_page(
+                '花费 50000 金币进化？仍需达到等级，不消耗进化材料。', lambda: evolve(True), paint))
             page.publish()
-        def evolve():
+        def evolve(use_gold=False):
             before = pet.stats(self.data.tables)
             try:
-                self.state.evolve(uid)
+                self.state.evolve(uid, use_gold=use_gold)
             except ValueError as error:
                 self._page_tip(str(error), paint)
                 return

@@ -96,11 +96,15 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.npc_motion = NpcMotion(self)
-        self.canvas.bind('<Button-1>', self.on_click)
-        self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
-        self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
-        self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.63（全系统还原进行中）')
+        from game_viewport import GameViewport
+        self.viewport = GameViewport(self)
+        self.viewport.bind('<Button-1>', self.on_click)
+        self.viewport.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
+        self.viewport.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
+        self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
+        self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
+        self.runtime.play_sound = self.audio.effect
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.64（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -490,7 +494,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         60: ('SkillLearnConfirmUI', '技能学习确认'),
         61: ('EvolutionConditionUI', '进化条件'),
         62: ('HatchCheckUI', '孵化检查'),
-        63: ('ContinuousTopUpUI', '连充奖励'),
+        63: ('ShopUI', '金币商店'),
         68: ('LuckyDrawUI', '抽宠'),
         64: ('PublicNoticeUI', '公告'),
         65: ('SystemUI', '系统设置'),
@@ -612,7 +616,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             # append a host Tk form below it.
             body.pack_forget()
         elif uiid == 63:
-            self._topup_page(body, info)
+            self._gold_store_page(body, info)
         elif uiid == 68:
             self._lottery_page(body, info)
         elif uiid == 64:
@@ -622,16 +626,27 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.ui_actions['close_Button'] = self.close_ui
             body.pack_forget()
         elif uiid == 65:
-            info.set('原版系统设置页。音乐/音效开关尚未接入宿主音频，'
-                     '不会伪装成已生效。')
+            info.set('F11 / Alt+Enter 切换全屏，Esc 返回窗口；音乐和音效开关立即生效。')
             self.ui_actions['close_Button'] = self.close_ui
             self.ui_actions['about_Button'] = self.about
-            for name in ('moreGame_Button', 'control_click_Button',
-                         'control_direct_Button', 'music_open_Button',
-                         'music_close_Button', 'effect_open_Button',
-                         'effect_close_Button'):
-                self.ui_actions[name] = lambda: info.set(
-                    '该设置项尚未接入，当前不会修改游戏状态。')
+            def sound_setting(kind, enabled):
+                self.audio.set_enabled(kind, enabled)
+                self.state.presentation[kind+'_enabled'] = enabled
+                visibility = {
+                    'music_open_Button': self.audio.music_enabled,
+                    'music_close_Button': not self.audio.music_enabled,
+                    'effect_open_Button': self.audio.effects_enabled,
+                    'effect_close_Button': not self.audio.effects_enabled, 'moreGame_Button': False}
+                self.ui_render_args['visible'] = visibility
+                self.ui_base_layer = self.cocos_ui.render('SystemUI', (800, 480), visible=visibility)
+                self.ui_hits = dict(self.cocos_ui.hits)
+                self.ui_buttons = dict(self.cocos_ui.buttons)
+                self.ui_art_label.set_layer(self.ui_base_layer)
+            for kind in ('music', 'effect'):
+                self.ui_actions[kind+'_open_Button'] = lambda k=kind: sound_setting(k, False)
+                self.ui_actions[kind+'_close_Button'] = lambda k=kind: sound_setting(k, True)
+            sound_setting('music', self.state.presentation.get('music_enabled', True))
+            sound_setting('effect', self.state.presentation.get('effect_enabled', True))
             body.pack_forget()
         elif uiid == 66:
             info.set('原版蓝牙页。Windows 单机版不使用蓝牙联机，'
@@ -732,8 +747,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         elif uiid == 38:
             self._treasure_tip_body(body, info)
         elif uiid in (27, 36):
-            info.set('原版礼包购买入口；支付与奖励表尚未接入，不能伪造发货。')
-            self.ui_actions['buy_Button'] = lambda: info.set('礼包购买与奖励表尚未接入，未扣除货币。')
+            self._gold_store_page(body, info)
         elif uiid == 34:
             self._fuse_body(body, info)
         else:
@@ -1652,6 +1666,15 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
 
     def tick(self):
         now = time.monotonic()
+        if hasattr(self, 'audio'):
+            for kind, flag in [('music', 'music_enabled'), ('effect', 'effects_enabled')]:
+                enabled = self.state.presentation.get(kind+'_enabled', True)
+                if getattr(self.audio, flag) != enabled:
+                    self.audio.set_enabled(kind, enabled)
+            result = self.battle.result if self.battle and not self.battle_ui.anim else None
+            result_music = {'win': '401', 'lose': '402', 'caught': '403'}.get(result)
+            self.audio.music(result_music or (self.battle.bgm if self.battle and str(self.battle.bgm) != '0' else
+                                 '301' if self.battle else self.map.info.get('bgmId', '0')), loop=not bool(result_music))
         elapsed = max(0.0, now-self._play_clock)
         self._play_clock = now
         if not self.booting and self.ui_open and self.ui_window and self.ui_window.winfo_exists() and not self.battle:
@@ -1858,6 +1881,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             runtime.restore(state.pending_runtime)
             self.close_transient_ui()
             self.state, self.runtime = state, runtime
+            self.runtime.play_sound = self.audio.effect
             self.guide.rebind(state)
             # Loading the map initializes a fresh encounter, consuming RNG.
             # Restore the saved RNG as well as its existing encounter below.
@@ -2087,7 +2111,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         body.pack_forget()
         back = (lambda: self.open_ui(Request('openui', 'task', 1, {'parameters': {
             'uiid': 44, 'page': 'daily'}}))) if self.ui_parameters.get('back_task') else None
-        self.reward_overlay(self.ui_parameters.get('items', []), back, title=self.ui_parameters.get('title', '获得物品'))
+        self.reward_overlay(self.ui_parameters.get('items', []), back, title=self.ui_parameters.get('title', '获得物品'), underlay=False)
 
     def _legacy_get_item_body(self, body, info):
         parameters = self.ui_parameters
@@ -2837,7 +2861,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.ui_open:
             return
         self.open_ui(Request('openui', 'store', 1,
-                            {'parameters': {'uiid': 1}}))
+                            {'parameters': {'uiid': 63}}))
 
     def recharge_ui(self):
         if self.battle:

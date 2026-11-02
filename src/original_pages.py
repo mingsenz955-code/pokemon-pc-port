@@ -148,38 +148,65 @@ class Page:
 
 
 class OriginalPages(PetPages):
-    def _topup_page(self, body, info):
+    def _choice_page(self, message, yes, no):
+        previous = self.ui_base_layer.copy()
+        page = Page(self, 'SecondConfirmUI', text={'tip_Text': message})
+        # Use the resource's authored text node; no host OS dialog.
+        fields = {k: message for k in page.rects if k.endswith(('/tip_Text', '/info_Text'))}
+        if fields:
+            page = Page(self, 'SecondConfirmUI', text=fields)
+        art = page.layer
+        page.layer = previous
+        page.layer.alpha_composite(art)
+        page.actions.update({'confirm_Button': yes, 'cancel_Button': no, 'close_Button': no})
+        page.publish()
+
+    def _gold_store_page(self, body, info):
         body.pack_forget()
-        rows = sorted((r for r in self.data.tables['ContinuousTopUp'].values() if r['platform'] == '-1'),
-                      key=lambda r: int(r['keyId']))
-        selected, offset = [0], [0]
+        goods = [(k, r) for k, r in sorted(self.data.tables['Store'].items(), key=lambda p: int(p[0]))
+                 if r['platform'] == '0' and r['shopType'] in ('1', '2', '7')
+                 and not (r['costMoneyType'] == '700001' and r['gotItemKid'] == '700001')]
+        offset, selected = [0], [0]
         def paint():
-            row = rows[selected[0]]
-            page = Page(self, 'ContinuousTopUpUI', timeline_frame=60,
-                        text={'days_BitmapFontLabel': '0', 'topUpMoneyCount_BitmapFontLabel': '0',
-                              'info_Text': row['des']})
+            row = goods[selected[0]][1]
+            page = Page(self, 'ShopUI', text={'info_Text': row['des'], **self._money_text()},
+                        resources=self._money_icons(), sizes={'info_Text': (335, 60)})
             area = page.rects['Layer/root_Panel/goods_ListView']
-            for i, r in enumerate(rows):
-                x, y = round(area[0]+i*160-offset[0]), round(area[1])
+            for i, (key, row) in enumerate(goods):
+                x, y = round(area[0]+i*163-offset[0]), round(area[1])
                 if x+153 <= area[0] or x >= area[2]:
                     continue
-                name, icon = self._item_data(r['rewardKid'])
-                page.add('ContinuousTopUpItemUI', (x, y), prefix=f'topup_{i}/', clip=area,
-                         text={'day_BitmapFontLabel': str(i+1), 'name_Text': name,
-                               'count_BitmapFontLabel': f'x{r["rewardCount"]}',
-                               'needTopUpCount_Text': f'{int(r["condition"])/100:g}元'},
-                         resources={'icon_Image': icon}, native_resources=('icon_Image',),
-                         visible={'selected_Image': i == selected[0], 'receive_Image': False,
-                                  'received_Image': False, 'wait_Image': True, 'receive_Particle': False},
-                         actions={'get_Button': lambda: self._page_tip('尚未达到今日领取条件。', paint)})
-                page.hit(f'topup_card_{i}', (x, y, x+153, y+240), lambda v=i: choose(v), area)
+                money = self.data.tables['Money'][row['costMoneyType']]
+                page.add('ShopGoodsUI', (x, y), prefix=f'gold_store_{i}/', clip=area,
+                    sizes={'cost_BitmapFontLabel': (64, 22)},
+                    text={'name_Text': row['name'], 'cost_BitmapFontLabel': row['costCount'],
+                          'count_BitmapFontLabel': f"x{row['gotCount']}" if row['gotItemKid'] != '0' else ''},
+                    resources={'icon_Image': 'ItemIcon/'+row['texture'],
+                               'moneyIcon_Image': 'UI/'+money['littleIconTexture']},
+                    native_resources=('icon_Image',),
+                    visible={'selected_Image': i == selected[0], 'free_Image': False,
+                             'yuan_Image': False, 'addSend_Image': False, 'discount_Panel': False,
+                             'timesLimitedSale_Image': False},
+                    actions={'buy_Button': lambda k=key: choose_buy(k)})
+                page.hit(f'gold_store_card_{i}', (x, y, x+153, y+180), lambda n=i: select(n), area)
             page.actions['close_Button'] = self.close_ui
             page.publish()
-        def choose(value):
-            selected[0] = value
+        def select(index):
+            selected[0] = index
             paint()
+        def choose_buy(key):
+            row = self.data.tables['Store'][key]
+            money = self.data.tables['Money'][row['costMoneyType']]['name']
+            def buy():
+                try:
+                    rewards = self.state.buy_store(key)
+                except (ValueError, KeyError) as error:
+                    self._page_tip(str(error), paint)
+                    return
+                self.reward_overlay(rewards, back=paint, underlay=False)
+            self._choice_page(f"购买{row['name']}：{row['costCount']} {money}？", buy, paint)
         def wheel(event):
-            offset[0] = max(0, min(max(0, len(rows)*160-517), offset[0]+(-160 if event.delta > 0 else 160)))
+            offset[0] = max(0, min(max(0, len(goods)*163-517), offset[0]+(-163 if event.delta > 0 else 163)))
             paint()
         self._page_wheel(wheel)
         paint()
@@ -295,8 +322,8 @@ class OriginalPages(PetPages):
             self.reward_overlay([(row['itemId'], int(row['itemCount']))], back, '藏宝图附赠道具')
         paint()
 
-    def reward_overlay(self, items, back=None, title='获得物品'):
-        previous = self.ui_base_layer.copy() if back and self.ui_base_layer is not None else None
+    def reward_overlay(self, items, back=None, title='获得物品', *, underlay=True):
+        previous = self.ui_base_layer.copy() if underlay and back and self.ui_base_layer is not None else None
         previous_wheel = getattr(self, 'page_wheel', None)
         items = [(str(k), int(n)) for k, n in items if int(n) > 0]
         offset = [0]
@@ -316,7 +343,7 @@ class OriginalPages(PetPages):
                                              fill='#693100', anchor='mm')
             area = page.rects['Layer/root_Panel/item_ListView']
             for index, (kid, count) in enumerate(items):
-                x, y = round(area[0]+index*132-offset[0]), round(area[1])
+                x, y = round(area[0]+max(0, (area[2]-area[0]-(len(items)*132-4))/2)+index*132-offset[0]), round(area[1])
                 if x+128 <= area[0] or x >= area[2]:
                     continue
                 name, icon = self._item_data(kid)

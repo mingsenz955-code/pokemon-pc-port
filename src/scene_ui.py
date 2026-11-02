@@ -112,7 +112,7 @@ class SceneUI:
                    # The four-arrow HUD hide/show button sits over the
                    # illustrated-book icon when the right menu is expanded.
                    'uiDisappear_Button': right == 0,
-                   'timelimitGiftBag_Button': False, 'timelimitGiftBagTimeBg_Image': False,
+                   'rechargeReward_Button': False, 'timelimitGiftBag_Button': False, 'timelimitGiftBagTimeBg_Image': False,
                    # Single-player PC port: no online rank, gift-code exchange or
                    # Bluetooth battle entry points. Keep the original slots hidden
                    # instead of leaving dead buttons in the expanded menu.

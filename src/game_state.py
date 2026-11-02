@@ -251,10 +251,14 @@ class GameState:
         return self.branch_states.get(str(task_id), 2) == int(state)
 
     def count(self, item_id):
+        if str(item_id) == '700003':
+            return self.inventory.get('700001', 0)//100
         return self.inventory.get(str(item_id), 0)
 
     def grant(self, item_id, amount):
         item_id, amount = str(item_id), int(amount)
+        if item_id == '700003':
+            item_id, amount = '700001', amount*100
         if item_id == '0' or amount == 0:
             return
         if amount < 0:
@@ -339,6 +343,49 @@ class GameState:
         self.receive_pet(pet)
         self.active_pet = len(self.pets)-1
         self.activities.setdefault('trial_received', []).append(key)
+        return pet
+
+    @atomic_mutation
+    def buy_store(self, key):
+        row = self.tables['Store'][str(key)]
+        if row['shopType'] not in ('1', '2', '7'):
+            raise ValueError('请选择对应玩法中的商品。')
+        if row['costMoneyType'] == '700001' and row['gotItemKid'] == '700001':
+            raise ValueError('金币充值商品已移除，不能用金币购买金币。')
+        purchase = 'Store:'+str(key)
+        if row['repeat'] == '0' and self.shop_purchases.get(purchase, 0):
+            raise ValueError('这件限购商品已经购买过了。')
+        rewards = (json.loads(row['items']) if row['items'] != '[]' else
+                   [[row['gotItemKid'], int(row['gotCount'])]])
+        if not rewards or any(str(k) == '0' or int(n) <= 0 for k, n in rewards):
+            raise ValueError('这个商品没有可领取的奖励。')
+        self.consume([row['costMoneyType']], [int(row['costCount'])])
+        for key_id, count in rewards:
+            self.grant(key_id, count)
+        self.shop_purchases[purchase] = self.shop_purchases.get(purchase, 0)+1
+        spent = self.activities.setdefault('shop_spent', {})
+        money = row['costMoneyType']
+        spent[money] = int(spent.get(money, 0))+int(row['costCount'])
+        from daily_tasks import DailyTasks
+        DailyTasks(self).record('purchase')
+        return [(str(k), int(n)) for k, n in rewards]
+
+    @atomic_mutation
+    def buy_trial_pet(self, key):
+        key = str(key)
+        row = self.tables['TrialPet'][key]
+        store = self.tables['Store'][row['storeId']]
+        current = next((p for p in self.pets if p.trial_id == key), None)
+        if not current and self.pet_free_slots() < 1:
+            raise ValueError('宠物背包和银行都已满。')
+        self.consume([store['costMoneyType']], [int(store['costCount'])])
+        if current:
+            pet = current
+            pet.trial_id, pet.trial_remaining = '', -1
+            self.record_pet(pet.species)
+        else:
+            pet = self.preset_pet(key, 'TrialPet')
+            self.receive_pet(pet)
         return pet
 
     def move_pet(self, uid, *, to_bank):
@@ -426,6 +473,8 @@ class GameState:
             raise ValueError('Cost IDs and counts must have equal lengths')
         costs = {}
         for key, n in zip(ids, amounts):
+            if str(key) == '700003':
+                key, n = '700001', int(n)*100
             if str(key) != '0':
                 if int(n) < 0:
                     raise ValueError('Negative item cost')
@@ -598,14 +647,17 @@ class GameState:
         return pet
 
     @atomic_mutation
-    def evolve(self, uid):
+    def evolve(self, uid, *, use_gold=False):
         pet = next(p for p in self.pets+self.bank if p.uid == uid)
         if pet.trial_id:
             raise ValueError('试用宠物不能进化。')
         row = self.tables['Evolution'].get(pet.species)
         if not row or pet.level < int(row['level']):
             raise ValueError('未满足原版进化等级或该宠物不可进化')
-        self.consume(numbers(row['itemIds']), numbers(row['itemCounts']))
+        if use_gold:
+            self.consume(['700001'], [50000])
+        else:
+            self.consume(numbers(row['itemIds']), numbers(row['itemCounts']))
         pet.species = str(row['petId'])
         self.record_pet(pet.species)
         self.activities['evolve_total'] = int(self.activities.get('evolve_total', 0))+1
@@ -757,6 +809,9 @@ class GameState:
             raise ValueError('Unrecognized save fields')
         for key, value in payload['state'].items():
             setattr(result, key, value)
+        old_cash = int(result.inventory.pop('700003', 0))
+        if old_cash:
+            result.inventory['700001'] = result.inventory.get('700001', 0)+old_cash*100
         # 0.2.3 and older saves do not carry the arena rank/title fields.
         for field in ('arena_ranks', 'arena_titles', 'arena_wins', 'arena_streak'):
             if not hasattr(result, field):

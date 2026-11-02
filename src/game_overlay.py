@@ -14,6 +14,14 @@ class GameOverlay(tk.Frame):
         app._game_overlays = getattr(app, '_game_overlays', [])+[self]
         self.bind('<Escape>', self.escape)
         app.keys.clear()
+        self.rescale()
+
+    def rescale(self):
+        scale = getattr(getattr(self.app, 'viewport', None), 'scale', 1)
+        self.place_configure(width=round(800*scale), height=round(480*scale))
+        for child in self.winfo_children():
+            if isinstance(child, GameArtLabel) and hasattr(child, 'logical_frame'):
+                child.show_frame(child.logical_frame)
 
     def escape(self, event=None):
         self._close()
@@ -47,6 +55,7 @@ class GameOverlay(tk.Frame):
 
     def deiconify(self):
         self.place(relx=.5, rely=.5, anchor='center', width=800, height=480)
+        self.rescale()
 
 
 class GameArtLabel(tk.Label):
@@ -57,11 +66,14 @@ class GameArtLabel(tk.Label):
         # The modal animation pauses map redraws. Publish the clean scene
         # once first, so the previous dialogue/battle cannot remain around it.
         app.frame = scene
-        app.tk_image = ImageTk.PhotoImage(scene)
-        if hasattr(app, 'canvas_image'):
-            app.canvas.itemconfigure(app.canvas_image, image=app.tk_image)
+        if hasattr(app, 'viewport'):
+            app.viewport.present(scene)
         else:
-            app.canvas_image = app.canvas.create_image(0, 0, anchor='nw', image=app.tk_image)
+            app.tk_image = ImageTk.PhotoImage(scene)
+            if hasattr(app, 'canvas_image'):
+                app.canvas.itemconfigure(app.canvas_image, image=app.tk_image)
+            else:
+                app.canvas_image = app.canvas.create_image(0, 0, anchor='nw', image=app.tk_image)
         self.backdrop = scene.crop(((scene.width-800)//2, (scene.height-480)//2,
                                     (scene.width+800)//2, (scene.height+480)//2))
         super().__init__(parent, **options)
@@ -75,12 +87,34 @@ class GameArtLabel(tk.Label):
             if layer.size == self.backdrop.size:
                 frame = self.backdrop.copy()
                 frame.alpha_composite(layer)
-                self.composited_image = ImageTk.PhotoImage(frame)
-                options['image'] = self.composited_image
+                self.logical_frame = frame
+                options['image'] = self.scaled_photo(frame)
         return super().configure(cnf, **options)
 
     def set_layer(self, layer):
         frame = self.backdrop.copy()
         frame.alpha_composite(layer)
+        self.show_frame(frame)
+
+    def scaled_photo(self, frame):
+        from PIL import Image
+        self.logical_frame = frame
+        scale = getattr(getattr(self.master.app, 'viewport', None), 'scale', 1)
+        if scale != 1:
+            frame = frame.resize((max(1, round(frame.width*scale)), max(1, round(frame.height*scale))), Image.Resampling.BILINEAR)
         self.composited_image = ImageTk.PhotoImage(frame)
-        super().configure(image=self.composited_image)
+        return self.composited_image
+
+    def show_frame(self, frame):
+        super().configure(image=self.scaled_photo(frame))
+
+    def bind(self, sequence=None, func=None, add=None):
+        if func and sequence and any(name in sequence for name in ('Button', 'Motion', 'MouseWheel')):
+            def logical(event):
+                from types import SimpleNamespace
+                scale = getattr(getattr(self.master.app, 'viewport', None), 'scale', 1)
+                values = vars(event).copy()
+                values.update(x=event.x/scale, y=event.y/scale)
+                return func(SimpleNamespace(**values))
+            return super().bind(sequence, logical, add)
+        return super().bind(sequence, func, add)

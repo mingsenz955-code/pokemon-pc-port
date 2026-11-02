@@ -38,6 +38,8 @@ class OriginalData:
         self.root = Path(root)
         self.assets = self.root/'assets'
         self.tables = json.loads((self.root/'tables.json').read_text(encoding='utf-8'))
+        from economy import adapt_tables
+        adapt_tables(self.tables)
         self.image_paths = {p.name: p for p in self.assets.rglob('*.png')}
 
     @lru_cache(maxsize=1)

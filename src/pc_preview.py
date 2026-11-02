@@ -93,18 +93,10 @@ class Preview:
         self.play_music(row)
 
     def play_music(self, row):
-        if sys.platform != 'win32':
-            return
-        import ctypes
-        filenames = [v for v in row.values() if v.endswith(('.mp3', '.wav'))]
-        if not filenames:
-            return
-        p = self.data.assets/'Audio'/filenames[0]
-        if p.exists():
-            api = ctypes.windll.winmm.mciSendStringW
-            api('close pocketmusic', None, 0, None)
-            if api(f'open "{p}" type mpegvideo alias pocketmusic', None, 0, None) == 0:
-                api('play pocketmusic repeat', None, 0, None)
+        if not hasattr(self, 'audio'):
+            from game_audio import GameAudio
+            self.audio = GameAudio(self.data)
+        self.audio.music(row)
 
     def actors(self):
         result = []
@@ -347,7 +339,10 @@ class Preview:
                 self.move_to(self.x, ny)
                 self.try_exit()
         self.frame = self.make_frame()
-        self.tk_image = ImageTk.PhotoImage(self.frame)
+        if hasattr(self, 'viewport'):
+            self.viewport.present(self.frame)
+        else:
+            self.tk_image = ImageTk.PhotoImage(self.frame)
         if not hasattr(self, 'canvas_image'):
             self.canvas_image = self.canvas.create_image(0, 0, anchor='nw', image=self.tk_image)
         else:

@@ -42,7 +42,7 @@ class BattleUI:
         self.battle = battle
         from battle_effects import BattleEffects, EffectAudio
         self.effects = BattleEffects(app.data)
-        self.effect_audio = EffectAudio(app.data)
+        self.effect_audio = getattr(app, 'audio', None) or EffectAudio(app.data)
         self.pet_bones = {}
         self.screen = 'main'
         self.hits = {}

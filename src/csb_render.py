@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+from economy import gold_text
 from functools import lru_cache
 from pathlib import Path
 
@@ -151,7 +152,7 @@ class CocosUI:
             width, height = resolve(sizes, node.get('size', [0, 0]))
             natural_text = node['class'] == 'Text' and (not node.get('custom_text_size', True) or key in auto_text or qualified in auto_text)
             if natural_text:
-                value = re.sub(r'#[0-9]', '', str(resolve(text, node.get('text', ''))))
+                value = re.sub(r'#[0-9]', '', gold_text(resolve(text, node.get('text', ''))))
                 ft = self.font(node.get('font_resource', {}).get('path', ''), node.get('font_size', 22))
                 width, height = max(1, math.ceil(max((ft.getlength(line) for line in value.split('\n')), default=0))+2), (ft.size+3)*len(value.split('\n'))
             anchor = node.get('anchor', [0, 0])
@@ -220,7 +221,7 @@ class CocosUI:
                                                 round(origin[0]+width*sx), round(frame.height-origin[1])),
                                                fill=(r, g, b, round(alpha*a*node.get('background_alpha', 255)/255)))
                 frame.alpha_composite(background)
-            value = str(resolve(text, node.get('text', '')))
+            value = gold_text(resolve(text, node.get('text', '')))
             if value and classname in ['Text', 'Button', 'TextBMFont']:
                 if classname == 'TextBMFont':
                     try:
@@ -230,6 +231,11 @@ class CocosUI:
                 else:
                     glyphs = None
                 if glyphs is not None:
+                    if key in sizes or qualified in sizes:
+                        limit = resolve(sizes, node.get('size', [1, 1]))
+                        ratio = min(1, limit[0]/glyphs.width, limit[1]/glyphs.height)
+                        if ratio < 1:
+                            glyphs = glyphs.resize((max(1, round(glyphs.width*ratio)), max(1, round(glyphs.height*ratio))), Image.Resampling.LANCZOS)
                     # TextBMFont::setString updates content size. Anchors must
                     # follow the real glyph run, not the editor sample digits.
                     width, height = glyphs.size
