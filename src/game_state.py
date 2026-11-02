@@ -468,9 +468,9 @@ class GameState:
             raise ValueError('当前没有需要回复的宠物。')
         if not any(p is pet for p in self.pets):
             raise ValueError('只能对携带的宠物使用回复道具。')
-        if not needs_recovery(pet):
-            raise ValueError('这只宠物不需要此道具回复。')
         result = recovery(effect, pet.hp, pet.energy, *pet.stats(self.tables)[:2])
+        if (result.hp, result.energy) == (pet.hp, pet.energy):
+            raise ValueError('这只宠物不需要此道具回复。')
         pet.hp, pet.energy = result.hp, result.energy
         self.consume([item_id], [1])
         uses = dict(self.activities.get('heal_items', {}))
