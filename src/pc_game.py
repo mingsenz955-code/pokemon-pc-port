@@ -96,7 +96,7 @@ class NativeGame(ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.53（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.54（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -414,7 +414,7 @@ class NativeGame(ActivityUI, Preview):
     UI_LAYOUTS = {
         1: ('ShopUI', '商店'), 2: ('EvolutionShopUI', '材料商店'), 3: ('SkillShopUI', '卷轴商店'),
         4: ('PetBankUI', '宠物银行'), 5: ('HatchRoomUI', '孵化屋'), 6: ('SkillLearnUI', '技能学习'),
-        7: ('ChoiceFirstPetUI', '初始宠物'), 8: ('IllustratedPetInfoUI', '宠物图鉴'),
+        7: ('ChooseFirstPetUI', '初始宠物'), 8: ('IllustratedPetInfoUI', '宠物图鉴'),
         9: ('AreaMapUI', '地区地图'), 10: ('ArenaInfoUI', '竞技场'),
         11: ('CureConfirmUI', '宠物治疗'), 12: ('ContinuousLoginUI', '连续登录'),
         13: ('TrialPetUI', '宠物使者'), 14: ('SaveConfirmUI', '保存进度'),
@@ -477,9 +477,6 @@ class NativeGame(ActivityUI, Preview):
                 self.ui_actions[f'tag_{i}_Button'] = lambda p=page: self.task_page.select_page(p)
             return
         self.task_page = None
-        if uiid == 7:
-            self.starter_window(int(parameters.get('par1', 1)))
-            return
         layout, name = self.UI_LAYOUTS.get(uiid, ('MainUI', f'原版界面 {uiid}'))
         if self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.destroy()
@@ -584,6 +581,8 @@ class NativeGame(ActivityUI, Preview):
             body.pack_forget()
         elif uiid == 4:
             self._bank_body(body, info)
+        elif uiid == 7:
+            self._starter_body(body, info)
         elif uiid == 6:
             self._skill_body(body, info)
         elif uiid == 5:
@@ -1234,7 +1233,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.53')
+        win.title('任务指引 · 原生 0.2.54')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2173,30 +2172,69 @@ class NativeGame(ActivityUI, Preview):
         parameters = self.ui_parameters
         title = str(parameters.get('title', '获得物品'))
         items = list(parameters.get('items', []))
-        if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('GetItemUI', (800, 480), {'title_Text': title})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
-        rect = self.ui_hits.get('item_ListView') or self.ui_rects.get('item_ListView')
-        if rect:
-            frame.place(x=rect[0], y=rect[1], width=max(120, rect[2]-rect[0]),
-                        height=max(100, rect[3]-rect[1]))
-            frame.lift()
-        else:
-            frame.pack(fill='both', expand=True)
-        box = tk.Listbox(frame, width=36, height=7, font=('Microsoft YaHei UI', 10),
-                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
-        box.pack(fill='both', expand=True)
-        for key, count in items:
-            row = (self.data.tables['Item'].get(str(key))
-                   or self.data.tables['Pet'].get(str(key))
-                   or self.data.tables['Money'].get(str(key), {}))
-            box.insert('end', f'{row.get("name", key)} × {count}')
-        info.set(f'{title}：{len(items)} 项奖励')
+        body.pack_forget()
+        scroll = [0]
+
+        def resolve(key):
+            for table in ('Item', 'Pet', 'Money'):
+                row = self.data.tables.get(table, {}).get(str(key))
+                if row:
+                    return table, row
+            return '', {}
+
+        def icon_of(table, row):
+            if table == 'Item':
+                return f'ItemIcon/{row.get("texture", "")}'
+            if table == 'Pet':
+                return f'PetHead/head_{row.get("filePath", "")}.png'
+            return 'UI/' + row.get('littleIconTexture', 'money_little_icon_gold.png')
+
+        def paint():
+            layer = self.cocos_ui.render('GetItemUI', (800, 480),
+                                         {'title_Text': title})
+            base_hits = dict(self.cocos_ui.hits)
+            base_buttons = dict(self.cocos_ui.buttons)
+            base_rects = dict(self.cocos_ui.rects)
+            base_text = dict(self.cocos_ui.button_text)
+            area = (base_rects.get('item_ListView')
+                    or base_hits.get('item_ListView'))
+            if area:
+                visible = items[scroll[0]:scroll[0]+2]
+                for slot, (key, count) in enumerate(visible):
+                    table, row = resolve(key)
+                    card = self.render_component('GetItemUIItemUI', (128, 167), {
+                        'item_name_Text': row.get('name', str(key)),
+                        'itemCount_BitmapFontLabel': f'x{count}',
+                    }, resources={'icon_Image': icon_of(table, row)})
+                    x = area[0] + slot*132
+                    y = area[1]
+                    layer.alpha_composite(card, (round(x), round(y)))
+                    self.ui_hits[f'get_item_{scroll[0]+slot}'] = (
+                        x, y, x+128, y+167)
+            self.ui_base_layer = layer
+            self.ui_hits.update(base_hits)
+            self.ui_buttons = base_buttons
+            self.ui_rects = base_rects
+            self.ui_button_text = base_text
+            info.set(f'{title}：{len(items)} 项奖励'
+                     + (f' · 滚轮翻页（{scroll[0]//2+1}/{(len(items)+1)//2}）'
+                        if len(items) > 2 else ''))
+            if getattr(self, 'ui_art_label', None) is not None:
+                photo = ImageTk.PhotoImage(layer)
+                self.ui_art_label.configure(image=photo)
+                self.ui_art_label.image = photo
+
+        def wheel(event):
+            if len(items) <= 2:
+                return
+            step = -1 if event.delta > 0 else 1
+            scroll[0] = max(0, min((len(items)-1)//2*2, scroll[0]+2*step))
+            paint()
+        if hasattr(self, 'ui_art_label'):
+            self.ui_art_label.bind('<MouseWheel>', wheel)
         self.ui_actions['confirm_Button'] = self.close_ui
         self.ui_actions['close_Button'] = self.close_ui
+        paint()
 
     def _second_confirm_body(self, body, info):
         text = str(self.ui_parameters.get('text', '确定执行这个操作吗？'))

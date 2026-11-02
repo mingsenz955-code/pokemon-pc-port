@@ -45,15 +45,16 @@ with tempfile.TemporaryDirectory() as saves:
     closed = 0
     for uiid, (layout, name) in sorted(NativeGame.UI_LAYOUTS.items()):
         if uiid == 7:
-            # Starter selection is a bespoke confirmation window, not the
-            # generic full-screen layout path.
+            # Starter selection uses the original ChooseFirstPetUI full-screen
+            # card; it has no host Tk "选择" label.
             app.open_ui(Request('openui', 'ui-audit', 1,
                                 {'parameters': {'uiid': 7, 'par1': 1}}))
             root.update()
             assert app.ui_window and app.ui_window.winfo_exists(), uiid
-            assert any('选择' in text for text in labels(app.ui_window)), uiid
+            assert '初始伙伴' in app.ui_info.get(), uiid
+            assert 'confirm_Button' in app.ui_actions, uiid
             app.close_transient_ui()
-            report[uiid] = ['starter']
+            report[uiid] = ['ChooseFirstPetUI', 1]
             continue
         if uiid == 44:
             # TaskUI is now rendered inside the game canvas, not a Toplevel.

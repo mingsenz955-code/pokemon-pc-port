@@ -38,6 +38,11 @@ with tempfile.TemporaryDirectory() as saves:
     app.scene_ui.cached_key = None
     app.scene_ui.render(frame)
     assert app.scene_ui.value('right') == 1.0, 'clicking 功能 did not expand the original menu'
+    # Single-player build deliberately removes online rank, gift-code exchange
+    # and Bluetooth battle from the functional menu.
+    for hidden in ('right_left_5_Button', 'right_left_6_Button',
+                   'right_left_7_Button'):
+        assert hidden not in app.scene_ui.hits, f'{hidden} still clickable'
     bag_hit = app.scene_ui.hits.get('right_left_1_Button')
     assert bag_hit, 'expanded MainUI has no bag hit region'
     assert app.scene_ui.click((bag_hit[0]+bag_hit[2])/2, (bag_hit[1]+bag_hit[3])/2)

@@ -1614,6 +1614,72 @@ class ActivityUI:
         tk.Button(win, text=f'选择 {name}', command=lambda: self.choose_starter(key)).pack(pady=8)
         tk.Button(win, text='再考虑一下', command=self.close_ui).pack(pady=8)
 
+    def _starter_body(self, body, info):
+        key = str(self.ui_parameters.get('par1', 1))
+        row = self.data.tables['InitPet'].get(key)
+        if not row:
+            info.set(f'InitPet 中不存在 {key}')
+            body.pack_forget()
+            return
+        species = str(row['petId'])
+        pet = self.data.tables['Pet'][species]
+        art = self.data.pet_image(species)
+        kind = {1: 'plant', 2: 'sea', 3: 'fly', 4: 'beast',
+                5: 'metal'}.get(int(pet.get('kind', 1) or 1), 'beast')
+        restraint = {1: 'plant', 2: 'sea', 3: 'fly', 4: 'beast',
+                     5: 'metal'}.get(int(pet.get('restraint', 1) or 1), 'plant')
+        land = {1: 'plain', 2: 'sea', 3: 'sky', 4: 'cave',
+                5: 'relic', 6: 'arena'}.get(int(pet.get('landType', 1) or 1), 'plain')
+        stars = max(0, min(5, int(pet.get('starLevel', 1) or 1)))
+        evolution = max(0, int(pet.get('evolutionCount', 0) or 0))
+        visible = {
+            'buy_Sprite': False,
+            'moneyIcon_Image': False,
+            'cost_BitmapFontLabel': False,
+            'costTip_Text': False,
+            'cantEvolution_Sprite': evolution == 0,
+        }
+        for i in range(1, 6):
+            visible[f'star_Sprite_{i}'] = i <= stars
+            visible[f'star_Sprite_{i}_black'] = i > stars
+        for i in range(1, 7):
+            visible[f'heart_Sprite_{i}'] = i <= 3
+            visible[f'heart_Sprite_{i}_black'] = i > 3
+        layer = self.cocos_ui.render('ChooseFirstPetUI', (800, 480), {
+            'name_Text': pet['name'],
+            'number_BitmapFontLabel': str(pet.get('keyId', species)),
+            'lv_BitmapFontLabel': str(row.get('level', 1)),
+            'evolutionTimes_BitmapFontLabel': str(evolution),
+        }, visible=visible, resources={
+            'kind_Sprite': f'UI/text_kind_{kind}.png',
+            'kindIcon_Sprite': f'UI/pet_kind_{kind}.png',
+            'landType_Sprite': f'UI/text_land_type_{land}.png',
+            'restraint_Sprite': f'UI/text_kind_{restraint}.png',
+        })
+        if art is not None:
+            art = art.copy()
+            art.thumbnail((250, 280), Image.Resampling.LANCZOS)
+            layer.alpha_composite(art, (330 - art.width//2, 250 - art.height//2))
+        self.ui_base_layer = layer
+        self.ui_hits = dict(self.cocos_ui.hits)
+        self.ui_rects = dict(self.cocos_ui.rects)
+        self.ui_buttons = dict(self.cocos_ui.buttons)
+        self.ui_button_text = dict(self.cocos_ui.button_text)
+        if getattr(self, 'ui_art_label', None) is not None:
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(f'初始伙伴 {pet["name"]} · 等级 {row.get("level", 1)}')
+
+        def choose():
+            try:
+                self.choose_starter(key)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+        self.ui_actions['confirm_Button'] = choose
+        self.ui_actions['close_Button'] = self.close_ui
+        body.pack_forget()
+
     def _pet_shop_body(self, body, info, key):
         body.pack_forget()
         row = self.data.tables['PetShop'][str(key)]

@@ -68,6 +68,11 @@ class SceneUI:
                    'right_up_Panel': right > 0, 'up_left_Panel': up > 0,
                    'task_Button': right == 0, 'community_Button': right == 0,
                    'timelimitGiftBag_Button': False, 'timelimitGiftBagTimeBg_Image': False,
+                   # Single-player PC port: no online rank, gift-code exchange or
+                   # Bluetooth battle entry points. Keep the original slots hidden
+                   # instead of leaving dead buttons in the expanded menu.
+                   'right_left_5_Button': False, 'right_left_6_Button': False,
+                   'right_left_7_Button': False,
                    'giftReceive_Button': False, 'giftReceive_Particle': False,
                    'petCatchState_Panel': False, 'playerState_ListView': False,
                    'mapName_ProjectNode': False}
@@ -116,12 +121,6 @@ class SceneUI:
                      'right_left_2_Button': app.pets_ui,
                      'right_left_3_Button': app.illustrated_ui,
                      'right_left_4_Button': app.achievements_ui,
-                     'right_left_5_Button': lambda: app.open_ui(Request(
-                         'openui', 'scene-rank', 0, {'parameters': {'uiid': 26}})),
-                     'right_left_6_Button': lambda: app.open_ui(Request(
-                         'openui', 'scene-gift', 0, {'parameters': {'uiid': 27}})),
-                     'right_left_7_Button': lambda: app.open_ui(Request(
-                         'openui', 'scene-bluetooth', 0, {'parameters': {'uiid': 66}})),
                      'right_up_1_Button': lambda: app.open_ui(Request(
                          'openui', 'scene-system', 0, {'parameters': {'uiid': 65}})),
                      'community_Button': lambda: app.open_ui(Request(
