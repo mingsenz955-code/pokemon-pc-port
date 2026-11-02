@@ -30,6 +30,7 @@ from mounts import Mounts
 from guide import Guide, GuideTarget
 from story_motion import StoryMotion, FACES
 from scene_ui import SceneUI
+from npc_motion import NpcMotion
 
 
 class NativeGame(ActivityUI, Preview):
@@ -83,10 +84,14 @@ class NativeGame(ActivityUI, Preview):
         self.running_race_token = None
         self.story_motion = StoryMotion(self)
         self.scene_ui = SceneUI(self)
+        self.npc_motion = None
+        self.scene_animation_time = 0.0
+        self.player_walking = False
         super().__init__(root, data)
         self.booting = False
+        self.npc_motion = NpcMotion(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.40（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.41（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -115,6 +120,8 @@ class NativeGame(ActivityUI, Preview):
             self.player_visible = True
             self.inside_areas = set()
             self._processed_area_tile = None
+            if getattr(self, 'npc_motion', None):
+                self.npc_motion.reset()
             self.encounter_distance, self.encounter_threshold = 0.0, 0
 
     def reset_encounter(self):
@@ -169,6 +176,7 @@ class NativeGame(ActivityUI, Preview):
         return True
 
     def move_to(self, x, y):
+        before = (self.x, self.y)
         mounts = Mounts(self.state)
         if self.noclip:
             return super().move_to(x, y)
@@ -181,6 +189,13 @@ class NativeGame(ActivityUI, Preview):
                 return
         mounts.enter(self.map.terrain_at(x, y), int(self.map.info['mapType']))
         self.x, self.y = x, y
+        dx, dy = x-before[0], y-before[1]
+        if dx or dy:
+            self.player_walking = True
+            if dx:
+                self.face = 'standleft' if dx < 0 else 'standright'
+            elif not getattr(self, 'keys', set()) & {'left', 'right', 'a', 'd'}:
+                self.face = 'standup' if dy < 0 else 'standdown'
 
     def movement_speed(self):
         row = Mounts(self.state).active()
@@ -281,15 +296,19 @@ class NativeGame(ActivityUI, Preview):
         kind, identifier = (7, str(oid)[5:]) if str(oid).startswith('temp:') else (2, oid)
         obj = next((o for o in self.map.objects if o.get('gid') and str(o.get('name')) == str(oid)), {})
         fallback = FACES.get(int(obj.get('props', {}).get('face', 2)), 'standdown')
+        ambient = getattr(self, 'npc_motion', None)
+        if ambient and any(str(a['id']) == str(identifier) for a in ambient.motion.actions):
+            return ambient.motion.animation(kind, identifier, fallback)
         return self.story_motion.animation(kind, identifier, fallback)
 
     def scene_sprite(self, sid, animation):
-        age = max((a['age'] for a in self.story_motion.actions), default=0)
-        frame = int(age*60) if animation.startswith('walk') else 0
+        frame = int(getattr(self, 'scene_animation_time', 0)*60) if animation.startswith(('walk', 'stand')) else 0
         return self.data.village_sprite(sid, animation, frame)
 
     def player_image(self, face):
         animation = self.story_motion.animation(1, 0, face)
+        if animation.startswith('stand') and getattr(self, 'player_walking', False):
+            animation = animation.replace('stand', 'walk')
         return self.scene_sprite(self.player_sprite, animation)
 
     def _draw_chest_fx(self, frame):
@@ -975,7 +994,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.40')
+        win.title('任务指引 · 原生 0.2.41')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1483,10 +1502,14 @@ class NativeGame(ActivityUI, Preview):
         elapsed = max(0.0, now-self._play_clock)
         self._play_clock = now
         if not self.booting:
+            self.scene_animation_time += elapsed
+            self.player_walking = False
             self.advance_camera(elapsed)
             if not self.runtime_error:
                 try:
                     self.story_motion.advance(elapsed)
+                    if self.npc_motion:
+                        self.npc_motion.advance(elapsed)
                 except (PendingMechanic, ValueError, KeyError) as error:
                     self.runtime_error = f'{self.runtime.file}：{error}'
             self.state.activities['play_seconds'] = (
@@ -1622,6 +1645,8 @@ class NativeGame(ActivityUI, Preview):
             'camera_action': self.camera_action,
             'story_motion_actions': self.story_motion.actions if getattr(self, 'story_motion', None) else [],
             'story_motion_faces': self.story_motion.faces if getattr(self, 'story_motion', None) else {},
+            'npc_motion': self.npc_motion.snapshot() if getattr(self, 'npc_motion', None) else None,
+            'scene_animation_time': getattr(self, 'scene_animation_time', 0.0),
             'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
             'encounter_distance': self.encounter_distance,
             'encounter_threshold': self.encounter_threshold,
@@ -1655,7 +1680,7 @@ class NativeGame(ActivityUI, Preview):
             self.teach_nodes, self.battle_tips = [], []
             for key in ('face', 'player_visible', 'camera_focus', 'main_ui_visible',
                         'teach_nodes', 'screen_black', 'encounter_distance', 'encounter_threshold',
-                        'camera_action'):
+                        'camera_action', 'scene_animation_time'):
                 if key in state.presentation:
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
@@ -1664,6 +1689,9 @@ class NativeGame(ActivityUI, Preview):
             self.story_motion = StoryMotion(self)
             self.story_motion.actions = state.presentation.get('story_motion_actions', [])
             self.story_motion.faces = state.presentation.get('story_motion_faces', {})
+            self.npc_motion = NpcMotion(self)
+            self.npc_motion.reset()
+            self.npc_motion.restore(state.presentation.get('npc_motion'))
             self._play_clock = time.monotonic()
             self.drive()
             return True

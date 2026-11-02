@@ -7,7 +7,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
-parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.40')
+parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.41')
 parser.add_argument('--dist-dir', type=Path, default=root/'outputs')
 args = parser.parse_args()
 name = args.name
