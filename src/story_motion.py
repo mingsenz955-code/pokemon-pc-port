@@ -29,7 +29,7 @@ def destination(parameter, player, player_face, tile_size):
     return [(x+.5)*tw, (y+.5)*th]
 
 
-def shortest_path(world, start, goal, blocked):
+def shortest_path(world, start, goal, blocked, limit=0):
     """Original cardinal A*: step cost 10, Manhattan H, newer equal-F first."""
     source = (int(start[0]//world.tw), int(start[1]//world.th))
     target = (int(goal[0]//world.tw), int(goal[1]//world.th))
@@ -41,6 +41,7 @@ def shortest_path(world, start, goal, blocked):
         return []
     frontier, costs, parents, closed = [(0, 0, source)], {source: 0}, {source: None}, set()
     sequence = 0
+    expansions = 0
     closest, closest_h = None, math.inf
     def reconstruct(current):
         path = []
@@ -70,12 +71,16 @@ def shortest_path(world, start, goal, blocked):
             if h < closest_h:
                 closest, closest_h = neighbor, h
             heapq.heappush(frontier, (cost+h, -sequence, neighbor))
+        expansions += 1
+        if limit > 0 and expansions > limit:
+            break
     return reconstruct(closest) if closest is not None else []
 
 
 class StoryMotion:
-    def __init__(self, app):
+    def __init__(self, app, plot_owned=True):
         self.app = app
+        self.plot_owned = plot_owned
         self.actions = []
         self.faces = {}
 
@@ -132,7 +137,7 @@ class StoryMotion:
         return lambda tx, ty: ((tx, ty) in occupied or
             world.blocked((tx+.5)*world.tw, (ty+.5)*world.th, mounts))
 
-    def begin(self, rows):
+    def begin(self, rows, path_limit=0):
         app = self.app
         self.actions = []
         seen = set()
@@ -156,7 +161,7 @@ class StoryMotion:
                 self.set_position(action, target)
                 self.set_face(kind, identifier, action['end_face'])
                 continue
-            path = shortest_path(app.map, start, target, self.blocked(kind, identifier))
+            path = shortest_path(app.map, start, target, self.blocked(kind, identifier), path_limit)
             if path is None:
                 raise PendingMechanic(f'人物 {kind}:{identifier} 无法沿原地形走到剧情目标，未直接传送')
             if not path:
@@ -167,6 +172,8 @@ class StoryMotion:
 
     def animation(self, kind, identifier, fallback):
         action = next((a for a in self.actions if a['kind'] == kind and str(a['id']) == str(identifier)), None)
+        if kind == 1 and not action:
+            return fallback  # Keyboard facing owns the player after a plot move.
         face = self.faces.get(self.key(kind, identifier), fallback)
         return face.replace('stand', 'walk') if action else face
 
@@ -209,5 +216,5 @@ class StoryMotion:
             if not action['path']:
                 self.set_face(action['kind'], action['id'], action['end_face'])
                 self.actions.remove(action)
-        if not self.actions and app.runtime.pending and app.runtime.pending.kind == 'toplace':
+        if self.plot_owned and not self.actions and app.runtime.pending and app.runtime.pending.kind == 'toplace':
             app.runtime.resume()

@@ -272,8 +272,9 @@ class Preview:
             if sprite is None:
                 continue
             size = (max(1, round(sprite.width*self.SCALE)), max(1, round(sprite.height*self.SCALE)))
+            anchor = sprite.info.get('origin', (sprite.width/2, sprite.height))
             sprite = sprite.resize(size, Image.Resampling.LANCZOS)
-            frame.alpha_composite(sprite, (round(sx-size[0]/2), round(sy-size[1])))
+            frame.alpha_composite(sprite, (round(sx-anchor[0]*self.SCALE), round(sy-anchor[1]*self.SCALE)))
         draw = ImageDraw.Draw(frame)
         font_path = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'
         font = ImageFont.truetype(str(font_path), 18)

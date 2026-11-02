@@ -14,6 +14,8 @@ class SceneUI:
         self.app = app
         self.hits = {}
         self.hidden = False
+        self.cached_layer = None
+        self.cached_key = None
         self.groups = {key: {'value': 0.0, 'start': 0.0, 'target': 0.0, 'clock': 0.0}
                        for key in ('left', 'right', 'up')}
 
@@ -31,6 +33,10 @@ class SceneUI:
     def render(self, frame):
         app = self.app
         left, right, up = (self.value(key) for key in ('left', 'right', 'up'))
+        signature = (left, right, up, self.hidden, app.WIDTH, app.HEIGHT)
+        if self.cached_key == signature and self.cached_layer is not None:
+            frame.alpha_composite(self.cached_layer)
+            return
         positions = {}
         for i in range(1, 6):
             positions[f'left_right_{i}_Button'] = [72*i*left, 0]
@@ -63,6 +69,7 @@ class SceneUI:
                                     visible=visible, positions=positions)
         self.hits = {key: rect for key, rect in app.cocos_ui.hits.items()
                      if '/' not in key and key.endswith('_Button')}
+        self.cached_key, self.cached_layer = signature, layer
         frame.alpha_composite(layer)
 
     def click(self, x, y):

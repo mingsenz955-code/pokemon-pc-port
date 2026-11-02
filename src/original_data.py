@@ -65,7 +65,13 @@ class OriginalData:
                 frame %= movement['dr']
             if animation.endswith('right'):
                 result = self.armature(filename, animation.replace('right', 'left'), frame)
-                return result.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if result else None
+                if result is None:
+                    return None
+                image = result.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                if 'origin' in result.info:
+                    x, y = result.info['origin']
+                    image.info['origin'] = (result.width-x, y)
+                return image
             return self.armature(filename, animation, frame)
         if row['fileType'] == '3':
             from spine_renderer import render_setup
@@ -112,12 +118,11 @@ class OriginalData:
         data = json.loads(export.read_text(encoding='utf-8'))
         return folder, data
 
-    @lru_cache(maxsize=256)
-    def armature(self, name, animation='standdown', frame=0):
-        """Software preview of Cocos Studio bones, including original texture pivots."""
+    @lru_cache(maxsize=64)
+    def armature_frames(self, name):
         folder, data = self.armature_source(name)
         if data is None:
-            return None
+            return {}
         frames = {}
         for plist in folder.glob(f'{name}[0-9]*.plist'):
             pd = plistlib.loads(plist.read_bytes())
@@ -136,6 +141,13 @@ class OriginalData:
                     if v.get('rotated'):
                         im = im.transpose(Image.Transpose.ROTATE_90)
                     frames[k] = im
+        return frames
+
+    @lru_cache(maxsize=1024)
+    def armature(self, name, animation='standdown', frame=0):
+        """Software preview of Cocos Studio bones, including original texture pivots."""
+        _, data = self.armature_source(name)
+        frames = self.armature_frames(name)
         if not frames:
             return None
         moves = (data.get('animation_data') or [{}])[0].get('mov_data', []) or []
@@ -143,11 +155,11 @@ class OriginalData:
         if move.get('lp') and move.get('dr', 0) > 0:
             frame %= move['dr']
         active = {}
+        from ccs_timeline import sample_frame
         for bone in move.get('mov_bone_data', []) or []:
             fd = bone.get('frame_data', []) or []
             if fd:
-                active[bone['name']] = max((f for f in fd if f.get('fi', 0) <= frame),
-                                          key=lambda f: f.get('fi', 0), default=fd[0])
+                active[bone['name']] = sample_frame(fd, frame)
         bones = {b['name']: b for b in (data.get('armature_data') or [{'bone_data': []}])[0]['bone_data']}
         texture = {t['name']+'.png': t for t in (data.get('texture_data') or [])}
         transforms = {}
@@ -182,6 +194,13 @@ class OriginalData:
             sprite = frames.get(disp.get('name'))
             if sprite is None:
                 continue
+            color = f.get('color', {})
+            if color.get('a', 255) <= 0:
+                continue
+            if any(color.get(key, 255) != 255 for key in ('r', 'g', 'b', 'a')):
+                sprite = Image.merge('RGBA', tuple(channel.point(
+                    lambda value, amount=color.get(key, 255): round(value*amount/255))
+                    for channel, key in zip(sprite.split(), ('r', 'g', 'b', 'a'))))
             skin = disp.get('skin_data', [{}])[0]
             m = multiply(transform(name_), matrix(skin))
             tex = texture.get(disp['name'], {})
@@ -192,9 +211,19 @@ class OriginalData:
             parts.append((bone.get('z', 0)+f.get('z', 0), sprite, m))
         if not parts:
             return None
-        # Render in a fixed working surface and crop to the actual original silhouette.
-        out = Image.new('RGBA', (640, 640))
-        origin = (320, 500)
+        # Bound the transformed skins before rasterizing. Keeping the authored
+        # origin separately prevents animation bounds from moving the feet.
+        points = []
+        for _, sprite, m in parts:
+            a, b, c, d, tx, ty = m
+            for x, y in ((0, 0), (sprite.width, 0), (0, sprite.height), (sprite.width, sprite.height)):
+                points.append(((a*x+c*y+tx)*.5, -(b*x+d*y+ty)*.5))
+        left = math.floor(min(p[0] for p in points))-2
+        top = math.floor(min(p[1] for p in points))-2
+        right = math.ceil(max(p[0] for p in points))+2
+        bottom = math.ceil(max(p[1] for p in points))+2
+        out = Image.new('RGBA', (max(1, right-left), max(1, bottom-top)))
+        origin = (-left, -top)
         for _, sprite, m in sorted(parts, key=lambda p: p[0]):
             a, b, c, d, tx, ty = m
             a, c, tx = a*.5, c*.5, tx*.5+origin[0]
@@ -208,7 +237,11 @@ class OriginalData:
                                      resample=Image.Resampling.BICUBIC)
             out.alpha_composite(layer)
         box = out.getbbox()
-        return out.crop(box) if box else None
+        if not box:
+            return None
+        result = out.crop(box)
+        result.info['origin'] = (origin[0]-box[0], origin[1]-box[1])
+        return result
 
     def load_map(self, map_id):
         info = self.tables['VillageMap'][str(map_id)]
