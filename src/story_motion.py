@@ -2,7 +2,7 @@
 
 ARM: wrapper 0x2dc03e; A* 0x2e6944; neighbour order 0x2da6a2;
 walkAction 0x2e6210. Dynamic multi-tile collider/exit semantics remain audited
-separately; blocked destinations stop explicitly rather than teleporting.
+separately; unreachable goals use the original closest-H candidate path.
 """
 import heapq
 import math
@@ -35,23 +35,26 @@ def shortest_path(world, start, goal, blocked):
     target = (int(goal[0]//world.tw), int(goal[1]//world.th))
     def valid(tile):
         return 0 <= tile[0] < world.width and 0 <= tile[1] < world.height
-    if not valid(source) or not valid(target):
+    if not valid(source):
         return None
     if source == target:
         return []
     frontier, costs, parents, closed = [(0, 0, source)], {source: 0}, {source: None}, set()
     sequence = 0
+    closest, closest_h = None, math.inf
+    def reconstruct(current):
+        path = []
+        while current != source:
+            path.append([(current[0]+.5)*world.tw, (current[1]+.5)*world.th])
+            current = parents[current]
+        return list(reversed(path))
     while frontier:
         priority, _, current = heapq.heappop(frontier)
         if current in closed:
             continue
         closed.add(current)
         if current == target:
-            path = []
-            while current != source:
-                path.append([(current[0]+.5)*world.tw, (current[1]+.5)*world.th])
-                current = parents[current]
-            return list(reversed(path))
+            return reconstruct(current)
         for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
             neighbor = (current[0]+dx, current[1]+dy)
             if neighbor in closed or not valid(neighbor) or blocked(*neighbor):
@@ -62,8 +65,12 @@ def shortest_path(world, start, goal, blocked):
             costs[neighbor], parents[neighbor] = cost, current
             sequence += 1
             h = abs(neighbor[0]-target[0])+abs(neighbor[1]-target[1])
+            # insertInOpenSteps @ 0x2e6630 retains the first inserted
+            # parented node with the smallest H; equal H does not replace it.
+            if h < closest_h:
+                closest, closest_h = neighbor, h
             heapq.heappush(frontier, (cost+h, -sequence, neighbor))
-    return None
+    return reconstruct(closest) if closest is not None else []
 
 
 class StoryMotion:
@@ -136,6 +143,8 @@ class StoryMotion:
                 raise PendingMechanic('同一剧情指令重复指定人物，需要核对原版覆盖回调')
             seen.add(key)
             start = self.position(kind, identifier)
+            if kind == 1:
+                app.process_player_areas(force=True)
             target = destination(parameter, (app.x, app.y), app.face, (app.map.tw, app.map.th))
             speed = int(parameter.get('speedscale', 1))
             if speed < 0:
@@ -193,6 +202,8 @@ class StoryMotion:
                 if fraction >= 1:
                     action['path'].pop(0)
                     action['segment'] = None
+                    if action['kind'] == 1:
+                        app.process_player_areas(force=True)
                 else:
                     break
             if not action['path']:
