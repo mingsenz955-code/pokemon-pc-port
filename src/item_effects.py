@@ -20,8 +20,10 @@ def recovery(row, hp, energy, max_hp, max_energy):
         return Recovery(hp, energy, True)
     if kind not in (1, 2, 3):
         raise ValueError(f'PetItem type {kind} is not a recovery effect')
-    if hp <= 0 and kind != 3:
-        raise ValueError('濒死的宠物需要复活道具。')
+    # Native 1.20.4 bag/pet pages dispatch types 1/2 directly to
+    # PetDataManager::addAttribute/addAttributePercent (0x32af3c/0x32af52).
+    # HP zero is not a prohibition: ordinary HP recovery can restore it.
+    # Do not import the separate main-series Pokemon revival restriction.
     if hp > 0 and kind == 3:
         raise ValueError('这只宠物不需要复活。')
     parameters = [int(value) for value in str(row['parameters']).split(',')]

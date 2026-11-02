@@ -667,3 +667,15 @@ research/ride-menu-original.txt、research/ride-tips-original.txt。
 - Ride.collidesAble 中单独的字符串 0 是普通地面；公共 numbers() 的空值语义不适用。坐骑专用解析保留 0，避免陆行鸟/护城龙选中即失败或移动自动下骑。
 
 验证：tools/check_ride_menu.py 覆盖真实 CSB 命中与透明图标、快速开合、再次展开、选择后收起、再次选择收回、未拥有单次提示、地形/地图短提示、建筑上收回、两种地面坐骑移动保持。使用临时/内存状态，不读写玩家存档；不代表完整付费坐骑商店或所有原版流程已完成。
+
+## 0.2.60 零血宠物普通回复道具修复（2026-11-02）
+
+根源：src/item_effects.py 的 recovery() 曾主动拒绝 hp<=0 且 type!=3，属于移植加入的限制，并非 1.20.4 背包规则。GameState.use_item 的 needs_recovery 捕获此异常并判断“无效果”，因此背包选宠和宠物列表选道具都无法治疗零血宠物。
+
+原版追踪：BagUILayer::checkPetItemUse 0x34b9b8 检查道具数量后发送 UseItemEvent；PetListUILayer::checkSelectedPetItemUse 0x38cfbc 同样发送目标宠物的使用事件。UseItemEvent::handle 0x2ee578 调用 PlayerDataManager::useItem(int,int) 0x32ca56，后者调用 usePetItem 0x32aed4 并扣除一件道具。usePetItem 的 type1 调用 addAttribute 0x3260a0（调用点0x32af3c），type2 调用 addAttributePercent 0x326188（调用点0x32af52）；此路径没有“普通药禁止零血宠物”的门槛。canAddAttribute(int,int) 0x3254b0 也只比较当前值和上限。复活石 type3 的 resurrection 0x3261c8 最终同样调用 addAttributePercent；没有将普通回复限定为复活石的证据。
+
+本次仅移除已证实错误的公共回复门槛，保留背包使用场景、物品数量、目标归属、满值无效果、复活石及战斗强制换宠等独立约束。战斗中选择已败退宠物、道具目标选择等流程不能由此声称已全部复原。新增 check_pet_recovery.py：五种 HP 道具零血回复、残血封顶、满血不扣、纯能量药不加血、复活石、无库存/非携带目标回滚、自动选宠和存读档、背包与宠物页真实回调。旧 check_activities 中要求普通药拒绝零血的断言按上述原版证据修正。
+
+### 同版补充：背包老爸的信正文回看
+
+Item 270057「老爸的信」useType=0，des 只有「尼尔爸爸留给尼尔的信」。完整原文位于 pEvent5807003.json、id=12、talk「信:……」。原版表未配置背包使用/消耗效果；此次按用户明确要求在 PC 背包“重要”页详情区补充正文回看，保持原 BagUI 和可滚动详情，直接引用事件原文并去掉 #1/#0 富文本控制码。此回看入口是 PC 便利补充，不声称原版背包已配置全文阅读效果。不会运行原事件（原事件含发物品、开功能、移动和传送），也不改任务状态或道具数量。check_letter_reading.py 核对完整原文、正文末尾、其他道具简介不变以及真实背包页/滚轮操作前后完整状态一致。
