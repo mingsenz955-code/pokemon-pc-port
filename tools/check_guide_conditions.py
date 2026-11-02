@@ -54,17 +54,27 @@ class GuideConditions(unittest.TestCase):
                         if row.get('enemyIds', '0') != '0')
         enemy_id = row['enemyIds'].split(',')[0]
         pet_id = int(DATA.tables['VillageEnemy'][enemy_id]['petId'])
-        point = self.resolver.catch_point(-1, pet_id, int(mid))
+        point = self.resolver.catch_point(pet_id, -1, int(mid))
         self.assertIsNotNone(point)
         self.assertEqual(int(mid), point[0])
-        self.assertIsNone(self.resolver.catch_point(-1, 999999999, int(mid)))
+        self.assertIsNone(self.resolver.catch_point(999999999, -1, int(mid)))
 
     def test_pet_kind_and_id_must_match_same_encounter(self):
         tables = {'VillageMap': {'101': {'enemyIds': '901,902'}},
                   'VillageEnemy': {'901': {'petId': '1'}, '902': {'petId': '2'}},
                   'Pet': {'1': {'keyId': '1', 'kind': '5'}, '2': {'keyId': '2', 'kind': '6'}}}
         resolver = GuideResolver(SimpleNamespace(tables=tables), self.state)
-        self.assertIsNone(resolver.catch_point(6, 1, 101))
+        self.assertIsNone(resolver.catch_point(1, 6, 101))
+
+    def test_task_fields_are_pet_id_then_kind_then_map(self):
+        mid, row = next((key, row) for key, row in DATA.tables['VillageMap'].items()
+                        if row.get('enemyIds', '0') != '0')
+        pet_id = DATA.tables['VillageEnemy'][row['enemyIds'].split(',')[0]]['petId']
+        kind = DATA.tables['Pet'][pet_id]['kind']
+        task = dict(DATA.tables['MainTask']['6'], conditions=f'{pet_id},{kind},{mid}')
+        target = self.resolver.from_task('main', '6', task, 3)
+        self.assertIsNotNone(target)
+        self.assertEqual(('catch', int(mid)), (target.kind, target.map_id))
 
 
 if __name__ == '__main__':

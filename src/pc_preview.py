@@ -254,9 +254,7 @@ class Preview:
         return self.data.village_sprite(getattr(self, 'player_sprite', '10001'), face)
 
     def make_frame(self):
-        focus = getattr(self, 'camera_focus', None) or (self.x, self.y)
-        camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2, self.background.width-self.WIDTH))
-        camy = max(0, min(focus[1]*self.SCALE-self.HEIGHT/2, self.background.height-self.HEIGHT))
+        camx, camy = self.camera_origin()
         frame = Image.new('RGBA', (self.WIDTH, self.HEIGHT), '#1d2927')
         crop = self.background.crop((int(camx), int(camy), int(camx)+self.WIDTH, int(camy)+self.HEIGHT))
         frame.alpha_composite(crop)
@@ -304,6 +302,14 @@ class Preview:
                 draw.text((60, 450+i*27), line, font=font, fill='#4c3524')
             draw.text((655, 533), '空格 / 单击继续', font=ImageFont.truetype(str(font_path), 14), fill='#7a614a')
         return frame
+
+    def follow_focus(self):
+        return self.x, self.y
+
+    def camera_origin(self, focus=None):
+        focus = focus if focus is not None else (getattr(self, 'camera_focus', None) or self.follow_focus())
+        return (max(0, min(focus[0]*self.SCALE-self.WIDTH/2, self.background.width-self.WIDTH)),
+                max(0, min(focus[1]*self.SCALE-self.HEIGHT/2, self.background.height-self.HEIGHT)))
 
     def tick(self):
         now = time.monotonic()

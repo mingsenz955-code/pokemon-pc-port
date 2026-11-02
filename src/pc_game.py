@@ -40,6 +40,7 @@ class NativeGame(ActivityUI, Preview):
         self.display_request = None
         self.wait_until = 0
         self.camera_focus = None
+        self.camera_action = None
         self.player_visible = True
         self.player_sprite = self.state.sprite_id
         self.inside_areas = set()
@@ -80,7 +81,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.37（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.38（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -112,6 +113,7 @@ class NativeGame(ActivityUI, Preview):
             if self.map_id not in self.state.visited_maps:
                 self.state.visited_maps.append(self.map_id)
             self.camera_focus = None
+            self.camera_action = None
             self.inside_areas = set()
             self.encounter_distance, self.encounter_threshold = 0.0, 0
 
@@ -282,11 +284,7 @@ class NativeGame(ActivityUI, Preview):
         fx = getattr(self, 'chest_fx', None)
         if not fx:
             return frame
-        focus = getattr(self, 'camera_focus', None) or (self.x, self.y)
-        camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2,
-                          self.background.width-self.WIDTH))
-        camy = max(0, min(focus[1]*self.SCALE-self.HEIGHT/2,
-                          self.background.height-self.HEIGHT))
+        camx, camy = self.camera_origin()
         cx = fx['x']*self.SCALE-camx
         cy = fx['y']*self.SCALE-camy
         age = fx.get('age', 0)
@@ -319,11 +317,7 @@ class NativeGame(ActivityUI, Preview):
         fx = getattr(self, 'obstacle_fx', None)
         if not fx:
             return frame
-        focus = getattr(self, 'camera_focus', None) or (self.x, self.y)
-        camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2,
-                          self.background.width-self.WIDTH))
-        camy = max(0, min(focus[1]*self.SCALE-self.HEIGHT/2,
-                          self.background.height-self.HEIGHT))
+        camx, camy = self.camera_origin()
         cx = fx['x']*self.SCALE-camx
         cy = fx['y']*self.SCALE-camy
         age = fx.get('age', 0)
@@ -953,7 +947,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.37')
+        win.title('任务指引 · 原生 0.2.38')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1140,8 +1134,7 @@ class NativeGame(ActivityUI, Preview):
                     key = f'{self.map_id}:{p.get("spritetype", 2)}:{p.get("spriteid", 0)}'
                     self.state.visible[key] = bool(p['visible'])
         elif kind == 'screenmove':
-            self.camera_focus = None if parameter.get('x', -1) < 0 else (
-                float(parameter['x'])*64+32, (self.map.height-float(parameter['y']))*64)
+            self.begin_camera_move(parameter)
         elif kind == 'tomap':
             self.request_map(parameter['exit'])
         elif kind == 'areamapmove':
@@ -1299,7 +1292,50 @@ class NativeGame(ActivityUI, Preview):
             self.runtime.resume()
         self.drive()
 
+    def follow_focus(self):
+        # setViewpointCenter @ 0x2d8f50 follows player + (0, tileHeight)
+        # in Cocos bottom-origin space; native map coordinates use top origin.
+        return self.x, self.y-self.map.th
+
+    def begin_camera_move(self, parameter):
+        target = self.follow_focus() if parameter.get('x', -1) == -1 and parameter.get('y', -1) == -1 else (
+            (float(parameter['x'])+.5)*self.map.tw,
+            (float(parameter['y'])-.5)*self.map.th)
+        def visible_center(point):
+            x, y = self.camera_origin(point)
+            return [(x+self.WIDTH/2)/self.SCALE, (y+self.HEIGHT/2)/self.SCALE]
+        start = visible_center(self.camera_focus or self.follow_focus())
+        target = visible_center(target)
+        speed = int(parameter.get('speedscale', 1))
+        if speed < 0:
+            raise ValueError('原镜头指令 speedscale 不能小于零')
+        stop = parameter.get('stop') == 1
+        if speed == 0:
+            self.camera_action = None
+            self.camera_focus = target if stop else None
+            return
+        # setViewpoint @ 0x2d9eb0: MoveTo, DelayTime(.5), moveScreenOver.
+        self.camera_focus = start
+        self.camera_action = {'start': start, 'target': target,
+                              'duration': math.dist(start, target)/self.map.th*.1/speed,
+                              'elapsed': 0.0, 'stop': stop}
+
+    def advance_camera(self, seconds):
+        action = getattr(self, 'camera_action', None)
+        if not action:
+            return
+        action['elapsed'] += max(0, seconds)
+        fraction = min(1, action['elapsed']/action['duration']) if action['duration'] else 1
+        self.camera_focus = [a+(b-a)*fraction for a, b in zip(action['start'], action['target'])]
+        if action['elapsed'] >= action['duration']+.5:
+            self.camera_focus = action['target'] if action['stop'] else None
+            self.camera_action = None
+            if self.runtime.pending and self.runtime.pending.kind == 'screenmove':
+                self.runtime.resume()
+
     def drive(self):
+        if getattr(self, 'camera_action', None):
+            return
         if self.display_request or self.runtime_error:
             return
         if self.battle and not self.runtime.running:
@@ -1379,6 +1415,8 @@ class NativeGame(ActivityUI, Preview):
                     self.runtime.resume()
                     continue
                 self.apply_visual(request)
+                if self.camera_action:
+                    return
                 self.runtime.resume()
                 self.player_sprite = self.state.sprite_id
             except (PendingMechanic, NotImplementedError, ValueError, KeyError) as error:
@@ -1397,6 +1435,7 @@ class NativeGame(ActivityUI, Preview):
         elapsed = max(0.0, now-self._play_clock)
         self._play_clock = now
         if not self.booting:
+            self.advance_camera(elapsed)
             self.state.activities['play_seconds'] = (
                 float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
@@ -1500,9 +1539,7 @@ class NativeGame(ActivityUI, Preview):
         point = self.guide.point()
         if not point:
             return
-        focus = self.camera_focus or (self.x, self.y)
-        camx = max(0, min(focus[0]*self.SCALE-self.WIDTH/2, self.background.width-self.WIDTH))
-        camy = max(0, min(focus[1]*self.SCALE-self.HEIGHT/2, self.background.height-self.HEIGHT))
+        camx, camy = self.camera_origin()
         sx, sy = point[0]*self.SCALE-camx, point[1]*self.SCALE-camy
         draw = ImageDraw.Draw(frame)
         try:
@@ -1538,6 +1575,7 @@ class NativeGame(ActivityUI, Preview):
         self.state.presentation = {
             'face': self.face, 'player_visible': self.player_visible,
             'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
+            'camera_action': self.camera_action,
             'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
             'encounter_distance': self.encounter_distance,
             'encounter_threshold': self.encounter_threshold,
@@ -1566,14 +1604,17 @@ class NativeGame(ActivityUI, Preview):
             self.runtime_error, self.display_request, self.dialogue = '', None, None
             self.pending_wait, self.wait_until = None, 0
             self.camera_focus, self.screen_black, self.flash_until = None, False, 0
+            self.camera_action = None
             self.player_visible, self.main_ui_visible = True, True
             self.teach_nodes, self.battle_tips = [], []
             for key in ('face', 'player_visible', 'camera_focus', 'main_ui_visible',
-                        'teach_nodes', 'screen_black', 'encounter_distance', 'encounter_threshold'):
+                        'teach_nodes', 'screen_black', 'encounter_distance', 'encounter_threshold',
+                        'camera_action'):
                 if key in state.presentation:
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
             self.player_sprite = state.sprite_id
+            self._play_clock = time.monotonic()
             self.drive()
         except (ValueError, KeyError, OSError) as error:
             messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
