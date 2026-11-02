@@ -283,6 +283,7 @@ class Battle:
         self.caught_pet = None
         self.exp_gained = []
         self.drops = []
+        self.damage_dealt = 0
         self.rewards_applied = False
         self._start_messages()
         self._check_end()
@@ -673,6 +674,8 @@ class Battle:
                     source.heal(max(1, int(damage*.1)))
         was_alive = target.alive
         taken = target.take_damage(damage, source=unit, attribute=attribute)
+        if unit.side == 'player' and target.side == 'enemy':
+            self.damage_dealt += taken
         self.events.append({'type': 'damage', 'side': target.side, 'name': target.name,
                             'uid': target.pet.uid,
                             'amount': taken, 'crit': crit, 'attribute': attribute,

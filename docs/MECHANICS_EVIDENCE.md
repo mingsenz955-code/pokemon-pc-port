@@ -1,5 +1,32 @@
 # 1.20.4 规则核对记录
 
+## 0.2.49：野外遇敌、原版胜利页与教程按钮
+
+用户反馈三点，分别核对到三个独立缺陷：
+
+1. **野外遇不到精灵**
+   `load_map()` 每次切图都把 `encounter_distance` 和 `encounter_threshold` 清成 0，
+   之后只在开局/战斗结束时调用 `reset_encounter()`。因此进入 201/202/601 等有
+   `enemyIds` 的地图后阈值一直为 0，`check_encounter()` 永远提前返回。
+   现在每次 map load 后重新读取 `enemyAppearInterval`，按原表在 30–40 格内随机阈值；
+   距离按实际位移累计，达到阈值才按 `enemyProbability` 抽取 `VillageEnemy`。
+   `tools/check_wild_encounter.py` 验证 201 地图阈值非 0、达到后真实建立 wild battle。
+
+2. **战斗胜利不是原版**
+   `BattleUI` 原先自绘深色框、标题和“继续”按钮。现改为合成原版
+   `WorldMonsterBattleResultUI`：胜利/失败牌、宠物名、伤害值、经验提示、
+   掉落/经验列表和原版 `confirm_Button` 命中区。`exp_gained`、`drops`、
+   `caught_pet` 仍来自真实战斗结果，不自造奖励。
+   `tools/check_battle_result_ui.py` 验证原布局、命中区和真实结果字段。
+   原版的标题弹入/粒子/音效时间轴仍未逐帧恢复。
+
+3. **教程“隐藏界面”提示点了没反应**
+   `pEvent101002` 的两个 `button nodekey=uiDisappear_Button` 被当成普通对白：
+   任意点击都会 `resume`，不会点实际按钮，因此既不会隐藏也不会还原。
+   现在 `button` 请求只接受高亮节点的命中，点击空地不推进；点
+   `uiDisappear_Button` 后执行真实隐藏/还原并恢复事件。
+   `tools/check_button_tip.py` 覆盖空地不推进、按钮命中推进、隐藏状态变化。
+
 ## 0.2.48：修正指引触发和真实回家路线
 
 用户明确确认原版点击“指引”后人物自动走向任务点。0.2.47 把另一个早期剧情提示
@@ -264,7 +291,7 @@ fixture，不再假定任意真实存档都必须显示玩家（序章可以合�
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：58 个原版 UI 布局、153 个可见 Button 的真实命中区、pressed 纹理、44 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：58 个原版 UI 布局、148 个可见 Button 的真实命中区、pressed 纹理、43 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。

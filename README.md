@@ -1,14 +1,19 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.48%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.49%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.48 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.49 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
+
+0.2.49 修复野外遇敌：每次进入地图重新按 `enemyAppearInterval` 设置步数阈值，不再把阈值清成 0。
+胜利结算改用原版 `WorldMonsterBattleResultUI` 的胜利牌/名称/伤害值/经验/掉落和确认按钮，
+移除自制深色弹窗；教程 `button` 指令必须点击高亮的 `uiDisappear_Button` 才能继续，
+不会点空地跳过隐藏/还原界面步骤。
 
 0.2.48 按用户确认的操作恢复“点击指引 → 自动走向任务点”：默认无常驻箭头，
 再次点击/方向键可停止；标记只跟随实际可走路径，不直指远处人物穿墙。
@@ -134,7 +139,7 @@ VillageEnemy → Pet 关联；全能训练改为领取另外七项日常奖励�
 普通闲聊不会凭空添加未读任务标记。接通 NPC 支线分发和 `goto:npcid` 对话上下文、支线提交依赖
 与图鉴收录条件，并为这两种任务补充指引。全部后期主支线仍未完成通关验收。
 
-0.2.48 将主界面任务入口接到原 TaskUI，目标按钮启动寻路，到 NPC 后自动触发对话。
+0.2.49 将主界面任务入口接到原 TaskUI，目标按钮启动寻路，到 NPC 后自动触发对话。
 修正战斗速度/防御属性映射，实际调用四类原版基础伤害公式；战斗画布与宿主统一为 960×576，
 从原布局读取宠物站位。接入原 Spine 骨骼/插槽/绘制顺序时间轴，按动作顺序播放攻击与受击。
 **仍未解决**：特殊技能与全部状态/天赋/携带物、原版命中特效与音效、FFD/IK、各宠物原始比例、
@@ -299,6 +304,15 @@ py -3.12 -m venv .venv
 
 # 战斗事件 → 突进/受击/伤害飘字/血条缓动
 .\.venv\Scripts\python.exe tools\check_battle_animation.py
+
+# 原版战斗胜利结算页
+.\.venv\Scripts\python.exe tools\check_battle_result_ui.py
+
+# 野外地图步数遇敌
+.\.venv\Scripts\python.exe tools\check_wild_encounter.py
+
+# 教程高亮按钮才能继续（界面隐藏/还原）
+.\.venv\Scripts\python.exe tools\check_button_tip.py
 
 # 藏宝图购买、放大镜显现、地图宝箱、UI 24/37/38、真实事件 closeui yes
 .\.venv\Scripts\python.exe tools\check_treasure.py

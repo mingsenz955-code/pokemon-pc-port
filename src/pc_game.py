@@ -96,7 +96,7 @@ class NativeGame(ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.48（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.49（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -128,6 +128,7 @@ class NativeGame(ActivityUI, Preview):
             if getattr(self, 'npc_motion', None):
                 self.npc_motion.reset()
             self.encounter_distance, self.encounter_threshold = 0.0, 0
+            self.reset_encounter()
 
     def reset_encounter(self):
         row = self.data.tables['VillageMap'].get(str(self.map_id), {})
@@ -1047,7 +1048,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.48')
+        win.title('任务指引 · 原生 0.2.49')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1259,6 +1260,12 @@ class NativeGame(ActivityUI, Preview):
             if action == 'finish':
                 self.finish_battle()
             return
+        if self.display_request and self.display_request.kind == 'button':
+            # Original tutorial buttons wait for the highlighted node itself;
+            # a click on empty ground must not dismiss both hide/restore tips.
+            if self.main_ui_visible and not self.ui_open and self.scene_ui.click(event.x, event.y):
+                self.advance_button_tip()
+            return
         if not self.runtime.running and not self.ui_open and self.main_ui_visible:
             if self.scene_ui.click(event.x, event.y):
                 return
@@ -1268,6 +1275,14 @@ class NativeGame(ActivityUI, Preview):
         if self.ui_open or self.runtime_error:
             return
         self.click_walk(event.x, event.y)
+
+    def advance_button_tip(self):
+        if not self.display_request or self.display_request.kind != 'button':
+            return
+        self.display_request = None
+        self.dialogue = None
+        self.runtime.resume()
+        self.drive()
 
     def on_canvas_wheel(self, event):
         if self.task_page:

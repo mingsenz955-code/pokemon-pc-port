@@ -55,6 +55,16 @@ with tempfile.TemporaryDirectory() as saves:
             app.close_transient_ui()
             report[uiid] = ['starter']
             continue
+        if uiid == 44:
+            # TaskUI is now rendered inside the game canvas, not a Toplevel.
+            app.open_ui(Request('openui', 'ui-audit', 1,
+                                {'parameters': {'uiid': 44, 'page': 'main'}}))
+            root.update()
+            assert app.task_page is not None and app.ui_open, uiid
+            report[uiid] = ['TaskUI/canvas', 0]
+            app.close_ui('no')
+            assert not app.ui_open and app.task_page is None, (uiid, 'close failed')
+            continue
         app.open_ui(Request('openui', 'ui-audit', 1,
                             {'parameters': {'uiid': uiid, 'par1': 601}}))
         win = app.ui_window

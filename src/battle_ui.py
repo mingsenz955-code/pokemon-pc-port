@@ -535,17 +535,47 @@ class BattleUI:
             self._label(draw, ((rect[0]+rect[2])//2, (rect[1]+rect[3])//2), label, 19, anchor='mm')
 
     def _draw_result(self, frame, draw):
-        text = {'win': '战斗胜利', 'lose': '战斗失败', 'escape': '成功逃跑',
-                'caught': '捕捉成功'}.get(self.battle.result, self.battle.result)
-        frame.alpha_composite(Image.new('RGBA', (460, 190), (18, 22, 28, 245)), (282, 190))
-        draw.rectangle((282, 190, 742, 380), outline=(230, 200, 120, 255), width=3)
-        self._label(draw, (512, 240), text, 30, (248, 220, 140, 255), 'mm')
-        lines = [m for m in self.battle.messages if '获得' in m or '捕捉' in m][-3:]
-        for index, line in enumerate(lines):
-            self._label(draw, (512, 285+index*24), line, 15, anchor='mm')
-        self.hits['result_continue'] = (392, 335, 632, 374)
-        draw.rounded_rectangle(self.hits['result_continue'], 8, fill=(72, 96, 68, 245))
-        self._label(draw, (512, 354), '继续', 19, anchor='mm')
+        result = self.battle.result
+        won = result in ('win', 'caught')
+        total_exp = sum(int(entry[1]) for entry in self.battle.exp_gained)
+        pet_name = (self.battle.exp_gained[0][0] if self.battle.exp_gained else
+                    (self.battle.player_active.name if self.battle.player_active else ''))
+        if result == 'win':
+            tip = f'获得 {total_exp} 点经验'
+        elif result == 'caught':
+            tip = '捕捉成功'
+        elif result == 'escape':
+            tip = '成功逃跑'
+        else:
+            tip = '战斗失败'
+        # The original result layer owns the title, win/lose plate, pet name,
+        # score and confirm button; do not draw a host-made dialog over it.
+        layer = self.app.cocos_ui.render(
+            'WorldMonsterBattleResultUI', (W, H),
+            {'name_Text': pet_name, 'score_BitmapFontLabel': str(self.battle.damage_dealt),
+             'successTip_Text': tip, 'reward_ListView': ''},
+            visible={'title_win_Image': won, 'title_lose_Image': result == 'lose'})
+        frame.alpha_composite(layer)
+        draw = ImageDraw.Draw(frame, 'RGBA')
+        rect = self.app.cocos_ui.rects.get('reward_ListView')
+        if rect:
+            lines = [f'{name} +{gained} 经验' for name, gained, _levels in self.battle.exp_gained]
+            lines += [f'获得 {self._reward_name(item)} × {amount}'
+                      for item, amount in self.battle.drops]
+            if self.battle.caught_pet:
+                lines.append(f'捕获 {self.battle.caught_pet.name}')
+            for index, line in enumerate(lines[:6]):
+                self._label(draw, (rect[0]+8, rect[1]+8+index*15), line, 13,
+                            (70, 58, 42, 255), 'la')
+        hit = self.app.cocos_ui.rects.get('confirm_Button')
+        if hit:
+            self.hits['result_continue'] = tuple(round(v) for v in hit)
+
+    def _reward_name(self, item):
+        row = (self.app.data.tables['Item'].get(str(item)) or
+               self.app.data.tables['Money'].get(str(item)) or
+               self.app.data.tables['Pet'].get(str(item)) or {})
+        return row.get('name', str(item))
 
     def _draw_log(self, frame, draw):
         # Diagnostics live in the desktop status bar, not over the original HUD.
