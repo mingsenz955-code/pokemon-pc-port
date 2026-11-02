@@ -109,6 +109,24 @@
 - `tools/check_guide.py`：8 个主线目标解析、7401→101 地图路线、区域 BFS、真实 NPC 接近、出口切换和 11 条路线边落点边界检查；不是 431 张地图的完整步行回归。
 - `build/_host_debug.py`：有直接触发和传送的序章集成测试；不是玩家全程步行测试。
 
+## 0.2.37：任务与指引纠错
+
+基于 DeepSeek 更新后的 main / 86baa38 继续，没有覆盖旧审查工作树中的未提交改动。
+`GuideResolver` 的类型 5/6/7 原先错误映射为到地图/等级/道具；现按 `TaskProgress` 与原
+`MainTaskItemFight::getTargetSprite` 0x300eac、`MainTaskItemToMap::getTargetSprite`
+0x2ffda4 恢复为战斗 NPC / 破障 / 到地图。破障没有配置固定目标地图时不猜测坐标。
+剧情可显现的 state=0 人物也建立位置索引，修复任务 16 的 11522 无法定位。
+`VillageMap.enemyIds` 先查 `VillageEnemy.petId` 再查 Pet；宠物 ID 与种类必须匹配同一遭遇。
+
+`DailyTaskItem::submitTask` 0x2ff91c 在提交时发出条件类型 14；
+`DailyTaskItemDTaskSubmit::process` 0x2fe1c8 对该事件累加 1。因此全能训练统计其他七项
+已领取任务，而非已达成条件任务。日期回拨保留较新日期的记录，避免再次领取。
+
+验证：`tools/check_guide_conditions.py` 7 项数据检查；
+`tools/check_daily_tasks.py --logic-only` 覆盖八项计数、提交、奖励、防重复、次日重置、
+日期回拨、存档往返和奖励发放失败回滚。本轮未打开窗口观察；未验证原版逐帧视觉一致。
+完整范围继续由 [未完成清单](RESTORATION_REMAINING.md) 约束。
+
 ## 仍未完成
 
 融合/合体已接入核心逻辑，但完整原版动画、坐骑商店/破障交互、宠物使者付费试用/发货、

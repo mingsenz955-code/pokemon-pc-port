@@ -1,7 +1,7 @@
 """Original DailyTask (每日任务) table, daily reset and claim logic.
 
 The eight rows in ``DailyTask`` are fixed by the 1.20.4 table: seven normal
-tasks and one meta task (key 1) that requires all seven to be complete.  The
+tasks and one meta task (key 1) that requires all seven to be submitted. The
 table has no reward-on-login shortcut; the original TaskUI exposes a receive
 button, so this module keeps completion and claiming separate.
 """
@@ -37,7 +37,8 @@ class DailyTasks:
     def _entry(self, today=None):
         today = today or self._today()
         entry = self.state.activities.get(self.KEY)
-        if not isinstance(entry, dict) or entry.get('date') != today:
+        # Preserve today's claims when a clock correction moves backwards.
+        if not isinstance(entry, dict) or not entry.get('date') or entry['date'] < today:
             entry = {'date': today, 'counters': {}, 'claimed': []}
             self.state.activities[self.KEY] = entry
         entry.setdefault('counters', {})
@@ -66,7 +67,11 @@ class DailyTasks:
 
     def progress(self, task_id, today=None):
         if str(task_id) == '1':
-            return self.normal_completed(today)
+            # DailyTaskItem::submitTask @ 0x2ff91c emits type 14 only on
+            # submission; DTaskSubmit::process @ 0x2fe1c8 increments by one.
+            # Ready-but-unclaimed tasks must not advance this counter.
+            claimed = {str(key) for key in self._entry(today)['claimed']}
+            return sum(key in claimed for key in self.NORMAL_IDS)
         return self.counter(task_id, today)
 
     def ready(self, task_id, today=None):
