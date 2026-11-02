@@ -64,7 +64,7 @@ class TraversalChecks(unittest.TestCase):
         app.runtime.file, app.runtime.sequence, app.runtime.pending = '', [], None
         app.actors = lambda: [('10109', '20005', 608, 96)]
         calls = []
-        app.interact = lambda npc_id: calls.append(npc_id)
+        app.interact = lambda npc_id, sprite_id=None: calls.append(npc_id)
         app.guide = Guide(app)
         app.guide.start(GuideTarget('npc', 'next quest NPC', 101, 608, 96, npc_id='10109'))
         for _ in range(25):

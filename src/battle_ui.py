@@ -59,17 +59,22 @@ class BattleUI:
         self.display_hp = {(u.side, u.pet.uid): u.hp for u in battle.player+battle.enemy}
         self.visual_hp = dict(self.display_hp)
         self._event_cursor = len(getattr(battle, 'events', []))
+        self._event_batch = battle.events
         app.cocos_ui.render('BattleMainUI', (W, H), {})
         self.pet_positions = {side: tuple(app.cocos_ui.rects[node][:2]) for side, node in (
             ('player', 'minePetPos_Panel'), ('enemy', 'enemyPetPos_Panel'))}
 
     # -- animation -----------------------------------------------------------
-    def advance(self, steps=1):
+    def advance(self, steps=1, *, seconds=None):
+        # Keep the existing provisional action phases, but advance them in
+        # elapsed time rather than one unit per potentially slow render.
+        steps = max(0.0, float(steps) if seconds is None else float(seconds)*25)
         self.anim_idle += steps
-        for _ in range(max(0, int(steps))):
-            if not self.anim:
-                break
-            self.anim['age'] += 1
+        remaining = steps
+        while self.anim and remaining > 0:
+            amount = min(remaining, self.anim['duration']-self.anim['age'])
+            self.anim['age'] += amount
+            remaining -= amount
             if self.anim['age'] >= self.anim['duration']/2:
                 for event in self.anim.get('damages', []):
                     if event.get('uid'):
@@ -97,8 +102,11 @@ class BattleUI:
 
     def _capture_events(self):
         events = getattr(self.battle, 'events', [])
-        cursor = getattr(self, '_event_cursor', 0)
+        # Battle replaces the per-round list. Its length is not a global
+        # cursor: equal-length consecutive rounds must both be replayed.
+        cursor = getattr(self, '_event_cursor', 0) if events is getattr(self, '_event_batch', None) else 0
         fresh = events[cursor:]
+        self._event_batch = events
         self._event_cursor = len(events)
         if not fresh:
             return
@@ -343,7 +351,7 @@ class BattleUI:
                     active = self.presentation_unit(side == 'enemy')
                     if not active:
                         continue
-                    key_hp = (side, active.pet.uid)
+                    key_hp = ('enemy' if side == 'enemy' else 'player', active.pet.uid)
                     shown = self.display_hp.get(key_hp, active.hp)
                     color = (76, 200, 96, 255)
                     if active.hp/active.max_hp < .25:

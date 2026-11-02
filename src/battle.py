@@ -315,6 +315,18 @@ class Battle:
             self.messages.append(f'{enemy.name} Lv.{enemy.pet.level} 出现了！')
             self.messages.append(f'去吧，{active.name}！')
 
+    def select_initial_player(self, index):
+        """Use the party's selected lead without reordering its persistent slots."""
+        if self.round or self.events:
+            raise ValueError('Cannot change the opening pet after battle starts')
+        if not (0 <= index < len(self.player) and self.player[index].alive):
+            index = next((i for i, unit in enumerate(self.player) if unit.alive), 0)
+        self.player_index = index
+        self.force_switch = False
+        self.messages = []
+        self._start_messages()
+        self._check_end()
+
     # -- team helpers --------------------------------------------------------
     @property
     def player_active(self):

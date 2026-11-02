@@ -146,11 +146,15 @@ class GuideResolver:
         if status == 4:
             submitted = str(row.get('submitNpcs', '0'))
             if submitted and submitted != '0':
-                point = self.npc_point(submitted)
-                if point:
+                choices = [(npc, self.npc_point(npc)) for npc in integers(submitted) if npc]
+                choices = [(npc, point) for npc, point in choices if point]
+                if choices:
+                    npc, point = min(choices, key=lambda value: (
+                        value[1][0] != self.state.map_id,
+                        (value[1][1]-self.state.x)**2+(value[1][2]-self.state.y)**2))
                     return GuideTarget('npc', f'提交任务：{name}', point[0], point[1], point[2],
                                        category, key, name, description,
-                                       f'找 NPC {submitted} 提交任务', radius=90, npc_id=submitted)
+                                       f'找 NPC {npc} 提交任务', radius=90, npc_id=str(npc))
             submitted_exit = str(row.get('submitExits', '0'))
             if submitted_exit and submitted_exit != '0':
                 mid = exit_destination_map(self.tables, self.data, submitted_exit)
@@ -349,7 +353,7 @@ def _tile_center(tx, ty):
     return tx*64+32, ty*64+32
 
 
-def walk_path(game_map, start, goal, predicate, mounts=None, limit=40000):
+def walk_path(game_map, start, goal, predicate, mounts=None, limit=40000, occupied=()):
     """BFS over walkable tile centres; returns world-space waypoints.
 
     ``goal`` is only used when ``predicate`` is None; predicates let NPC/exit
@@ -363,7 +367,7 @@ def walk_path(game_map, start, goal, predicate, mounts=None, limit=40000):
         if not (0 <= tx < width and 0 <= ty < height):
             return False
         x, y = _tile_center(tx, ty)
-        return not game_map.blocked(x, y, mounts)
+        return (tx, ty) not in occupied and not game_map.blocked(x, y, mounts)
 
     if not passable(sx, sy):
         found = None
@@ -453,7 +457,7 @@ class Guide:
         self._visited_exit = None
         self._stuck = 0
         self._last_time = time.monotonic()
-        self._task_stamp = (self.app.state.main_task, self.app.state.main_state)
+        self._task_stamp = self.task_stamp()
         self.message = f'正在前往 {self.target.label}'
         return True
 
@@ -478,8 +482,7 @@ class Guide:
     def _click_path(self):
         from story_motion import shortest_path
         app, world = self.app, self.app.map
-        occupied = {(int(a[2]//world.tw), int(a[3]//world.th)) for a in app.actors()
-                    if str(a[1]).isdigit() and 20000 <= int(a[1]) < 30000}
+        occupied = self.occupied_cells()
         mounts = Mounts(app.state)
         def blocked(tx, ty):
             return (tx, ty) in occupied or world.blocked((tx+.5)*world.tw, (ty+.5)*world.th, mounts)
@@ -503,6 +506,31 @@ class Guide:
         if path:
             self.target.x, self.target.y = path[-1]
         return path
+
+    def occupied_cells(self):
+        world = self.app.map
+        return {(int(a[2]//world.tw), int(a[3]//world.th)) for a in self.app.actors()
+                if str(a[1]).isdigit() and 20000 <= int(a[1]) <= 30001
+                and not str(a[0]).startswith(('temp:', 'fx:'))}
+
+    def task_stamp(self):
+        state = self.app.state
+        return (state.main_task, state.main_state, tuple(sorted(state.branch_states.items())),
+                repr(sorted(state.task_counts.items())))
+
+    def refresh_task(self):
+        category, key = self.target.task_kind, self.target.task_id
+        state = self.app.state
+        if category == 'main':
+            key, status, table = str(state.main_task), state.main_state, 'MainTask'
+        else:
+            status, table = state.branch_states.get(str(key), 2), 'BranchTask'
+        row = self.resolver.tables.get(table, {}).get(str(key))
+        target = self.resolver.from_task(category, str(key), row, status) if row and status in (3, 4) else None
+        if target:
+            self.start(target)
+        else:
+            self.stop('任务阶段已改变，请选择当前任务目标。')
 
     def stop(self, message=''):
         self.active = False
@@ -546,7 +574,7 @@ class Guide:
         def inside(px, py):
             return x <= px < x+w and y <= py < y+h
         path = walk_path(self.app.map, (self.app.x, self.app.y), (x+w/2, y+h/2), inside,
-                         mounts=Mounts(self.app.state))
+                         mounts=Mounts(self.app.state), occupied=self.occupied_cells())
         if not path and inside(self.app.x, self.app.y):
             return []
         if not path:
@@ -575,7 +603,7 @@ class Guide:
                             and float(obj['y']) <= py < float(obj['y'])+float(obj.get('height', 64)))
             return (px-target.x)**2 + (py-target.y)**2 <= target.radius**2
         path = walk_path(self.app.map, (self.app.x, self.app.y), (target.x, target.y), reached,
-                         mounts=Mounts(self.app.state))
+                         mounts=Mounts(self.app.state), occupied=self.occupied_cells())
         if not path and reached(self.app.x, self.app.y):
             return []
         if not path:
@@ -636,15 +664,18 @@ class Guide:
             if self.click_mode and (app.battle or app.runtime.running):
                 self.stop('点击行走已被剧情或战斗中断。')
             return
-        stamp = (app.state.main_task, app.state.main_state)
-        if self.target.task_kind == 'main' and stamp != getattr(self, '_task_stamp', None):
-            self.start(self.resolver.target())
+        stamp = self.task_stamp()
+        if self.target.task_kind in ('main', 'branch') and stamp != getattr(self, '_task_stamp', None):
+            self.refresh_task()
             if not self.active:
                 return
         if self.target.kind == 'npc' and self.target.map_id == app.map_id and self.target.npc_id:
-            actor = next((a for a in app.actors() if str(a[0]) == self.target.npc_id and (
-                not self.target.sprite_id or str(a[1]) == self.target.sprite_id)), None)
+            matches = [a for a in app.actors() if str(a[0]) == self.target.npc_id and (
+                not self.target.sprite_id or str(a[1]) == self.target.sprite_id)]
+            actor = next((a for a in matches if str(a[1]).isdigit() and 20000 <= int(a[1]) < 30000),
+                         next(iter(matches), None))
             if actor:
+                self.target.sprite_id = str(actor[1])
                 if (int(actor[2]//app.map.tw), int(actor[3]//app.map.th)) != (
                         int(self.target.x//app.map.tw), int(self.target.y//app.map.th)):
                     self.waypoints = []
@@ -652,10 +683,9 @@ class Guide:
             elif self.click_mode:
                 self.stop('对话对象已离开，已停止移动。')
                 return
-        if self.click_mode and self.waypoints:
+        if self.waypoints:
             wx, wy = self.waypoints[0]
-            occupied = {(int(a[2]//app.map.tw), int(a[3]//app.map.th)) for a in app.actors()
-                        if str(a[1]).isdigit() and 20000 <= int(a[1]) < 30000}
+            occupied = self.occupied_cells()
             if (int(wx//app.map.tw), int(wy//app.map.th)) in occupied:
                 self.waypoints = []
         if self._last_map != app.map_id:
@@ -690,6 +720,9 @@ class Guide:
         distance = app.movement_speed()*seconds
         while self.waypoints and distance > 0:
             wx, wy = self.waypoints[0]
+            if (int(wx//app.map.tw), int(wy//app.map.th)) in self.occupied_cells():
+                self.waypoints = []
+                break
             dx, dy = wx-app.x, wy-app.y
             if abs(dx) < 1e-6 and abs(dy) < 1e-6:
                 self.waypoints.pop(0)

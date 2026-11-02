@@ -17,7 +17,7 @@ def navigation_host(walls=()):
     app.runtime.file, app.runtime.sequence, app.runtime.pending = '', [], None
     app.noclip = False
     app.calls = []
-    app.interact = lambda npc_id=None: app.calls.append(npc_id)
+    app.interact = lambda npc_id=None, sprite_id=None: app.calls.append(npc_id)
     app.try_exit = lambda: None
     app.data = DATA
     app.guide = Guide(app)

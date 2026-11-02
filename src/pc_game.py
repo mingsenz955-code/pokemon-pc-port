@@ -92,7 +92,7 @@ class NativeGame(ActivityUI, Preview):
         self.booting = False
         self.npc_motion = NpcMotion(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.45（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.46（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1029,7 +1029,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.45')
+        win.title('任务指引 · 原生 0.2.46')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1315,6 +1315,7 @@ class NativeGame(ActivityUI, Preview):
                                          npcid, npc['keyId'], self.state.rng)
         else:
             battle = make_npc_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
+        battle.select_initial_player(self.state.active_pet)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
         battle.source_id = str(npcid)
         self.battle_tips = []
@@ -1595,7 +1596,7 @@ class NativeGame(ActivityUI, Preview):
             self.state.activities['play_seconds'] = (
                 float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
-            self.battle_ui.advance()
+            self.battle_ui.advance(seconds=elapsed)
         if getattr(self, 'chest_fx', None):
             self.chest_fx['age'] += 1
             if self.chest_fx['age'] >= 26:
