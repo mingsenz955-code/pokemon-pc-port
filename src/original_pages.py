@@ -7,6 +7,7 @@ No screenshot backgrounds or hand-drawn substitutes for the recovered cards.
 from __future__ import annotations
 
 import math
+import re
 import time
 from PIL import Image, ImageTk, ImageDraw
 from event_runtime import Request
@@ -577,6 +578,19 @@ class OriginalPages(PetPages):
         body.pack_forget()
         self._bag_page(info)
 
+    def _bag_item_description(self, kid, row):
+        description = row.get('des', '')
+        if str(kid) == '270057':
+            # The Item table only holds a one-line synopsis. The actual letter
+            # belongs to the home story, not a consumable Item/PetItem effect.
+            # Re-read that text in the existing scrollable bag details without
+            # dispatching the story (which would repeat task/reward mutations).
+            letter = next(entry['text'].partition(':')[2]
+                          for entry in self.data.event('pEvent5807003.json')
+                          if entry.get('id') == 12 and entry.get('type') == 'talk')
+            description += '\n\n'+re.sub(r'#[0-9]', '', letter)
+        return description
+
     def _bag_page(self, info, allowed_keys=None, select_item=None, back=None):
         tabs = {1: {1, 2, 3}, 2: {5}, 3: {6}, 4: {4, 7}, 5: {8}}
         kind, offset, selected = [2 if allowed_keys is not None else 1], [0], [None]
@@ -598,7 +612,7 @@ class OriginalPages(PetPages):
         def paint():
             entry = next((r for r in rows if r[0] == selected[0]), None)
             row = entry[1] if entry else {}
-            description = row.get('des', '')
+            description = self._bag_item_description(selected[0], row)
             info.set(description or '背包')
             visibility = {'heCheng_Button': allowed_keys is None and kind[0] == 5,
                           'use_Button': bool(entry) and (select_item is not None or
