@@ -31,7 +31,7 @@ def tint_table(factor):
 @lru_cache(maxsize=512)
 def tinted_texture(path, rgba):
     texture = emitter(path)[1]
-    return Image.merge('RGBA', tuple(c.point(tint_table(v)) for c, v in zip(texture.split(), rgba)))
+    return texture.point(tuple(value for factor in rgba for value in tint_table(factor)))
 
 
 @lru_cache(maxsize=4096)
@@ -130,8 +130,12 @@ def draw_emitter(frame, path, position, scale, elapsed, alpha=1, clip=None):
         layer = cropped
     if int(val('blendFuncDestination', 771)) == 1:
         # Particle textures are premultiplied for ONE/ONE additive blending.
-        colored = ImageChops.multiply(layer.convert('RGB'), Image.merge('RGB', (layer.getchannel('A'),)*3))
-        merged = ImageChops.add(frame.convert('RGB'), colored)
-        frame.paste(Image.merge('RGBA', (*merged.split(), ImageChops.lighter(frame.getchannel('A'), layer.getchannel('A')))))
+        bounds = layer.getchannel('A').getbbox()
+        if bounds is None:
+            return
+        region, background = layer.crop(bounds), frame.crop(bounds)
+        colored = ImageChops.multiply(region.convert('RGB'), Image.merge('RGB', (region.getchannel('A'),)*3))
+        merged = ImageChops.add(background.convert('RGB'), colored)
+        frame.paste(Image.merge('RGBA', (*merged.split(), ImageChops.lighter(background.getchannel('A'), region.getchannel('A')))), bounds[:2])
     else:
         frame.alpha_composite(layer)

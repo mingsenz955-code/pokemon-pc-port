@@ -1,3 +1,7 @@
+## 0.2.62 接续
+
+分支 codex/restore-evolution-login-treasure 基于 PR16 并合入 origin/main/89ff3af 的骑宠修复。先读 VERIFICATION_0.2.62.md。不要恢复半透明矩形 bg_Panel；不要用爱心样图代替放大镜/钥匙；成就星级不等于品质。登录页面动画走 set_layer 单向上传，普通模态页打开时暂停背后重复地图绘制。check_restore_followups.py 七项为本轮入口。
+
 ## 2026-11-02 / 0.2.61 单窗口与奖励修复
 
 分支 codex/fix-single-window-reward-flows 接续 PR15/bddcee2。优先读 VERIFICATION_0.2.61.md。TipConfirmUI 的文字是 tip_Text；误写 info_Text 会显示背包满样文。任务 counts=0 的事件类型不能在菜单刷新时自动完成；尤其主线 7 的剧情触发要求状态 3。护士 580504 在斯塔镇银行，101009 是临时教学。奖励图片有透明边缘，内边距必须按可见纸张检查。新增 check_single_window_flows.py；不强杀旧游戏、不改玩家存档文件。

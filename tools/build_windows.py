@@ -34,7 +34,7 @@ if data.exists() and data.resolve() != (root/'original-1.20.4').resolve():
     shutil.rmtree(data)
 shutil.copytree(root/'original-1.20.4', data, dirs_exist_ok=True)
 for filename in ['README.md', 'docs/DEEPSEEK_HANDOVER.md', 'docs/MECHANICS_EVIDENCE.md',
-                 'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.62.md']:
+                 'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.61.md', 'docs/VERIFICATION_0.2.62.md']:
     source = root/filename
     if source.exists():
         shutil.copy2(source, output/('使用说明.md' if filename == 'README.md' else source.name))

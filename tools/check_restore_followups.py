@@ -29,7 +29,11 @@ class FollowupChecks(unittest.TestCase):
         a = self.app
         api = Achievements(a.state)
         self.assertEqual(api.status('101'), 'ready')
-        api.claim('101')
+        self.open(45)
+        self.click('receive_Button')
+        self.assertEqual(a.original_page.specs[0][0], 'GetItemUI')
+        self.click('confirm_Button')
+        self.save_panel('followup-achievement')
         self.assertEqual(api.status('101'), 'claimed')
         with self.assertRaises(ValueError): api.claim('101')
         species = next(k for k, r in a.data.tables['Pet'].items() if r['starLevel'] == '5')

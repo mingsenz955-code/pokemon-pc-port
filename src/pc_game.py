@@ -2268,7 +2268,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             key, count = str(numbers(row['costIds'])[0]), numbers(row['costCounts'])[0]
             page = Page(self, 'OpenChestConfirmUI', timeline_frame=60,
                         text={'title_Text': '需要钥匙开启', 'need_BitmapFontLabel': f'x{count}'},
-                        resources={'icon_Sprite': self._item_data(key)[1]}, sizes={'icon_Sprite': (44, 44)})
+                        resources={'icon_Sprite': self._item_data(key)[1]}, sizes={'icon_Sprite': (44, 44)},
+                        positions={'title_Text': (0, 50)})
             page.actions.update({'confirm_Button': confirm, 'cancel_Button': self.close_ui, 'close_Button': self.close_ui})
             page.publish()
         def confirm():
