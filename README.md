@@ -1,14 +1,23 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.51%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.52%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.51 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.52 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
+
+0.2.52 继续按手机版 APK 内原始 `assets/Data`、`res/UI/*.csb`、`PlotEvent`
+和 UI 布局驱动页面，不再用宿主 Tk 列表框盖住原版画面。宠物页改为
+`PetListUI` + 三张 `PetListItemUI`，显示原版立绘、属性/技能/天赋页签；
+图鉴页改为 `IllustratedItemUI` 卡片网格并接入 `IllustratedPetInfoUI`；
+成就页改为原版 `AchievementItemUI` 卡片和积分栏；连续登录、宠物银行、
+孵化屋、技能学习、突破、合体、融合、轮盘、坐骑/宠物商店都限制在
+800×480 原版页内，隐藏宿主列表并保留原版按钮动作。孵化屋、技能学习等
+页仍有未接入的深层规则；0.2.52 不是完整还原。
 
 0.2.51 把背包和商店从宿主 Tk 控件改为原版页面：背包在 `BagUI` 的
 `item_ListView` 内逐行合成 `BagListItemUI`，显示原版页签、道具图标、名称、

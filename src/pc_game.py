@@ -96,7 +96,7 @@ class NativeGame(ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.51（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.52（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -533,8 +533,8 @@ class NativeGame(ActivityUI, Preview):
                 except ValueError as error:
                     info.set(str(error))
             self.ui_actions['confirm_Button'] = cure
-            tk.Button(body, text='治疗全部宠物', bg='#5b7c52', fg='white',
-                      command=cure).pack(pady=6)
+            self.ui_actions['cancel_Button'] = lambda: self.close_ui('no')
+            body.pack_forget()
         elif uiid == 14:
             info.set(f'保存当前进度到本机用户目录：\n{self.save_path}')
             def save_now():
@@ -1129,7 +1129,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.51')
+        win.title('任务指引 · 原生 0.2.52')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2629,72 +2629,107 @@ class NativeGame(ActivityUI, Preview):
         self.open_ui(Request('openui', 'illustrated', 1, {'parameters': {'uiid': 48}}))
 
     def _illustrated_overview_body(self, body, info):
-        """Original IllustratedUI: five PetKindEnum tabs over the full Pet table."""
-        tables = self.state.tables
-        current = [1]
-        selected = [0]
-        species = []
-        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
-        rect = self.ui_hits.get('item_ScrollView') or self.ui_rects.get('item_ScrollView')
-        if rect:
-            frame.place(x=rect[0], y=rect[1], width=max(160, rect[2]-rect[0]),
-                        height=max(120, rect[3]-rect[1]))
-            frame.lift()
-        else:
-            frame.pack(fill='both', expand=True)
-        box = tk.Listbox(frame, width=58, height=16, font=('Microsoft YaHei UI', 9),
-                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
-        bar = tk.Scrollbar(frame, command=box.yview)
-        box.configure(yscrollcommand=bar.set)
-        box.pack(side='left', fill='both', expand=True)
-        bar.pack(side='right', fill='y')
+            """Original IllustratedUI: original cards in item_ScrollView."""
+            tables = self.state.tables
+            current = [1]
+            species = []
+            scroll = [0]
+            selected = [0]
+            rect = self.ui_hits.get('item_ScrollView') or self.ui_rects.get('item_ScrollView')
+            if not rect:
+                rect = (64, 93, 719, 421)
+            body.pack_forget()
 
-        def show(_=None):
-            if not species:
-                return
-            if box.curselection():
-                selected[0] = box.curselection()[0]
-            key = species[selected[0]]
-            row = tables['Pet'][key]
-            found = '已收录' if key in self.state.encyclopedia else '未收录'
-            skills = '、'.join(tables['Skill'].get(str(s), {}).get('name', str(s))
-                              for s in str(row.get('skillIds', '')).split(',')[:4] if s and s != '0')
-            info.set(f'{row["name"]}（{key}） · {found}\n'
-                     f'种族 {tables["PetKindEnum"].get(str(row.get("kind")), {}).get("name", row.get("kind"))} · '
-                     f'星级 {row.get("starLevel")} · 最大等级 {row.get("maxLevel")}\n'
-                     f'技能：{skills or "无"}')
+            def card_visible(key, row):
+                stars = max(0, min(5, int(row.get('starLevel', 0) or 0)))
+                values = {}
+                for index in range(1, 6):
+                    values[f'star_Image_{index}'] = index <= stars
+                    values[f'star_Image_{index}_black'] = False
+                values['star_Panel'] = True
+                values['star_black_Panel'] = False
+                return values
 
-        def tab(kind):
-            nonlocal species
-            current[0] = kind
-            species = sorted((key for key, row in tables['Pet'].items()
-                              if str(row.get('kind', '')) == str(kind)), key=lambda value: int(value))
-            box.delete(0, 'end')
-            for key in species:
-                row = tables['Pet'][key]
-                mark = '✓' if key in self.state.encyclopedia else '·'
-                box.insert('end', f'{mark} {key}  {row["name"]}  星级 {row.get("starLevel")}')
-            found = sum(1 for key in species if key in self.state.encyclopedia)
-            info.set(f'{tables["PetKindEnum"].get(str(kind), {}).get("name", kind)} · '
-                     f'已收录 {found}/{len(species)}')
-            if getattr(self, 'ui_art_label', None) is not None:
+            def paint():
+                kind = current[0]
+                found = sum(1 for key in species if key in self.state.encyclopedia)
                 layer = self.cocos_ui.render('IllustratedUI', (800, 480), {
                     'findedCount_BitmapFontLabel': str(len(self.state.encyclopedia)),
                     'progress_BitmapFontLabel': f'{found}/{len(species)}',
                 })
-                photo = ImageTk.PhotoImage(layer)
-                self.ui_art_label.configure(image=photo)
-                self.ui_art_label.image = photo
-            if species:
-                box.selection_set(0)
-                selected[0] = 0
-                show()
+                base_hits = dict(self.cocos_ui.hits)
+                base_rects = dict(self.cocos_ui.rects)
+                base_buttons = dict(self.cocos_ui.buttons)
+                base_text = dict(self.cocos_ui.button_text)
+                draw = ImageDraw.Draw(layer)
+                start = scroll[0]
+                for index, key in enumerate(species[start:start+15]):
+                    row = tables['Pet'][key]
+                    resource = f'PetHead/head_{row.get("filePath", "")}.png'
+                    card = self.cocos_ui.render(
+                        'IllustratedItemUI', (180, 60),
+                        {'itemName_Text': row['name'],
+                         'id_BitmapFontLabel': str(key)},
+                        resources={'head_Image': resource},
+                        visible=card_visible(key, row))
+                    column, line = index % 3, index // 3
+                    x = round(rect[0] + 10 + column * 210)
+                    y = round(rect[1] + 8 + line * 64)
+                    layer.alpha_composite(card, (x, y))
+                    self.ui_hits[f'illustrated_card_{index}'] = (x, y, x+180, y+60)
+                    if start + index == selected[0]:
+                        draw.rectangle((x+1, y+1, x+178, y+58),
+                                       outline='#ffe36e', width=2)
+                self.ui_base_layer = layer
+                self.ui_hits.update(base_hits)
+                self.ui_rects = base_rects
+                self.ui_buttons = base_buttons
+                self.ui_button_text = base_text
+                for index in range(15):
+                    self.ui_actions[f'illustrated_card_{index}'] = (
+                        lambda value=index: open_card(scroll[0]+value))
+                if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                    photo = ImageTk.PhotoImage(layer)
+                    self.ui_art_label.configure(image=photo)
+                    self.ui_art_label.image = photo
 
-        for kind in range(1, 6):
-            self.ui_actions[f'tag_{kind}_Button'] = lambda value=kind: tab(value)
-        self.ui_actions['close_Button'] = self.close_ui
-        box.bind('<<ListboxSelect>>', show)
-        tab(1)
+            def open_card(index):
+                if not 0 <= index < len(species):
+                    return
+                selected[0] = index
+                key = species[index]
+                row = tables['Pet'][key]
+                info.set(f'{row["name"]}（{key}） · '
+                         f'{"已收录" if key in self.state.encyclopedia else "未收录"}')
+                paint()
+                self.open_ui(Request('openui', 'illustrated-pet', 1, {
+                    'parameters': {'uiid': 8, 'species': key}}))
+
+            def tab(kind):
+                nonlocal species
+                current[0] = kind
+                selected[0] = 0
+                scroll[0] = 0
+                species = sorted((key for key, row in tables['Pet'].items()
+                                  if str(row.get('kind', '')) == str(kind)),
+                                 key=lambda value: int(value))
+                info.set(f'{tables["PetKindEnum"].get(str(kind), {}).get("name", kind)} · '
+                         f'已收录 {sum(1 for key in species if key in self.state.encyclopedia)}/'
+                         f'{len(species)}')
+                paint()
+
+            def wheel(event):
+                step = -3 if event.delta > 0 else 3
+                top = max(0, len(species)-15)
+                scroll[0] = min(top, max(0, scroll[0]+step))
+                paint()
+
+            for kind in range(1, 6):
+                self.ui_actions[f'tag_{kind}_Button'] = lambda value=kind: tab(value)
+            self.ui_actions['close_Button'] = self.close_ui
+            if hasattr(self, 'ui_art_label'):
+                self.ui_art_label.bind('<MouseWheel>', wheel)
+            tab(1)
 
     def pets_ui(self):
         if self.battle:
@@ -2703,130 +2738,193 @@ class NativeGame(ActivityUI, Preview):
         self.open_ui(Request('openui', 'pet-list', 1, {'parameters': {'uiid': 47}}))
 
     def _pet_list_body(self, body, info):
-        """Original PetListUI: party list, stats/skills/talents, battle and evolve."""
-        state, tables = self.state, self.data.tables
-        pets = list(state.pets)
-        selected = [0 if pets else -1]
-        page = ['base']
-        confirm_free = [None]
-        detail_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
-        detail_rect = self.ui_hits.get('baseInfo_Panel') or self.ui_rects.get('baseInfo_Panel')
-        if detail_rect:
-            detail_frame.place(x=detail_rect[0], y=detail_rect[1],
-                               width=max(160, detail_rect[2]-detail_rect[0]),
-                               height=max(120, detail_rect[3]-detail_rect[1]))
-            detail_frame.lift()
-        else:
-            detail_frame.pack(fill='both', expand=True)
-        detail = tk.Text(detail_frame, width=44, height=13, wrap='word', font=('Microsoft YaHei UI', 9))
-        detail.pack(fill='both', expand=True)
-        list_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
-        rect = self.ui_hits.get('itemListView_Panel') or self.ui_rects.get('itemListView_Panel')
-        if rect:
-            list_frame.place(x=rect[0], y=rect[1], width=max(150, rect[2]-rect[0]),
-                             height=max(120, rect[3]-rect[1]))
-            list_frame.lift()
-        else:
-            list_frame.pack(fill='both', expand=True)
-        box = tk.Listbox(list_frame, width=34, height=11, font=('Microsoft YaHei UI', 9),
-                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
-        bar = tk.Scrollbar(list_frame, command=box.yview)
-        box.configure(yscrollcommand=bar.set)
-        box.pack(side='left', fill='both', expand=True)
-        bar.pack(side='right', fill='y')
-
-        def show(_=None):
-            if not pets:
-                detail.delete('1.0', 'end')
-                detail.insert('1.0', '当前没有携带宠物。')
-                return
-            if box.curselection():
-                selected[0] = box.curselection()[0]
-            pet = pets[selected[0]]
-            row = tables['Pet'][pet.species]
-            stats = pet.stats(tables)
-            active = ' · 出战中' if selected[0] == state.active_pet else ''
-            if page[0] == 'skill':
-                skills = [tables['Skill'].get(str(s), {}).get('name', str(s)) for s in pet.skills]
-                body_text = '技能：\n' + ('\n'.join(f'· {name}' for name in skills) or '（无）')
-            elif page[0] == 'talent':
-                talents = [tables['Talent'].get(str(t), {}).get('name', str(t)) for t in pet.talents]
-                body_text = '天赋：\n' + ('\n'.join(f'· {name}' for name in talents) or '（无）')
-            else:
-                body_text = (f'{row["name"]}  Lv.{pet.level}{active}\n'
-                             f'生命 {pet.hp}/{stats[0]}  能量 {pet.energy}/{stats[1]}\n'
-                             f'力量 {stats[2]}  防御 {stats[3]}  速度 {stats[4]}\n'
-                             f'品质 {pet.quality}  突破 {pet.breakthrough}  亲密度 {pet.friendly}\n'
-                             f'携带物 {tables["Item"].get(str(pet.held_item), {}).get("name", pet.held_item)}')
-            detail.delete('1.0', 'end')
-            detail.insert('1.0', body_text)
-            info.set(f'{row["name"]} · 出战 {state.active_pet+1}/{max(1, len(pets))}')
-
-        def rebuild():
-            nonlocal pets
+            """Original PetListUI: original rows and panels, no host list overlay."""
+            state, tables = self.state, self.data.tables
             pets = list(state.pets)
-            box.delete(0, 'end')
-            for pet in pets:
+            selected = [0 if pets else -1]
+            page = ['base']
+            scroll = [0]
+            rect = self.ui_rects.get('item_ListView') or self.ui_hits.get('item_ListView')
+            if not rect:
+                rect = (35, 98, 396, 426)
+            body.pack_forget()
+
+            def row_data(pet):
                 row = tables['Pet'][pet.species]
-                mark = '★' if pets.index(pet) == state.active_pet else ' '
-                box.insert('end', f'{mark} {row["name"]}  Lv.{pet.level}  '
-                                  f'HP {pet.hp}/{pet.stats(tables)[0]}')
-            if pets:
-                selected[0] = min(selected[0], len(pets)-1)
-                box.selection_set(selected[0])
-                show()
+                stats = pet.stats(tables)
+                return row, stats
 
-        def join_battle():
-            if not pets:
-                return
-            state.active_pet = selected[0]
-            confirm_free[0] = None
+            def paint():
+                now = page[0]
+                visible = {
+                    'baseInfo_Panel': now == 'base',
+                    'skillInfo_Panel': now in ('skill', 'talent'),
+                    'train_ProjectNode': now == 'train',
+                }
+                text = {'progress_BitmapFontLabel': f'{len(pets)}/200'}
+                layer = self.cocos_ui.render('PetListUI', (800, 480), text, visible=visible)
+                base_hits = dict(self.cocos_ui.hits)
+                base_rects = dict(self.cocos_ui.rects)
+                base_buttons = dict(self.cocos_ui.buttons)
+                base_text = dict(self.cocos_ui.button_text)
+                draw = ImageDraw.Draw(layer)
+
+                # Original PetListItemUI rows are 320x110 and the original list
+                # viewport is 361x328, so three rows fit without a host Listbox.
+                for index, pet in enumerate(pets[scroll[0]:scroll[0]+3]):
+                    row, stats = row_data(pet)
+                    row_layer = self.cocos_ui.render(
+                        'PetListItemUI', (320, 110),
+                        {'name_Text': row['name'],
+                         'lv_BitmapFontLabel': str(pet.level),
+                         'hpHave_BitmapFontLabel': str(pet.hp),
+                         'hpMax_BitmapFontLabel': str(stats[0]),
+                         'enHave_BitmapFontLabel': str(pet.energy),
+                         'enMax_BitmapFontLabel': str(stats[1]),
+                         'friendly_BitmapFontLabel': str(pet.friendly)},
+                        visible={'add_Panel': False})
+                    x = round(rect[0] + 20)
+                    y = round(rect[1] + index * 110)
+                    layer.alpha_composite(row_layer, (x, y))
+                    self.ui_hits[f'pet_row_{index}'] = (x, y, x+320, y+110)
+                    if scroll[0] + index == selected[0]:
+                        draw.rectangle((x+1, y+1, x+318, y+108),
+                                       outline='#ffe36e', width=3)
+
+                # Put the selected pet's original full-body image on petPos_Node.
+                if now == 'base' and pets:
+                    pet = pets[selected[0]]
+                    art = self.data.pet_image(pet.species)
+                    if art is not None:
+                        art = art.copy()
+                        art.thumbnail((190, 225), Image.Resampling.LANCZOS)
+                        layer.alpha_composite(art, (487-art.width//2, 258-art.height//2))
+
+                def put(x, y, value, size=12, fill=(76, 48, 30)):
+                    font_path = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'
+                    try:
+                        font = ImageFont.truetype(str(font_path), size)
+                    except OSError:
+                        font = ImageFont.load_default()
+                    for dx, dy in ((1, 1), (0, 0)):
+                        draw.text((x+dx, y+dy), value, font=font,
+                                  fill=(255, 250, 235) if (dx, dy) == (1, 1) else fill)
+
+                if now == 'base' and pets:
+                    pet = pets[selected[0]]
+                    row, stats = row_data(pet)
+                    active = ' · 出战' if selected[0] == state.active_pet else ''
+                    put(420, 116, f'{row["name"]} Lv.{pet.level}{active}', 13)
+                    put(422, 316, f'生命 {pet.hp}/{stats[0]}\n能量 {pet.energy}/{stats[1]}',
+                        11, (255, 244, 209))
+                    put(565, 316, f'力量 {stats[2]}\n防御 {stats[3]}\n速度 {stats[4]}',
+                        11, (255, 244, 209))
+                    put(565, 356, f'品质 {pet.quality}  突破 {pet.breakthrough}  '
+                                   f'亲密 {pet.friendly}', 9, (255, 244, 209))
+                elif now in ('skill', 'talent') and pets:
+                    pet = pets[selected[0]]
+                    if now == 'skill':
+                        values = [tables['Skill'].get(str(s), {}).get('name', str(s))
+                                  for s in pet.skills]
+                        title = '技能'
+                    else:
+                        values = [tables['Talent'].get(str(t), {}).get('name', str(t))
+                                  for t in pet.talents]
+                        title = '天赋'
+                    put(437, 154, title, 14, (255, 244, 209))
+                    for index, value in enumerate(values[:5]):
+                        put(444, 176 + index*18, f'· {value}', 12, (255, 244, 209))
+                    if not values:
+                        put(444, 176, '（无）', 12, (255, 244, 209))
+                elif now == 'train' and pets:
+                    pet = pets[selected[0]]
+                    row, stats = row_data(pet)
+                    put(424, 319, f'训练值会加入属性：生命 {stats[0]} / 能量 {stats[1]} / '
+                                    f'力量 {stats[2]} / 防御 {stats[3]} / 速度 {stats[4]}', 11)
+
+                self.ui_base_layer = layer
+                self.ui_hits.update(base_hits)
+                self.ui_rects = base_rects
+                self.ui_buttons = base_buttons
+                self.ui_button_text = base_text
+                self.ui_actions['pet_row_0'] = lambda: choose(scroll[0])
+                self.ui_actions['pet_row_1'] = lambda: choose(scroll[0]+1)
+                self.ui_actions['pet_row_2'] = lambda: choose(scroll[0]+2)
+                if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                    photo = ImageTk.PhotoImage(layer)
+                    self.ui_art_label.configure(image=photo)
+                    self.ui_art_label.image = photo
+
+            def choose(index):
+                if not 0 <= index < len(pets):
+                    return
+                selected[0] = index
+                page[0] = 'base'
+                row, stats = row_data(pets[index])
+                info.set(f'{row["name"]} · Lv.{pets[index].level} · '
+                         f'生命 {pets[index].hp}/{stats[0]}')
+                paint()
+
+            def rebuild():
+                nonlocal pets
+                pets = list(state.pets)
+                if not pets:
+                    selected[0] = -1
+                else:
+                    selected[0] = min(max(0, selected[0]), len(pets)-1)
+                paint()
+
+            def join_battle():
+                if not pets:
+                    return
+                state.active_pet = selected[0]
+                rebuild()
+
+            def evolve():
+                if pets:
+                    self.open_evolution(pets[selected[0]].uid)
+
+            def free():
+                if not pets:
+                    return
+                if selected[0] == state.active_pet:
+                    info.set('出战中宠物不能放生，请先更换出战宠物。')
+                    return
+                self.open_free_pet(pets[selected[0]].uid)
+
+            def use_item():
+                if not pets:
+                    return
+                self.bag_target_uid = pets[selected[0]].uid
+                self.close_ui()
+                self.bag_ui()
+
+            def tag(value):
+                if not pets:
+                    return
+                page[0] = value
+                paint()
+
+            def wheel(event):
+                step = -1 if event.delta > 0 else 1
+                top = max(0, len(pets)-3)
+                scroll[0] = min(top, max(0, scroll[0]+step))
+                paint()
+
+            self.ui_actions.update({
+                'joinBattle_Button': join_battle,
+                'evolution_Button': evolve,
+                'useItem_Button': use_item,
+                'free_Button': free,
+                'skillTag_Button': lambda: tag('skill'),
+                'talentTag_Button': lambda: tag('talent'),
+                'skill_Button': lambda: tag('skill'),
+                'trainValue_Button': lambda: tag('train'),
+                'close_Button': self.close_ui,
+            })
+            if hasattr(self, 'ui_art_label'):
+                self.ui_art_label.bind('<MouseWheel>', wheel)
             rebuild()
-
-        def evolve():
-            if not pets:
-                return
-            pet = pets[selected[0]]
-            self.open_evolution(pet.uid)
-
-        def free():
-            if not pets:
-                return
-            pet = pets[selected[0]]
-            if selected[0] == state.active_pet:
-                info.set('出战中宠物不能放生，请先更换出战宠物。')
-                return
-            self.open_free_pet(pet.uid)
-
-        def use_item():
-            if not pets:
-                return
-            pet = pets[selected[0]]
-            self.bag_target_uid = pet.uid
-            self.close_ui()
-            self.bag_ui()
-
-        def tag(value):
-            page[0] = value
-            show()
-
-        box.bind('<<ListboxSelect>>', show)
-        def property_click(_event=None):
-            if pets:
-                self.open_pet_property(pets[selected[0]].uid)
-        box.bind('<Double-Button-1>', property_click)
-        self.ui_actions.update({
-            'joinBattle_Button': join_battle,
-            'evolution_Button': evolve,
-            'useItem_Button': use_item,
-            'free_Button': free,
-            'skillTag_Button': lambda: tag('skill'),
-            'talentTag_Button': lambda: tag('talent'),
-            'skill_Button': lambda: tag('skill'),
-            'trainValue_Button': lambda: tag('base'),
-            'close_Button': self.close_ui,
-        })
-        rebuild()
 
     def store_ui(self):
         if self.battle:

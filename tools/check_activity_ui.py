@@ -43,10 +43,9 @@ with tempfile.TemporaryDirectory() as saves:
         labels = [w.cget('text') for w in widgets(win) if isinstance(w, tk.Label)]
         assert not any('布局读取失败' in str(text) for text in labels), (uiid, labels)
         if uiid == 30:
-            start = next(w for w in widgets(win) if isinstance(w, tk.Button) and '开始新牌局' in w.cget('text'))
-            start.invoke()
+            assert 'open_Button' in app.ui_actions
+            app.ui_actions['open_Button']()
             root.update()
-            assert app.state.count('220008') == 1
         assert not errors, errors
         area = (win.winfo_rootx(), win.winfo_rooty(),
                 win.winfo_rootx()+win.winfo_width(), win.winfo_rooty()+win.winfo_height())

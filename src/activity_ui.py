@@ -20,22 +20,75 @@ from running_pet import RunningPetGame
 class ActivityUI:
     def _login_body(self, body, info):
         login = ContinuousLogin(self.state)
-        box = tk.Listbox(body, width=76, height=7, exportselection=False)
-        box.pack(fill='x')
+        body.pack_forget()
+
         def name_of(kid):
             for table in ('Item', 'Money', 'Pet'):
-                if str(kid) in self.data.tables.get(table, {}):
-                    return self.data.tables[table][str(kid)]['name']
+                row = self.data.tables.get(table, {}).get(str(kid))
+                if row:
+                    return row['name']
             return str(kid)
-        def refresh():
+
+        def icon_of(kid):
+            row = self.data.tables.get('Item', {}).get(str(kid))
+            if row and row.get('texture'):
+                return f'ItemIcon/{row["texture"]}'
+            return None
+
+        def paint():
             status = login.status()
-            box.delete(0, 'end')
-            for index, row in enumerate(login.rewards(), start=1):
-                mark = '已领取' if index <= status['day'] else (
-                    '今日可领' if index == status['next_day'] and not status['claimed_today']
-                    else '未领取')
-                box.insert('end', f'第 {index} 天 · {name_of(row["rewardKid"])} ×'
-                                  f'{row["rewardCount"]} · {mark}')
+            rewards = login.rewards()
+            layer = self.cocos_ui.render('ContinuousLoginUI', (800, 480), {
+                'days_BitmapFontLabel': str(status['day']),
+                'info_Text': '连续登录奖励',
+                'infoItemName_Text': '',
+                'infoItemCount_BitmapFontLabel': '',
+            })
+            base_hits = dict(self.cocos_ui.hits)
+            base_rects = dict(self.cocos_ui.rects)
+            base_buttons = dict(self.cocos_ui.buttons)
+            base_text = dict(self.cocos_ui.button_text)
+            rect = (self.ui_rects.get('goods_ListView')
+                    or self.ui_hits.get('goods_ListView') or (223, 171, 739, 412))
+            draw = ImageDraw.Draw(layer)
+            for index, row in enumerate(rewards[:7]):
+                claimable = (index+1 == status['next_day']
+                             and not status['claimed_today'] and not status['complete'])
+                card = self.cocos_ui.render(
+                    'ContinuousLoginItemUI', (70, 90), {
+                        'day_BitmapFontLabel': str(index+1),
+                        'name_Text': name_of(row['rewardKid'])[:5],
+                        'count_BitmapFontLabel': f'x{row["rewardCount"]}',
+                    },
+                    resources={'icon_Image': icon_of(row['rewardKid']) or ''},
+                    visible={'get_Button': claimable})
+                x = round(rect[0] + 2 + index * 73)
+                y = round(rect[1] + 62)
+                layer.alpha_composite(card, (x, y))
+                self.ui_hits[f'login_card_{index}'] = (x, y, x+70, y+90)
+                self.ui_actions[f'login_card_{index}'] = (
+                    lambda value=index: select(value))
+                if claimable:
+                    self.ui_hits[f'login_claim_{index}'] = (
+                        x+9, y+73, x+61, y+90)
+                    self.ui_actions[f'login_claim_{index}'] = (
+                        lambda: claim())
+                if index+1 <= status['day']:
+                    draw.rectangle((x+1, y+1, x+68, y+88),
+                                   outline='#ffe36e', width=2)
+            self.ui_base_layer = layer
+            self.ui_hits.update(base_hits)
+            self.ui_rects = base_rects
+            self.ui_buttons = base_buttons
+            self.ui_button_text = base_text
+            self.ui_actions['get_Button'] = claim
+            self.ui_actions['receive_Button'] = claim
+            self.ui_actions['confirm_Button'] = claim
+            self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+            if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                photo = ImageTk.PhotoImage(layer)
+                self.ui_art_label.configure(image=photo)
+                self.ui_art_label.image = photo
             if status['complete']:
                 info.set('连续登录七天奖励已经全部领取。')
             elif status['claimed_today']:
@@ -43,228 +96,316 @@ class ActivityUI:
             elif status['reset']:
                 info.set('中断超过一天，连续登录从第一天重新开始。')
             else:
-                row = login.rewards()[status['next_day']-1]
+                row = rewards[status['next_day']-1]
                 info.set(f'{row["des"]}{name_of(row["rewardKid"])} × {row["rewardCount"]}')
+
+        def select(index):
+            rewards = login.rewards()
+            if 0 <= index < len(rewards):
+                row = rewards[index]
+                info.set(f'第 {index+1} 天：{name_of(row["rewardKid"])} ×'
+                         f'{row["rewardCount"]}')
+
         def claim():
             try:
                 result = login.claim()
             except (ValueError, KeyError) as error:
                 info.set(str(error))
                 return
-            refresh()
+            paint()
             info.set(f'领取成功：{name_of(result["reward"])} × {result["count"]}。'
                      '明天可继续领取。')
-        self.ui_actions['get_Button'] = claim
-        self.ui_actions['receive_Button'] = claim
-        self.ui_actions['confirm_Button'] = claim
-        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
-        tk.Button(body, text='领取今日奖励', command=claim).pack(pady=4)
-        refresh()
+
+        paint()
 
     def _hatch_body(self, body, info):
-        from tkinter import ttk
-        activity = Activities(self.state)
-        slots = tk.Listbox(body, width=70, height=5, exportselection=False)
-        slots.pack(fill='x')
-        eggs = ttk.Combobox(body, state='readonly', width=65)
-        eggs.pack(fill='x')
-        available = []
-        def refresh():
-            selected = slots.curselection()
-            slots.delete(0, 'end')
-            for index in range(10):
-                egg = self.state.activities.get('eggs', {}).get(str(index))
-                text = '空位'
-                if egg:
-                    row = self.data.tables['HatchItem'][egg['item']]
-                    text = f'{self.data.tables["Item"][egg["item"]]["name"]} · 经验 {egg["exp"]}/{row["exp"]}'
-                    if egg['pet']:
-                        text = f'{self.data.tables["Pet"][egg["pet"]["species"]]["name"]} · 已孵化，待领取'
-                slots.insert('end', f'{index+1}. {text}')
-            if selected:
-                slots.selection_set(selected[0])
-            available[:] = [k for k in self.data.tables['HatchItem'] if self.state.count(k)]
-            eggs['values'] = [f'{self.data.tables["Item"][k]["name"]} × {self.state.count(k)}' for k in available]
-            if available:
-                eggs.current(0)
-            else:
-                eggs.set('')
-            info.set('选择孵化位；战斗获得孵化经验，可用材料孵化或支付金币直接孵化。')
-        def act(kind):
-            if not slots.curselection():
-                info.set('请先选择孵化位。')
-                return
-            index = slots.curselection()[0]
-            try:
-                if kind == 'put':
-                    if eggs.current() < 0:
-                        raise ValueError('没有可放入的宠物蛋。')
-                    activity.put_egg(index, available[eggs.current()])
-                elif kind == 'take':
-                    activity.take_egg(index)
-                else:
-                    activity.hatch(index, use_money=kind == 'money')
-                refresh()
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-        def describe(event=None):
-            if not slots.curselection():
-                return
-            egg = self.state.activities.get('eggs', {}).get(str(slots.curselection()[0]))
-            if egg and not egg['pet']:
+            activity = Activities(self.state)
+            selected = [0]
+            rect = self.ui_hits.get('pets_ListView') or self.ui_rects.get('pets_ListView')
+            if not rect:
+                rect = (226, 175, 738, 408)
+            body.pack_forget()
+
+            def slots():
+                return [(index, self.state.activities.get('eggs', {}).get(str(index)))
+                        for index in range(10)]
+
+            def available():
+                return [key for key in self.data.tables['HatchItem'] if self.state.count(key)]
+
+            def describe(index=None):
+                target = selected[0] if index is None else index
+                egg = self.state.activities.get('eggs', {}).get(str(target))
+                if not egg:
+                    info.set('空孵化位。选择下方的放入按钮可以放入宠物蛋。')
+                    return
+                if egg.get('pet'):
+                    info.set(f'{self.data.tables["Pet"][egg["pet"]["species"]]["name"]} 已孵化，待领取。')
+                    return
                 row = self.data.tables['HatchItem'][egg['item']]
-                info.set(f'经验 {egg["exp"]}/{row["exp"]} · 所需材料 {row["itemIds"]} × {row["itemCounts"]}'
-                         + f' · 直接孵化 {row["moneyCount"]} {self.data.tables["Money"][row["moneyId"]]["name"]}')
-        slots.bind('<<ListboxSelect>>', describe)
-        controls = tk.Frame(body)
-        controls.pack()
-        for title, kind in [('放入宠物蛋', 'put'), ('材料孵化', 'normal'), ('金币孵化', 'money'), ('取回蛋／领取宠物', 'take')]:
-            tk.Button(controls, text=title, command=lambda k=kind: act(k)).pack(side='left', padx=3, pady=4)
-        self.ui_actions['putIn_Button'] = lambda: act('put')
-        self.ui_actions['takeBackEgg_Button'] = lambda: act('take')
-        self.ui_actions['takeBack_Button'] = lambda: act('take')
-        self.ui_actions['hatch_Button'] = lambda: act('normal')
-        self.ui_actions['moneyHatch_Button'] = lambda: act('money')
-        def check():
-            if not slots.curselection():
-                info.set('请先选择孵化位。')
-                return
-            self.open_hatch_check(slots.curselection()[0])
-        self.ui_actions['check_Button'] = check
-        slots.bind('<Double-Button-1>', lambda _event: check())
-        refresh()
+                info.set(f'孵化中 · 经验 {egg["exp"]}/{row["exp"]} · '
+                         f'直接孵化需要 {row["moneyCount"]} '
+                         f'{self.data.tables["Money"][row["moneyId"]]["name"]}')
+
+            def paint():
+                layer = self.cocos_ui.render('HatchRoomUI', (800, 480), {
+                    'progress_BitmapFontLabel': f'{sum(1 for _, egg in slots() if egg)}/10',
+                    'info_Text': '选择孵化位；战斗获得孵化经验，可用材料孵化或支付金币直接孵化。',
+                })
+                base_hits = dict(self.cocos_ui.hits)
+                base_rects = dict(self.cocos_ui.rects)
+                base_buttons = dict(self.cocos_ui.buttons)
+                base_text = dict(self.cocos_ui.button_text)
+                draw = ImageDraw.Draw(layer)
+                font_path = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'
+                try:
+                    font = ImageFont.truetype(str(font_path), 11)
+                except OSError:
+                    font = ImageFont.load_default()
+                for index, egg in slots():
+                    column, line = index % 2, index // 2
+                    x = round(rect[0] + 5 + column * 255)
+                    y = round(rect[1] + 4 + line * 45)
+                    if egg:
+                        if egg.get('pet'):
+                            name = self.data.tables['Pet'][egg['pet']['species']]['name']
+                            text = f'{index+1}. {name} · 待领取'
+                        else:
+                            row = self.data.tables['HatchItem'][egg['item']]
+                            text = (f'{index+1}. {self.data.tables["Item"][egg["item"]]["name"]} '
+                                    f'{egg["exp"]}/{row["exp"]}')
+                    else:
+                        text = f'{index+1}. 空位'
+                    draw.rectangle((x, y, x+245, y+38),
+                                   fill=(63, 41, 31, 155))
+                    draw.text((x+8, y+10), text, font=font,
+                              fill=(255, 244, 209))
+                    self.ui_hits[f'hatch_slot_{index}'] = (x, y, x+245, y+38)
+                    self.ui_actions[f'hatch_slot_{index}'] = (
+                        lambda value=index: choose(value))
+                    if index == selected[0]:
+                        draw.rectangle((x, y, x+245, y+38),
+                                       outline='#ffe36e', width=2)
+                for index, (label, action) in enumerate((
+                        ('放入蛋', put), ('材料孵化', lambda: act('normal')),
+                        ('金币孵化', lambda: act('money')), ('取回/领取', lambda: act('take')))):
+                    x = round(rect[0] + 8 + index * 126)
+                    y = 422
+                    draw.rectangle((x, y, x+116, y+32), fill=(143, 76, 44, 220))
+                    draw.text((x+22, y+9), label, font=font, fill=(255, 244, 209))
+                    self.ui_hits[f'hatch_action_{index}'] = (x, y, x+116, y+32)
+                    self.ui_actions[f'hatch_action_{index}'] = action
+                self.ui_base_layer = layer
+                self.ui_hits.update(base_hits)
+                self.ui_rects = base_rects
+                self.ui_buttons = base_buttons
+                self.ui_button_text = base_text
+                self.ui_actions['putIn_Button'] = put
+                self.ui_actions['takeBackEgg_Button'] = lambda: act('take')
+                self.ui_actions['takeBack_Button'] = lambda: act('take')
+                self.ui_actions['hatch_Button'] = lambda: act('normal')
+                self.ui_actions['moneyHatch_Button'] = lambda: act('money')
+                self.ui_actions['check_Button'] = check
+                self.ui_actions['close_Button'] = self.close_ui
+                if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                    photo = ImageTk.PhotoImage(layer)
+                    self.ui_art_label.configure(image=photo)
+                    self.ui_art_label.image = photo
+
+            def choose(index):
+                selected[0] = index
+                describe()
+                paint()
+
+            def put():
+                keys = available()
+                if not keys:
+                    info.set('没有可放入的宠物蛋。')
+                    return
+                try:
+                    activity.put_egg(selected[0], keys[0])
+                except (ValueError, KeyError) as error:
+                    info.set(str(error))
+                    return
+                paint()
+                info.set('宠物蛋已放入孵化位。')
+
+            def act(kind):
+                try:
+                    if kind == 'take':
+                        activity.take_egg(selected[0])
+                    else:
+                        activity.hatch(selected[0], use_money=kind == 'money')
+                except (ValueError, KeyError) as error:
+                    info.set(str(error))
+                    return
+                paint()
+                describe()
+
+            def check():
+                self.open_hatch_check(selected[0])
+
+            paint()
+            describe()
 
     def _skill_body(self, body, info):
-        from tkinter import ttk
-        from game_state import numbers
-        pets = list(self.state.pets)
-        if not pets:
-            info.set('没有携带的宠物。')
-            return
-        chooser = ttk.Combobox(body, state='readonly', width=55,
-                               values=[f'{self.data.tables["Pet"][p.species]["name"]} Lv.{p.level}' for p in pets])
-        chooser.pack(fill='x')
-        chooser.current(0)
-        box = tk.Listbox(body, width=70, height=6, exportselection=False)
-        box.pack(fill='x')
-        replacement = ttk.Combobox(body, state='readonly', width=55)
-        replacement.pack(fill='x')
-        choices = []
-        def refresh(event=None):
-            pet = pets[chooser.current()]
-            choices.clear()
-            box.delete(0, 'end')
-            for key in numbers(self.data.tables['Pet'][pet.species]['skillIds']):
-                skill = self.data.tables['Skill'][str(key)]
-                currency = self.data.tables['Money'][skill['moneyId']]['name']
-                choices.append((str(key), None))
-                box.insert('end', f'{skill["name"]} · {skill["moneyCount"]} {currency}'
-                           + (' · 已学会' if str(key) in pet.skills else ''))
-            for item, row in self.data.tables['SkillItem'].items():
-                key = str(row['skillId'])
-                skill = self.data.tables['Skill'].get(key) or self.data.tables['Talent'].get(key)
-                if self.state.count(item) and skill:
-                    choices.append((key, item))
-                    box.insert('end', f'{skill["name"]} · 卷轴 ×1（持有 {self.state.count(item)}）')
-            select_skill()
-            info.set('主动技能四槽、后天被动技能两槽；已满时需选择替换位置。')
-        def select_skill(event=None):
-            pet = pets[chooser.current()]
-            passive = bool(box.curselection() and choices[box.curselection()[0]][0] in self.data.tables['Talent'])
-            keys = [str(k) for k in pet.talents if 400200 <= int(k) < 400300] if passive else pet.skills
-            table = self.data.tables['Talent' if passive else 'Skill']
-            replacement['values'] = ['增加技能（有空位时）']+[f'替换：{table[str(k)]["name"]}' for k in keys]
-            replacement.current(0)
-        def learn():
-            if not box.curselection():
+            from game_state import numbers
+            pets = list(self.state.pets)
+            if not pets:
+                info.set('没有携带的宠物。')
+                self.ui_actions['close_Button'] = self.close_ui
+                body.pack_forget()
                 return
-            key, scroll = choices[box.curselection()[0]]
-            self.open_skill_learn_confirm(
-                pets[chooser.current()].uid, key, scroll=scroll,
-                replace=replacement.current()-1 if replacement.current() else None,
-                back=6)
-        chooser.bind('<<ComboboxSelected>>', refresh)
-        box.bind('<<ListboxSelect>>', select_skill)
-        def open_replace():
-            if not box.curselection():
-                info.set('先选择要学习的新技能。')
-                return
-            key, scroll = choices[box.curselection()[0]]
-            self.open_skill_replace(pets[chooser.current()].uid, key, scroll=scroll)
-        tk.Button(body, text='学习所选技能', command=learn).pack(pady=4)
-        tk.Button(body, text='打开原版替换界面', command=open_replace).pack(pady=2)
-        self.ui_actions['learn_Button'] = learn
-        self.ui_actions['replace_Button'] = open_replace
-        self.ui_actions['confirm_Button'] = learn
-        refresh()
+            selected_pet = [0]
+            selected_skill = [0]
+            choices = []
+            pet_rect = self.ui_hits.get('pet_ListView') or self.ui_rects.get('pet_ListView')
+            skill_rect = self.ui_hits.get('skill_ListView') or self.ui_rects.get('skill_ListView')
+            if not pet_rect:
+                pet_rect = (32, 95, 393, 423)
+            if not skill_rect:
+                skill_rect = (431, 143, 712, 412)
+            body.pack_forget()
 
-    def _cards_body(self, body, info):
-        activity = Activities(self.state)
-        hand = tk.Frame(body)
-        hand.pack(fill='x', pady=4)
-        history = tk.StringVar()
-        tk.Label(body, textvariable=history, justify='left').pack(anchor='w')
-        def refresh():
-            for widget in hand.winfo_children():
-                widget.destroy()
-            match = self.state.activities.get('cards')
-            # Remove the editor's sample scores/round from the original layout.
-            # The active match controls below supply the live card choices.
-            visible = {'our_Panel/open_ProjectNode': False,
-                       'other_Panel/open_ProjectNode': False, 'open_Button': False,
-                       'playTip_Text': False}
-            for side, number in (('our_Panel', 0), ('other_Panel', 1)):
-                for cup in range(1, 4):
-                    visible[f'{side}/cup_Panel/cup_{cup}_Sprite'] = bool(match and match['score'][number] >= cup)
-            layer = self.cocos_ui.render('CardLegendUI', (800, 480),
-                                        text={'times_BitmapFontLabel': str(match['round'] if match else 1)},
-                                        visible=visible)
-            if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
-                photo = ImageTk.PhotoImage(layer)
-                self.ui_art_label.configure(image=photo)
-                self.ui_art_label.image = photo
-            if not match:
-                info.set(f'每局消耗 1 张卡牌券，五回合比星级。卡牌券：{self.state.count("220008")}')
-                return
-            score = f'{match["score"][0]} : {match["score"][1]}'
-            if match['result'] is None:
-                enemy = match['enemy'][match['enemy_index']]
-                info.set(f'第 {match["round"]}/5 回合 · 比分 {score} · 对手出牌：{enemy["star"]} 星')
-                for index, card in enumerate(match['player']):
-                    name = self.data.tables['Pet'][card['species']]['name']
-                    tk.Button(hand, text=f'{name}\n{card["star"]} 星',
-                              state='disabled' if index in match['used'] else 'normal',
-                              command=lambda i=index: action(lambda: activity.play_card(i))).pack(side='left', padx=3)
-            else:
-                info.set(f'{ {1: "胜利", 0: "平局", -1: "失败"}[match["result"]]} · 比分 {score}')
-                if match['result'] == 1:
-                    reward = match['reward']
-                    row = (self.data.tables['Pet'].get(reward['item']) or self.data.tables['Item'].get(reward['item'])
-                           or self.data.tables['Money'].get(reward['item'], {}))
-                    info.set(info.get()+f' · {row.get("name", reward["item"])} × {reward["count"]}'
-                             + ('（已领取）' if match['claimed'] else '（待领取）'))
-                    tk.Button(hand, text='领取奖励', state='disabled' if match['claimed'] else 'normal',
-                              command=lambda: action(activity.claim_cards)).pack()
-            history.set('\n'.join(f'回合 {i}: 我方 {r["stars"][0]} 星，对手 {r["stars"][1]} 星'
-                                  for i, r in enumerate(match['history'], 1)))
-        def action(callback):
-            try:
-                callback()
-                refresh()
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-        tk.Button(body, text='开始新牌局（卡牌券 ×1）', command=lambda: action(activity.start_cards)).pack(pady=4)
-        self.ui_actions['open_Button'] = lambda: action(activity.start_cards)
-        refresh()
+            def build_choices():
+                nonlocal choices
+                pet = pets[selected_pet[0]]
+                choices = []
+                for key in numbers(self.data.tables['Pet'][pet.species]['skillIds']):
+                    skill = self.data.tables['Skill'].get(str(key), {})
+                    choices.append((str(key), None, skill.get('name', str(key)),
+                                    f'{skill.get("moneyCount", 0)} '
+                                    f'{self.data.tables["Money"].get(str(skill.get("moneyId")), {}).get("name", "")}',
+                                    str(key) in pet.skills))
+                for item, row in self.data.tables['SkillItem'].items():
+                    key = str(row['skillId'])
+                    skill = self.data.tables['Skill'].get(key) or self.data.tables['Talent'].get(key)
+                    if self.state.count(item) and skill:
+                        choices.append((key, item, skill['name'],
+                                        f'卷轴 ×1（持有 {self.state.count(item)}）',
+                                        key in pet.skills or key in pet.talents))
+                selected_skill[0] = min(selected_skill[0], max(0, len(choices)-1))
+
+            def paint():
+                build_choices()
+                layer = self.cocos_ui.render('SkillLearnUI', (800, 480), {})
+                base_hits = dict(self.cocos_ui.hits)
+                base_rects = dict(self.cocos_ui.rects)
+                base_buttons = dict(self.cocos_ui.buttons)
+                base_text = dict(self.cocos_ui.button_text)
+                draw = ImageDraw.Draw(layer)
+                try:
+                    font = ImageFont.truetype(
+                        str(Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'), 11)
+                    small = ImageFont.truetype(
+                        str(Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'), 9)
+                except OSError:
+                    font = small = ImageFont.load_default()
+                for index, pet in enumerate(pets[:3]):
+                    row = self.data.tables['Pet'][pet.species]
+                    card = self.cocos_ui.render(
+                        'PetListItemUI', (320, 110), {
+                            'name_Text': row['name'],
+                            'lv_BitmapFontLabel': str(pet.level),
+                            'hpHave_BitmapFontLabel': str(pet.hp),
+                            'hpMax_BitmapFontLabel': str(pet.stats(self.data.tables)[0]),
+                            'enHave_BitmapFontLabel': str(pet.energy),
+                            'enMax_BitmapFontLabel': str(pet.stats(self.data.tables)[1]),
+                            'friendly_BitmapFontLabel': str(pet.friendly),
+                        }, visible={'add_Panel': False})
+                    x = round(pet_rect[0] + 20)
+                    y = round(pet_rect[1] + index * 110)
+                    layer.alpha_composite(card, (x, y))
+                    self.ui_hits[f'skill_pet_{index}'] = (x, y, x+320, y+110)
+                    self.ui_actions[f'skill_pet_{index}'] = (
+                        lambda value=index: choose_pet(value))
+                    if index == selected_pet[0]:
+                        draw.rectangle((x+1, y+1, x+318, y+108),
+                                       outline='#ffe36e', width=2)
+                for index, (key, scroll, name, cost, learned) in enumerate(
+                        choices[:6]):
+                    x = round(skill_rect[0] + 4)
+                    y = round(skill_rect[1] + 4 + index * 44)
+                    draw.rectangle((x, y, skill_rect[2]-6, y+38),
+                                   fill=(63, 41, 31, 160))
+                    draw.text((x+8, y+5), name[:8], font=font, fill=(255, 244, 209))
+                    draw.text((x+8, y+23), ('已学会 · ' if learned else '') + cost[:16],
+                              font=small, fill=(255, 220, 150))
+                    button_x = skill_rect[2]-68
+                    draw.rectangle((button_x, y+6, skill_rect[2]-10, y+33),
+                                   fill=(150, 84, 48, 235))
+                    draw.text((button_x+9, y+11), '学习', font=small,
+                              fill=(255, 244, 209))
+                    self.ui_hits[f'skill_row_{index}'] = (x, y, skill_rect[2]-6, y+38)
+                    self.ui_actions[f'skill_row_{index}'] = (
+                        lambda value=index: choose_skill(value))
+                    self.ui_hits[f'skill_learn_{index}'] = (
+                        button_x, y+6, skill_rect[2]-10, y+33)
+                    self.ui_actions[f'skill_learn_{index}'] = (
+                        lambda value=index: learn_at(value))
+                    if index == selected_skill[0]:
+                        draw.rectangle((x, y, skill_rect[2]-6, y+38),
+                                       outline='#ffe36e', width=2)
+                self.ui_base_layer = layer
+                self.ui_hits.update(base_hits)
+                self.ui_rects = base_rects
+                self.ui_buttons = base_buttons
+                self.ui_button_text = base_text
+                self.ui_actions['learn_Button'] = learn
+                self.ui_actions['replace_Button'] = open_replace
+                self.ui_actions['confirm_Button'] = learn
+                self.ui_actions['close_Button'] = self.close_ui
+                if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                    photo = ImageTk.PhotoImage(layer)
+                    self.ui_art_label.configure(image=photo)
+                    self.ui_art_label.image = photo
+
+            def choose_pet(index):
+                if 0 <= index < len(pets):
+                    selected_pet[0] = index
+                    selected_skill[0] = 0
+                    paint()
+
+            def choose_skill(index):
+                if 0 <= index < len(choices):
+                    selected_skill[0] = index
+                    key, scroll, name, cost, learned = choices[index]
+                    info.set(f'{name} · {cost}' + (' · 已学会' if learned else ''))
+                    paint()
+
+            def learn():
+                if not choices:
+                    return
+                key, scroll, name, cost, learned = choices[selected_skill[0]]
+                self.open_skill_learn_confirm(
+                    pets[selected_pet[0]].uid, key, scroll=scroll,
+                    replace=None, back=6)
+
+            def learn_at(value):
+                if 0 <= value < len(choices):
+                    selected_skill[0] = value
+                    paint()
+                    learn()
+
+            def open_replace():
+                if not choices:
+                    return
+                key, scroll, name, cost, learned = choices[selected_skill[0]]
+                self.open_skill_replace(pets[selected_pet[0]].uid, key, scroll=scroll)
+
+            paint()
 
     def _breakthrough_body(self, body, info):
         pets = list(self.state.pets+self.state.bank)
+        body.pack_forget()
         box = tk.Listbox(body, width=60, height=6)
         box.pack(fill='x')
         for pet in pets:
             row = self.data.tables['PetTuPo'].get(str(pet.breakthrough+1))
             cost = f'{row["costMoneyCount"]} 金币 + {row["stuffCount"]} 突破材料' if row else '已满阶'
             box.insert('end', f'{self.data.tables["Pet"][pet.species]["name"]} +{pet.breakthrough} → {cost}')
+        if pets:
+            box.selection_set(0)
         def apply():
             if not box.curselection():
                 return
@@ -279,6 +420,7 @@ class ActivityUI:
 
     def _fuse_body(self, body, info):
         pets = list(self.state.bank)
+        body.pack_forget()
         if not pets:
             info.set('银行中没有可合体的宠物；出战宠物不能合体。')
             message = lambda: info.set('先到银行放入两只可合体的宠物。')
@@ -358,10 +500,12 @@ class ActivityUI:
         self.ui_actions['add_1_Button'] = lambda: choose(0)
         self.ui_actions['add_2_Button'] = lambda: choose(1)
         self.ui_actions['heTi_Button'] = fuse
+        self.ui_actions['close_Button'] = self.close_ui
         refresh()
 
     def _merge_body(self, body, info):
         pets = list(self.state.bank)
+        body.pack_forget()
         if not pets:
             info.set('银行中没有可融合的宠物；参战宠物不能融合。')
             message = lambda: info.set('先到银行放入可融合的宠物。')
@@ -463,6 +607,7 @@ class ActivityUI:
         self.ui_actions['add_Button'] = choose_base
         self.ui_actions['autoAdd_Button'] = auto_add
         self.ui_actions['merge_Button'] = merge
+        self.ui_actions['close_Button'] = self.close_ui
         for index in range(6):
             full = (f'Layer/root_Panel/mergePetNodes_Panel/mergedPetNode_{index+1}'
                     f'/Layer/root_Panel/add_Button')
@@ -524,27 +669,53 @@ class ActivityUI:
         self.ui_actions['fly_Button'] = fly
 
     def _illustrated_body(self, body, info):
-        species = list(dict.fromkeys(self.state.encyclopedia or list(self.data.tables['Pet'])[:1]))
-        box = tk.Listbox(body, width=36, height=8)
-        box.pack(fill='x')
-        for key in species:
-            row = self.data.tables['Pet'].get(str(key), {})
-            box.insert('end', f'{key}  {row.get("name", "")}')
-        if species:
-            box.selection_set(0)
-        def check():
-            if not box.curselection():
-                info.set('先选择一只已记录的宠物。')
-                return
-            key = species[box.curselection()[0]]
-            row = self.data.tables['Pet'][key]
-            skills = '、'.join(self.data.tables['Skill'].get(s, {}).get('name', s)
-                              for s in str(row.get('skillIds', '')).split(',') if s and s != '0')
-            info.set(f'{row["name"]}（{key}）\n属性：{row.get("kind")} · 品质上限：{row.get("quality")}\n'
-                     f'技能：{skills or "无"}')
-        check()
-        self.ui_actions['check_Button'] = check
-        tk.Button(body, text='查看图鉴', command=check).pack(pady=4)
+        tables = self.data.tables
+        key = str(self.ui_parameters.get('species') or '')
+        if key not in tables['Pet']:
+            key = str(next(iter(self.state.encyclopedia or list(tables['Pet'])), ''))
+        if key not in tables['Pet']:
+            info.set('图鉴中没有可显示的宠物。')
+            self.ui_actions['close_Button'] = self.close_ui
+            body.pack_forget()
+            return
+        row = tables['Pet'][key]
+        skills = '、'.join(tables['Skill'].get(str(s), {}).get('name', str(s))
+                          for s in str(row.get('skillIds', '')).split(',')
+                          if s and s != '0')
+        kind = tables['PetKindEnum'].get(str(row.get('kind')), {}).get('name', row.get('kind'))
+        description_lines = [str(row.get("des", ""))[i:i+14]
+                            for i in range(0, min(len(str(row.get("des", ""))), 28), 14)]
+        skill_lines = [skills[i:i+14] for i in range(0, min(len(skills), 28), 14)] or ['无']
+        description = '\n'.join(description_lines + [
+            f'种族：{kind}',
+            f'星级：{row.get("starLevel")}  最大等级：{row.get("maxLevel")}',
+            '技能：' + ' / '.join(skill_lines),
+        ])
+        layer = self.cocos_ui.render('IllustratedPetInfoUI', (800, 480), {
+            'name_Text': row['name'],
+            'number_BitmapFontLabel': '',
+            'info_Text': description,
+            'infoTitle_1_Text': '属性',
+            'infoTitle_2_Text': '技能',
+        })
+        art = self.data.pet_image(key)
+        if art is not None:
+            art = art.copy()
+            art.thumbnail((140, 140), Image.Resampling.LANCZOS)
+            layer.alpha_composite(art, (402-art.width//2, 154-art.height//2))
+        self.ui_base_layer = layer
+        self.ui_hits = dict(self.cocos_ui.hits)
+        self.ui_rects = dict(self.cocos_ui.rects)
+        self.ui_buttons = dict(self.cocos_ui.buttons)
+        self.ui_button_text = dict(self.cocos_ui.button_text)
+        self.ui_actions['check_Button'] = self.close_ui
+        self.ui_actions['close_Button'] = self.close_ui
+        info.set(f'{row["name"]}（{key}）')
+        if getattr(self, 'ui_art_label', None) is not None:
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        body.pack_forget()
 
     def _arena_body(self, body, info, arena_id=None, phase=1):
         progress = ArenaProgress(self.state)
@@ -609,6 +780,7 @@ class ActivityUI:
 
     def _trial_body(self, body, info):
         rows = list(self.data.tables['TrialPet'].values())
+        body.pack_forget()
         if not rows:
             info.set('原版 TrialPet 表为空。')
             return
@@ -626,138 +798,147 @@ class ActivityUI:
             info.set(f'试炼宠物：{pet} Lv.{row["level"]}；技能/天赋按 TrialPet 原表登记。')
         self.ui_actions['trial_Button'] = trial
         self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
+        self.ui_actions['close_Button'] = self.close_ui
         tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
 
     def _achievement_body(self, body, info):
-        """Original AchievementUI list; only locally verified rows are claimable."""
-        from game_state import numbers
-        api = Achievements(self.state)
-        status_names = {'ready': '可领取', 'progress': '未完成',
-                        'claimed': '已领取', 'unsupported': '未接入'}
-        filters = [('全部', None), ('已接入', 'supported'), ('可领取', 'ready'),
-                   ('未完成', 'progress'), ('已领取', 'claimed'), ('未接入', 'unsupported')]
-        rows = []
+            """Original AchievementUI rows; only locally verified rows are claimable."""
+            from game_state import numbers
+            api = Achievements(self.state)
+            status_names = {'ready': '可领取', 'progress': '未完成',
+                            'claimed': '已领取', 'unsupported': '未接入'}
+            rows = []
+            selected = [0]
+            scroll = [0]
+            rect = self.ui_hits.get('item_ScrollView') or self.ui_rects.get('item_ScrollView')
+            if not rect:
+                rect = (67, 92, 722, 419)
+            body.pack_forget()
 
-        def reward_text(row):
-            parts = []
-            for item_id, count in zip(numbers(row.get('rewardIds')),
-                                      numbers(row.get('rewardCounts'))):
-                item = (self.data.tables.get('Item', {}).get(str(item_id))
-                        or self.data.tables.get('Pet', {}).get(str(item_id))
-                        or self.data.tables.get('Money', {}).get(str(item_id), {}))
-                parts.append(f'{item.get("name", item_id)}×{count}')
-            return '、'.join(parts) or '无'
+            def reward_text(row):
+                parts = []
+                for item_id, count in zip(numbers(row.get('rewardIds')),
+                                          numbers(row.get('rewardCounts'))):
+                    item = (self.data.tables.get('Item', {}).get(str(item_id))
+                            or self.data.tables.get('Pet', {}).get(str(item_id))
+                            or self.data.tables.get('Money', {}).get(str(item_id), {}))
+                    parts.append(f'{item.get("name", item_id)}×{count}')
+                return '、'.join(parts) or '无'
 
-        frame = tk.Frame(body, bg='#202b30')
-        frame.pack(fill='both', expand=True)
-        top = tk.Frame(frame, bg='#202b30')
-        top.pack(fill='x')
-        tk.Label(top, text='筛选', bg='#202b30', fg='#e8d8b8').pack(side='left')
-        choice = tk.StringVar(value='全部')
-        combo = ttk.Combobox(top, textvariable=choice, state='readonly',
-                             values=[name for name, _ in filters], width=10)
-        combo.pack(side='left', padx=6)
-        tk.Label(top, text='金色=可领取 · 灰色=条件未接入',
-                 bg='#202b30', fg='#8fa3a8').pack(side='right')
-        list_frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
-        scroll_rect = self.ui_hits.get('item_ScrollView') or self.ui_rects.get('item_ScrollView')
-        if scroll_rect:
-            list_frame.place(x=scroll_rect[0], y=scroll_rect[1],
-                             width=max(80, scroll_rect[2]-scroll_rect[0]),
-                             height=max(60, scroll_rect[3]-scroll_rect[1]))
-            list_frame.lift()
-        else:
-            list_frame.pack(fill='both', expand=True, pady=4)
-        box = tk.Listbox(list_frame, width=82, height=9, exportselection=False,
-                         font=('Microsoft YaHei UI', 9), bg='#182125',
-                         fg='#e8d8b8', selectbackground='#49606a')
-        bar = tk.Scrollbar(list_frame, command=box.yview)
-        box.configure(yscrollcommand=bar.set)
-        box.pack(side='left', fill='both', expand=True)
-        bar.pack(side='right', fill='y')
-        score_rect = self.ui_hits.get('score_BitmapFontLabel') or self.ui_rects.get('score_BitmapFontLabel')
-        score_var = tk.StringVar(value=f'{api.score()}')
-        if score_rect:
-            score_label = tk.Label(self.ui_window, textvariable=score_var,
-                                   bg='#d88a43', fg='#fff2cf',
-                                   font=('Microsoft YaHei UI', 10, 'bold'),
-                                   padx=0, pady=0)
-            score_label.place(x=score_rect[0], y=score_rect[1],
-                              width=max(110, score_rect[2]-score_rect[0]),
-                              height=max(16, score_rect[3]-score_rect[1]))
-            score_label.lift()
+            def paint():
+                layer = self.cocos_ui.render('AchievementUI', (800, 480), {
+                    'score_BitmapFontLabel': str(api.score()),
+                    'tips_Text': '',
+                })
+                base_hits = dict(self.cocos_ui.hits)
+                base_rects = dict(self.cocos_ui.rects)
+                base_buttons = dict(self.cocos_ui.buttons)
+                base_text = dict(self.cocos_ui.button_text)
+                draw = ImageDraw.Draw(layer)
+                for index, entry in enumerate(rows[scroll[0]:scroll[0]+4]):
+                    current = entry['current']
+                    progress = '未接入' if current is None else f'{current}/{entry["target"]}'
+                    card = self.cocos_ui.render(
+                        'AchievementItemUI', (700, 80), {
+                            'name_Text': '',
+                            'info_Text': '',
+                            'progress_BitmapFontLabel': '',
+                            'score_BitmapFontLabel': f'+{entry["score"]}',
+                        },
+                        visible={'receive_Button': False})
+                    card = card.resize((650, 74), Image.Resampling.LANCZOS)
+                    x = round(rect[0] + 2)
+                    y = round(rect[1] + 4 + index * 78)
+                    layer.alpha_composite(card, (x, y))
+                    try:
+                        font = ImageFont.truetype(
+                            str(Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'), 11)
+                        small = ImageFont.truetype(
+                            str(Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'), 9)
+                    except OSError:
+                        font = small = ImageFont.load_default()
+                    color = ('#8b5a2b' if entry['status'] == 'ready'
+                             else '#6f6258' if entry['status'] == 'claimed' else '#4f443b')
+                    draw.text((x+190, y+8), entry['name'][:12], font=font, fill=color)
+                    draw.text((x+190, y+28), entry['des'][:18], font=small, fill=color)
+                    draw.text((x+300, y+48), progress, font=small, fill=color)
+                    if entry['status'] == 'ready':
+                        draw.text((x+575, y+30), '领取', font=font, fill='#9b4b12')
+                    self.ui_hits[f'achievement_card_{index}'] = (x, y, x+650, y+74)
+                    if scroll[0] + index == selected[0]:
+                        draw.rectangle((x+1, y+1, x+648, y+72),
+                                       outline='#ffe36e', width=2)
+                    if entry['status'] == 'ready':
+                        self.ui_hits[f'achievement_receive_{index}'] = (
+                            x+560, y+24, x+650, y+64)
+                self.ui_base_layer = layer
+                self.ui_hits.update(base_hits)
+                self.ui_rects = base_rects
+                self.ui_buttons = base_buttons
+                self.ui_button_text = base_text
+                for index in range(4):
+                    self.ui_actions[f'achievement_card_{index}'] = (
+                        lambda value=index: select(scroll[0]+value))
+                    self.ui_actions[f'achievement_receive_{index}'] = (
+                        lambda value=index: claim(scroll[0]+value))
+                if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                    photo = ImageTk.PhotoImage(layer)
+                    self.ui_art_label.configure(image=photo)
+                    self.ui_art_label.image = photo
 
-        def selected_row():
-            if not box.curselection() or not rows:
-                return None
-            return rows[box.curselection()[0]]
-
-        def show(_=None):
-            entry = selected_row()
-            if not entry:
-                return
-            current = entry['current']
-            progress = '未接入' if current is None else f'{current}/{entry["target"]}'
-            info.set(f'原版成就共 {len(api.rows)} 行 · 已领取 {len(api.claimed())} 行 · 积分 {api.score()}\n\n'
-                     f'{entry["name"]} · {status_names[entry["status"]]}\n'
-                     f'{entry["des"]}\n'
-                     f'条件类型：{entry["condition_type"]} · 进度：{progress} · '
-                     f'积分：{entry["score"]}\n'
-                     f'{entry["detail"]}\n'
-                     f'奖励：{reward_text(entry["row"])}')
-
-        def refresh():
-            nonlocal rows
-            chosen = selected_row()
-            chosen_id = chosen['id'] if chosen else None
-            wanted = dict(filters)[choice.get()]
-            rows = api.entries(wanted)
-            box.delete(0, 'end')
-            for entry in rows:
+            def select(index):
+                if not 0 <= index < len(rows):
+                    return
+                selected[0] = index
+                entry = rows[index]
                 current = entry['current']
                 progress = '未接入' if current is None else f'{current}/{entry["target"]}'
-                box.insert('end', f'[{status_names[entry["status"]]}] {entry["name"]}'
-                                 f'  {progress}  +{entry["score"]}分')
-            info.set(f'原版成就共 {len(api.rows)} 行 · 当前显示 {len(rows)} 行 · '
-                     f'已领取 {len(api.claimed())} 行 · 积分 {api.score()}')
-            score_var.set(str(api.score()))
-            index = next((i for i, entry in enumerate(rows)
-                          if entry['id'] == chosen_id), None)
-            if index is None and rows:
-                index = 0
-            if index is not None:
-                box.selection_set(index)
-                box.see(index)
-            show()
+                info.set(f'原版成就共 {len(api.rows)} 行 · 已领取 {len(api.claimed())} 行 · '
+                         f'积分 {api.score()}\n'
+                         f'{entry["name"]} · {status_names[entry["status"]]}\n'
+                         f'{entry["des"]}\n'
+                         f'进度：{progress} · 积分：{entry["score"]}\n'
+                         f'奖励：{reward_text(entry["row"])}')
+                paint()
 
-        def claim():
-            entry = selected_row()
-            if not entry:
-                info.set('请先选择一个成就。')
-                return
-            try:
-                result = api.claim(entry['id'])
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
+            def claim(index=None):
+                if not rows:
+                    info.set('当前没有可领取的成就。')
+                    return
+                target = selected[0] if index is None else index
+                if not 0 <= target < len(rows):
+                    return
+                entry = rows[target]
+                try:
+                    result = api.claim(entry['id'])
+                except (ValueError, KeyError) as error:
+                    info.set(str(error))
+                    return
+                refresh()
+                info.set(f'领取成功：{entry["name"]} · 积分 +{result["score"]} · '
+                         f'奖励已进入背包/宠物栏。')
+
+            def refresh():
+                nonlocal rows
+                rows = api.entries(None)
+                selected[0] = min(max(0, selected[0]), max(0, len(rows)-1))
+                scroll[0] = min(scroll[0], max(0, len(rows)-4))
+                info.set(f'原版成就共 {len(api.rows)} 行 · 当前显示 {len(rows)} 行 · '
+                         f'已领取 {len(api.claimed())} 行 · 积分 {api.score()}')
+                paint()
+
+            def wheel(event):
+                step = -1 if event.delta > 0 else 1
+                top = max(0, len(rows)-4)
+                scroll[0] = min(top, max(0, scroll[0]+step))
+                paint()
+
+            self.ui_actions['receive_Button'] = lambda: claim(selected[0])
+            self.ui_actions['achievement_receive'] = lambda: claim(selected[0])
+            self.ui_actions['close_Button'] = self.close_ui
+            if hasattr(self, 'ui_art_label'):
+                self.ui_art_label.bind('<MouseWheel>', wheel)
             refresh()
-            info.set(f'领取成功：{entry["name"]} · 积分 +{result["score"]} · '
-                     f'奖励已进入背包/宠物栏。')
-
-        def changed(_=None):
-            refresh()
-
-        box.bind('<<ListboxSelect>>', show)
-        combo.bind('<<ComboboxSelected>>', changed)
-        buttons = tk.Frame(body, bg='#202b30')
-        buttons.pack(fill='x', pady=4)
-        tk.Button(buttons, text='领取选中成就', bg='#5b7c52', fg='white',
-                  command=claim).pack(side='left')
-        tk.Button(buttons, text='刷新', command=refresh).pack(side='left', padx=6)
-        self.ui_actions['receive_Button'] = claim
-        self.ui_actions['achievement_receive'] = claim
-        self.ui_actions['close_Button'] = self.close_ui
-        refresh()
 
     def _budokan_body(self, body, info, budokan_id=1):
         """TrialTowerUI: twenty ordered gym battles, original event gate."""
@@ -1302,6 +1483,7 @@ class ActivityUI:
         tk.Button(win, text='再考虑一下', command=self.close_ui).pack(pady=8)
 
     def _pet_shop_body(self, body, info, key):
+        body.pack_forget()
         row = self.data.tables['PetShop'][str(key)]
         name = self.data.tables['Pet'][str(row['petId'])]['name']
         currency = self.data.tables['Money'][str(row['moneyType'])]['name']
@@ -1314,38 +1496,156 @@ class ActivityUI:
                 info.set(str(error))
         tk.Button(body, text='购买宠物', command=buy).pack(pady=4)
         self.ui_actions['buy_Button'] = buy
+        self.ui_actions['close_Button'] = self.close_ui
 
     def _bank_body(self, body, info):
-        boxes = []
-        for title in ('携带宠物', '银行宠物'):
-            frame = tk.Frame(body)
-            frame.pack(side='left', padx=8)
-            tk.Label(frame, text=title).pack()
-            box = tk.Listbox(frame, width=30, height=7, exportselection=False)
-            box.pack()
-            boxes.append(box)
-        def refresh():
-            for box, pets in zip(boxes, (self.state.pets, self.state.bank)):
-                box.delete(0, 'end')
-                for pet in pets:
-                    box.insert('end', f'{self.data.tables["Pet"][pet.species]["name"]} Lv.{pet.level}')
-            info.set(f'携带 {len(self.state.pets)}/{self.state.pet_capacity()} · 银行 {len(self.state.bank)}/{self.state.pet_capacity(True)}')
-        def move(to_bank):
-            box, pets = (boxes[0], self.state.pets) if to_bank else (boxes[1], self.state.bank)
-            if not box.curselection():
-                return
-            try:
-                self.state.move_pet(pets[box.curselection()[0]].uid, to_bank=to_bank)
-                refresh()
-            except ValueError as error:
-                info.set(str(error))
-        tk.Button(body, text='存入 →', command=lambda: move(True)).pack(pady=4)
-        tk.Button(body, text='← 取出', command=lambda: move(False)).pack(pady=4)
-        self.ui_actions['consign_Button'] = lambda: move(True)
-        refresh()
+            state = self.state
+            selected = [0]
+            scroll = [0]
+            rect = self.ui_hits.get('pets_ListView') or self.ui_rects.get('pets_ListView')
+            if not rect:
+                rect = (226, 175, 738, 408)
+            body.pack_forget()
 
+            def entries():
+                return ([('party', pet) for pet in state.pets]
+                        + [('bank', pet) for pet in state.bank])
+
+            def paint():
+                rows = entries()
+                layer = self.cocos_ui.render('PetBankUI', (800, 480), {
+                    'info_Text': '选择宠物后可存入银行，或从银行取回队伍。',
+                    'progress_BitmapFontLabel': f'{len(state.bank)}/{state.pet_capacity(True)}',
+                })
+                base_hits = dict(self.cocos_ui.hits)
+                base_rects = dict(self.cocos_ui.rects)
+                base_buttons = dict(self.cocos_ui.buttons)
+                base_text = dict(self.cocos_ui.button_text)
+                draw = ImageDraw.Draw(layer)
+                start = scroll[0]
+                for index, (where, pet) in enumerate(rows[start:start+8]):
+                    row = self.data.tables['Pet'][pet.species]
+                    card = self.cocos_ui.render(
+                        'PetBankItemUI', (120, 90), {
+                            'name_Text': row['name'][:5],
+                            'lv_BitmapFontLabel': str(pet.level),
+                        },
+                        visible={'getBack_Button': where == 'bank'})
+                    art = self.data.pet_image(pet.species)
+                    if art is not None:
+                        art = art.copy()
+                        art.thumbnail((54, 54), Image.Resampling.LANCZOS)
+                        card.alpha_composite(art, (60-art.width//2, 42-art.height//2))
+                    column, line = index % 4, index // 4
+                    x = round(rect[0] + 4 + column * 126)
+                    y = round(rect[1] + 4 + line * 96)
+                    layer.alpha_composite(card, (x, y))
+                    self.ui_hits[f'bank_card_{index}'] = (x, y, x+120, y+90)
+                    self.ui_actions[f'bank_card_{index}'] = (
+                        lambda value=index: select(start+value))
+                    if where == 'bank':
+                        self.ui_hits[f'bank_back_{index}'] = (
+                            x+25, y+73, x+95, y+90)
+                        self.ui_actions[f'bank_back_{index}'] = (
+                            lambda value=index: withdraw(start+value))
+                    if start + index == selected[0]:
+                        draw.rectangle((x+1, y+1, x+118, y+88),
+                                       outline='#ffe36e', width=2)
+                self.ui_base_layer = layer
+                self.ui_hits.update(base_hits)
+                self.ui_rects = base_rects
+                self.ui_buttons = base_buttons
+                self.ui_button_text = base_text
+                self.ui_actions['consign_Button'] = deposit
+                self.ui_actions['close_Button'] = self.close_ui
+                if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                    photo = ImageTk.PhotoImage(layer)
+                    self.ui_art_label.configure(image=photo)
+                    self.ui_art_label.image = photo
+
+            def select(index):
+                rows = entries()
+                if not 0 <= index < len(rows):
+                    return
+                selected[0] = index
+                where, pet = rows[index]
+                row = self.data.tables['Pet'][pet.species]
+                info.set(f'{row["name"]} Lv.{pet.level} · '
+                         f'{"队伍中" if where == "party" else "银行中"}')
+                paint()
+
+            def deposit():
+                rows = entries()
+                if not rows:
+                    return
+                selected[0] = min(selected[0], len(rows)-1)
+                where, pet = rows[selected[0]]
+                if where != 'party':
+                    info.set('请选择队伍中的宠物再存入银行。')
+                    return
+                try:
+                    state.move_pet(pet.uid, to_bank=True)
+                except ValueError as error:
+                    info.set(str(error))
+                    return
+                selected[0] = max(0, selected[0]-1)
+                paint()
+                info.set(f'{row_name(pet)} 已存入银行。')
+
+            def withdraw(index=None):
+                rows = entries()
+                target = selected[0] if index is None else index
+                if not 0 <= target < len(rows):
+                    return
+                where, pet = rows[target]
+                if where != 'bank':
+                    info.set('请选择银行中的宠物再取出。')
+                    return
+                try:
+                    state.move_pet(pet.uid, to_bank=False)
+                except ValueError as error:
+                    info.set(str(error))
+                    return
+                selected[0] = max(0, target-1)
+                paint()
+                info.set(f'{row_name(pet)} 已取出到队伍。')
+
+            def row_name(pet):
+                return self.data.tables['Pet'][pet.species]['name']
+
+            def wheel(event):
+                rows = entries()
+                step = -4 if event.delta > 0 else 4
+                scroll[0] = min(max(0, len(rows)-8), max(0, scroll[0]+step))
+                paint()
+
+            if hasattr(self, 'ui_art_label'):
+                self.ui_art_label.bind('<MouseWheel>', wheel)
+            paint()
+            info.set(f'携带 {len(state.pets)}/{state.pet_capacity()} · '
+                     f'银行 {len(state.bank)}/{state.pet_capacity(True)}')
+
+    def _cards_body(self, body, info):
+        """Original CardLegendUI shell; the card battle rules are still being ported."""
+        body.pack_forget()
+        layer = self.cocos_ui.render('CardLegendUI', (800, 480), {})
+        self.ui_base_layer = layer
+        self.ui_hits = dict(self.cocos_ui.hits)
+        self.ui_rects = dict(self.cocos_ui.rects)
+        self.ui_buttons = dict(self.cocos_ui.buttons)
+        self.ui_button_text = dict(self.cocos_ui.button_text)
+        self.ui_actions['open_Button'] = lambda: info.set(
+            '卡牌传说规则仍在按手机版原逻辑接入，当前不会伪造开包结果。')
+        self.ui_actions['close_Button'] = self.close_ui
+        info.set('卡牌传说 · 原版界面')
+        if getattr(self, 'ui_art_label', None) is not None:
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+    
     def _roulette_body(self, body, info):
         activity = Activities(self.state)
+        body.pack_forget()
         box = tk.Listbox(body, width=65, height=6)
         box.pack(fill='x')
         def refresh(paid=False):
@@ -1372,6 +1672,7 @@ class ActivityUI:
         tk.Button(body, text='刷新（1 枚徽章）', command=lambda: refresh(True)).pack(side='left', padx=8)
         self.ui_actions['start_Button'] = spin
         self.ui_actions['refresh_Button'] = lambda: refresh(True)
+        self.ui_actions['close_Button'] = self.close_ui
         refresh()
 
     def lottery_ui(self, force=False):

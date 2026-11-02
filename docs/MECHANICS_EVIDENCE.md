@@ -1,5 +1,32 @@
 # 1.20.4 规则核对记录
 
+## 0.2.52：宠物、图鉴、成就与活动页改为原版布局
+
+继续用手机版 APK 内的原始资源，而不是宿主 Tk 控件：
+
+- 宠物页：`PetListUI` 整页 + `PetListItemUI` 三行，行内填充等级、生命、
+  能量和亲密度；选中宠物用 `pet_image` 合成到原版 `petPos_Node`。技能/天赋
+  页签切换原版 `skillInfo_Panel`，不再用黑色 `Listbox` 盖住左半页。
+- 图鉴页：`item_ScrollView` 内按 3×5 合成 `IllustratedItemUI`，显示
+  `PetHead` 头像、编号、名称、星级；点击卡片打开
+  `IllustratedPetInfoUI`，合成宠物立绘和原版信息栏。
+- 成就页：`item_ScrollView` 内合成 `AchievementItemUI`，保留原版积分栏、
+  星星/旗帜/进度条；点击行查看，领取按钮只在 `ready` 行生效。仍未支持的
+  条件类型继续显示“未接入”，不伪造进度。
+- 连续登录、宠物银行、孵化屋、技能学习、突破、合体、融合、轮盘、坐骑/
+  宠物商店：全部限制在 800×480 原版页内；隐藏宿主列表/文字区，按原版 `ContinuousLoginItemUI`、`PetBankItemUI` 等资源绘制内容，并接回原版
+  按钮动作。孵化、技能学习等深层规则仍以原表/原状态为准，不伪造。
+- 工作区只有手机版 APK、ARM `libcocos2dcpp.so` 和符号表，没有可直接编译的
+  Java/Kotlin/Lua 工程源码；因此这里能用的是 APK 内的 `assets/Data`、
+  `res/UI/*.csb`、`PlotEvent` 和原版布局/符号，而不是把安卓 `.so` 直接
+  当 Windows 代码运行。0.2.52 仍不是完整 1∶1 成品。
+
+`tools/check_pet_list_ui.py`、`check_illustrated_ui.py`、
+`check_achievements.py`、`check_ui_buttons.py`、`check_activity_ui.py`
+已重跑；截图在 `outputs/verification/pet-ui-current.png`、
+`illustrated-current.png`、`achievement-current.png`、`login-current.png`、
+`bank-current.png`、`hatch-current.png`、`skill-current.png`。
+
 ## 0.2.51：背包、商店与主界面入口
 
 用户反馈“商店不够还原、背包也并没有”。实际截取旧实现的 Tk 页面后确认：
