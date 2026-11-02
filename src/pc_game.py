@@ -92,7 +92,7 @@ class NativeGame(ActivityUI, Preview):
         self.booting = False
         self.npc_motion = NpcMotion(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.43（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.44（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1029,7 +1029,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.43')
+        win.title('任务指引 · 原生 0.2.44')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1768,6 +1768,7 @@ class NativeGame(ActivityUI, Preview):
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
             self.player_sprite = state.sprite_id
+            self.repair_starter_save_position()
             self.repair_legacy_player_visibility()
             self.story_motion = StoryMotion(self)
             self.story_motion.actions = state.presentation.get('story_motion_actions', [])
@@ -1782,6 +1783,39 @@ class NativeGame(ActivityUI, Preview):
         except (ValueError, KeyError, OSError) as error:
             messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
             return False
+
+    def repair_starter_save_position(self):
+        # Observed old save: the selected-starter plot in the 21x20 lab has
+        # x=1376 (tile 21, outside the map) and a stale hidden-player flag.
+        # None of these three original scripts hide/move the player. Limit
+        # migration to that exact story phase; prologue off-map motion is valid.
+        if (self.map_id != 5801 or self.state.main_task != 3 or self.state.main_state != 4
+                or not self.state.starter_id or self.runtime.file not in (
+                    '', 'pEvent5801002.json', 'pEvent5801003.json', 'pEvent5801004.json')
+                or getattr(self, 'screen_black', False)):
+            return
+        for step in self.runtime.sequence[:self.runtime.index+1]:
+            if step['type'] == 'spritevisible':
+                rows = step.get('parameters', {})
+                if any(p.get('spritetype') == 1 and not p.get('visible', 1)
+                       for p in (rows if isinstance(rows, list) else [rows])):
+                    return
+        before = [self.x, self.y, self.player_visible]
+        self.player_visible = True
+        world = self.map
+        if not (0 <= self.x < world.width*world.tw and 0 <= self.y < world.height*world.th):
+            mounts = Mounts(self.state)
+            occupied = {(int(a[2]//world.tw), int(a[3]//world.th)) for a in self.actors()}
+            candidates = [((tx+.5)*world.tw, (ty+.5)*world.th)
+                          for ty in range(world.height) for tx in range(world.width)
+                          if (tx, ty) not in occupied and
+                          not world.blocked((tx+.5)*world.tw, (ty+.5)*world.th, mounts)]
+            if candidates:
+                self.x, self.y = min(candidates, key=lambda p: (p[0]-self.x)**2+(p[1]-self.y)**2)
+                self.state.x, self.state.y = self.x, self.y
+        if before != [self.x, self.y, self.player_visible]:
+            self.state.audit.append({'repair': 'starter-save-outside-lab-or-hidden',
+                                     'before': before, 'after': [self.x, self.y, self.player_visible]})
 
     def repair_legacy_player_visibility(self):
         # Confirmed broken save: map 101 / pEvent101001, player flag false,
