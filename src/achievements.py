@@ -96,13 +96,23 @@ class Achievements:
                 return current, target, f'已获得 {current} 种 kind={kind} 宠物'
             return None
         if condition_type == 1:
-            # The first collection family filters by one quality/rarity slot.
-            if len(values) >= 4 and values[2] != -1 and values[0] == -1 and values[3] == -1 and values[4:] == [-1, -1, 0]:
-                grade = values[2]
-                current = sum(1 for pet in self.state.pets+self.state.bank
-                              if int(getattr(pet, 'quality', 0)) == grade)
-                return current, target, f'当前拥有品质 {grade} 的宠物 {current} 只'
-            return None
+            # AchievementItemCollectPet 0x2bf7d8 reorders these seven table
+            # fields for getPetCountByConditions 0x330cc2; stars != quality.
+            if len(values) != 7:
+                return None
+            species, kind, stars, quality, talents, level, unique = values
+            pets = []
+            for pet in self.state.pets+self.state.bank:
+                data = self.state.tables['Pet'][pet.species]
+                if species != -1 and pet.species != str(species): continue
+                if kind != -1 and int(data['kind']) != kind: continue
+                if stars != -1 and int(data['starLevel']) != stars: continue
+                if quality != -1 and int(pet.quality) != quality: continue
+                if talents != -1 and len(pet.talents) != talents: continue
+                if level != -1 and pet.level != level: continue
+                pets.append(pet)
+            current = len({p.species for p in pets}) if unique else len(pets)
+            return current, target, f'符合条件的宠物 {current}/{target}'
         if condition_type == 11:
             if values and values[-1] == -1:
                 current = int(self.state.activities.get('battle_wins', 0))

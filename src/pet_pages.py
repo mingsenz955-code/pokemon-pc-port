@@ -26,6 +26,65 @@ def text_box(page, rect, value, font, offset=0):
 
 
 class PetPages:
+    def _evolution_page(self, body, info):
+        from original_pages import Page
+        from game_state import numbers
+        body.pack_forget()
+        uid = str(self.ui_parameters.get('uid', ''))
+        pet = next((p for p in self.state.pets if p.uid == uid), None)
+        if pet is None:
+            self._page_tip('请选择携带的宠物。', self.close_ui)
+            return
+        row = self.data.tables['Evolution'].get(pet.species)
+        def back():
+            self.open_ui(Request('openui', 'evolution-return', 0, {'parameters': {'uiid': 47}}))
+        if not row:
+            self._page_tip('这只宠物没有下一阶段进化。', back)
+            return
+        name = self.data.tables['Pet'][pet.species]['name']
+        target = str(row['petId'])
+        def paint():
+            ready = pet.level >= int(row['level'])
+            page = Page(self, 'EvolutionConditionUI', timeline_frame=60,
+                        text={'petName_Text': name}, auto_text=('petName_Text',),
+                        visible={'costTip_Text': False, 'cost_BitmapFontLabel': False,
+                                 'moneyIcon_Image': False, 'image_evolution_what_1': False,
+                                 'titleCanEvolution_Sprite': ready, 'evolution_Image': True})
+            if not ready:
+                rect = (290, 161, 594, 183)
+                text_box(page, rect, '未满足进化条件', self.cocos_ui.font('', 16))
+            requirements = [('等级', pet.level, int(row['level']))]
+            requirements += [(self._item_data(str(k))[0], self.state.count(k), n)
+                             for k, n in zip(numbers(row['itemIds']), numbers(row['itemCounts']))]
+            for i, (label, have, need) in enumerate(requirements):
+                page.add('ConditionItemUI', (288, 188+i*23), size=(304, 22),
+                         prefix=f'evolution_condition_{i}/', clip=(288, 186, 592, 293),
+                         text={'name_Text': label, 'have_BitmapFontLabel': str(have),
+                               'need_BitmapFontLabel': str(need)}, sizes={'name_Text': (110, 22)})
+            page.animated_pets.extend([(pet.species, (348, 363), (280, 295, 415, 365), 70),
+                                       (target, (538, 363), (470, 295, 608, 365), 70)])
+            page.actions.update({'evolution_Button': evolve, 'close_Button': back})
+            page.publish()
+        def evolve():
+            before = pet.stats(self.data.tables)
+            try:
+                self.state.evolve(uid)
+            except ValueError as error:
+                self._page_tip(str(error), paint)
+                return
+            after = pet.stats(self.data.tables)
+            fields = {'name_Text': self.data.tables['Pet'][pet.species]['name']}
+            for label, old, new in zip(('Life', 'Energy', 'Strength', 'Defense', 'Speed'), before, after):
+                fields['arrt'+label+'_BitmapFontLabel'] = str(old)
+                fields['arrt'+label+'To_BitmapFontLabel'] = str(new)
+            stars = int(self.data.tables['Pet'][pet.species]['starLevel'])
+            page = Page(self, 'PetEvolutionEffectUI', timeline_frame=180, text=fields,
+                        visible={'weixin_Button': False, **{f'star_Sprite_{i}': i <= stars for i in range(1, 6)}})
+            page.animated_pets.append((pet.species, (400, 300), (230, 60, 580, 310), 175))
+            page.actions.update({'confirm_Button': back, 'close_Button': back})
+            page.publish()
+        paint()
+
     def _pet_base_fields(self, pet):
         row = self.data.tables['Pet'][pet.species]
         visibility = {'trialState_Panel': False, 'trialTimes_Panel': False,

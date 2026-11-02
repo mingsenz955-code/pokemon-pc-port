@@ -39,6 +39,7 @@ def nine_slice(image, size, cap):
 class CocosUI:
     def __init__(self, data):
         self.data = data
+        self.dim_background = False
         self.hits = {}
         self.diagnostics = []
 
@@ -198,6 +199,7 @@ class CocosUI:
                     image.paste((0, 0, 0, 0), (round(image.width*fill), 0, image.width, image.height))
                 frame.alpha_composite(image, (round(origin[0]), round(frame.height-origin[1]-height*abs(sy))))
             elif (classname in ['Panel', 'ListView', 'ScrollView'] and node.get('background_type') == 1
+                  and not (key == 'bg_Panel' and not self.dim_background)
                   and node.get('background_alpha', 255) > 0):
                 a, r, g, b = node.get('background_color', [255, 255, 255, 255])
                 background = Image.new('RGBA', frame.size)
