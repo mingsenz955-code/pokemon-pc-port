@@ -1,57 +1,38 @@
-"""Original early-main-task direction icon, independent of click navigation.
+"""Direction marker for a user-started, walkable task-navigation route.
 
-createMainTaskGuideIcon 0x2dfecc limits the guide to MainTask key <= 17.
-mainTaskGuideIconUpdate 0x2e1274 chooses the dominant axis and runs two
-0.5-second MoveBy actions of +/-17, two map tiles away from the player.
+The previous always-on early-story hint is not the requested button-triggered
+navigation. The marker now shares the actual route followed by Guide.
 """
 from PIL import Image
-from guide import GuideResolver
 
 
 class TaskGuide:
     def __init__(self, app):
         self.app = app
-        self.signature = None
-        self.target = None
         self.direction = None
         self.started = 0.0
 
     def point(self):
-        app, state = self.app, self.app.state
-        if state.main_task > 17 or state.main_state not in (3, 4):
+        # This is the explicitly requested navigation route, not the separate
+        # early-story hint created automatically by createMainTaskGuideIcon.
+        guide = self.app.guide
+        if not guide.active or guide.click_mode or not guide.waypoints:
             return None
-        stamp = (id(state), state.main_task, state.main_state, app.map_id)
-        if stamp != self.signature:
-            self.signature = stamp
-            row = state.tables['MainTask'].get(str(state.main_task))
-            self.target = None
-            if row:
-                kind = int(row['conditionType'])
-                if (kind == 1 and state.main_state != 3) or (kind == 2 and state.main_state != 4):
-                    return None
-                self.target = GuideResolver(app.data, state).from_task('main', str(state.main_task), row, state.main_state)
-        target = self.target
-        if not target or not target.map_id:
-            return None
-        if target.map_id != app.map_id:
-            route = app.guide.graph.route(app.map_id, target.map_id)
-            if len(route) < 2:
-                return None
-            edge = app.guide.graph.edge(route[0], route[1])
-            obj = next((o for o in app.map.objects if o['group'] == 'spriteLayer'
-                        and str(o.get('name')) == edge['from_exit']), None)
-            if obj:
-                return float(obj['x'])+float(obj.get('width', 64))/2, float(obj['y'])+float(obj.get('height', 64))/2
-            return None
-        if target.kind in ('map', 'catch', 'exit'):
-            return None
-        if target.kind == 'npc':
-            actors = [a for a in app.actors() if str(a[0]) == target.npc_id
-                      and str(a[1]).isdigit() and 20000 <= int(a[1]) < 30000]
-            if actors:
-                return actors[-1][2:]
-            return None
-        return target.x, target.y
+        # Point down the currently walkable route, never through a wall at the
+        # remote NPC. Stop the look-ahead at the first turn.
+        previous = (self.app.x, self.app.y)
+        direction = None
+        result = None
+        for point in guide.waypoints:
+            dx, dy = point[0]-previous[0], point[1]-previous[1]
+            step = (0 if abs(dx) < .01 else 1 if dx > 0 else -1,
+                    0 if abs(dy) < .01 else 1 if dy > 0 else -1)
+            if step == (0, 0):
+                continue
+            if direction is not None and step != direction:
+                break
+            direction, result, previous = step, point, point
+        return result
 
     def pose(self):
         point = self.point()

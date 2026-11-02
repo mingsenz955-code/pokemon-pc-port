@@ -326,7 +326,7 @@ class OriginalMap:
             obs = int(p.get('obsType', 0) or 0)
             if obs:
                 tx = int(float(obj['x']))//self.tw
-                ty = int(float(obj['y']))//self.th
+                ty = int((float(obj['y'])-self.th/2)//self.th)
                 self.obstacles[(tx, ty)] = obs
         self.removed_obstacles = set()
         self.sprite_collision = set()
@@ -338,7 +338,9 @@ class OriginalMap:
             if int(properties.get('obsType', 0)):
                 continue  # Breakable objects use the removable obstacle layer.
             definition = data.sprite_tiles().get(str(properties.get('spriteId')), {})
-            tx, ty = int(float(obj['x'])//self.tw), int(float(obj['y'])//self.th)
+            # createSpriteTile 0x2df41e..0x2df43a adds half a tile in
+            # Cocos bottom-origin coordinates before registering collision.
+            tx, ty = int(float(obj['x'])//self.tw), int((float(obj['y'])-self.th/2)//self.th)
             for dx, dy in json.loads(definition.get('collideInfo', '[]')):
                 cell = (tx+int(dx), ty-int(dy))
                 if 0 <= cell[0] < self.width and 0 <= cell[1] < self.height:
@@ -416,7 +418,7 @@ class OriginalMap:
                                                     image.height/2+float(definition['y']))
                     images[key] = image
                 if images[key] is not None:
-                    self._scenery.append((float(obj['x'])+self.tw/2, float(obj['y']), images[key]))
+                    self._scenery.append((float(obj['x'])+self.tw/2, float(obj['y'])-self.th/2, images[key]))
         return [(x, y, image) for x, y, image in self._scenery
                 if (int((x-self.tw/2)//self.tw), int(y//self.th)) not in self.removed_obstacles]
 

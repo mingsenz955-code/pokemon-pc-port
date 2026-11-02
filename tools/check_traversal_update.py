@@ -20,7 +20,7 @@ class TraversalChecks(unittest.TestCase):
         self.assertEqual(348, len(DATA.sprite_tiles()))
         tower = next(o for o in world.objects if o.get('gid') and
                      world.tile_properties(int(o['gid'])).get('spriteId') == '50168')
-        tx, ty = int(float(tower['x'])//64), int(float(tower['y'])//64)
+        tx, ty = int(float(tower['x'])//64), int((float(tower['y'])-32)//64)
         state = GameState(DATA.tables)
         state.rides, state.ride = [500002, 500003, 500005], 0
         mounts = Mounts(state)
@@ -37,7 +37,7 @@ class TraversalChecks(unittest.TestCase):
         world = DATA.load_map(101)
         shop = next(o for o in world.objects if o.get('gid') and
                     world.tile_properties(int(o['gid'])).get('spriteId') == '50166')
-        tx, ty = int(float(shop['x'])//64), int(float(shop['y'])//64)
+        tx, ty = int(float(shop['x'])//64), int((float(shop['y'])-32)//64)
         self.assertNotIn((tx, ty), world.sprite_collision)
         self.assertIn((tx-1, ty), world.sprite_collision)
         self.assertIn((tx+1, ty), world.sprite_collision)
