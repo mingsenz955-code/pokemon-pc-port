@@ -1,14 +1,16 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.65%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.66%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.65 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.66 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
+
+0.2.66 修复战斗商店：改为原 BattleShopUI 横向商品卡和 BuyConfirmUI 数量确认，购买/关闭均可点击。购物期间暂停战斗绘制/演出，关闭与确认不推进剧情战斗，不消耗回合；购买后的道具可立即回到战斗使用。
 
 朋友下载器、国内加速线路与独立本机存档见 [朋友下载说明](docs/FRIENDS_DOWNLOAD.md)，本轮复审与验证见 [0.2.65 记录](docs/VERIFICATION_0.2.65.md)。
 

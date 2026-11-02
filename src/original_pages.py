@@ -889,9 +889,10 @@ class OriginalPages(PetPages):
 
     def _shop_body(self, body, info, uiid):
         body.pack_forget()
-        table = {1: 'Shop', 2: 'EvolutionShop', 3: 'SkillShop', 22: 'IArenaShop', 28: 'MedalShop'}[uiid]
+        table = {1: 'Shop', 2: 'EvolutionShop', 3: 'SkillShop', 22: 'IArenaShop', 28: 'MedalShop',
+                 69: 'BattleShop'}[uiid]
         layout = {1: 'ShopUI', 2: 'EvolutionShopUI', 3: 'SkillShopUI',
-                  22: 'InfiniteArenaShopUI', 28: 'MedalShopUI'}[uiid]
+                  22: 'InfiniteArenaShopUI', 28: 'MedalShopUI', 69: 'BattleShopUI'}[uiid]
         clerk = {1: '1', 2: '3', 3: '4'}.get(uiid)
         if clerk:
             talks = self.state.activities.setdefault('shop_talks', {})

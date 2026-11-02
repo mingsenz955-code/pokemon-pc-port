@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import math
 from collections import OrderedDict
-import tkinter as tk
 
-from PIL import Image, ImageDraw, ImageFont, ImageTk
-from game_overlay import GameOverlay, GameArtLabel
+from PIL import Image, ImageDraw, ImageFont
 
 W, H = 960, 576
 FONT = 'C:/Windows/Fonts/msyh.ttc'
@@ -820,82 +818,12 @@ class BattleUI:
         return 'refresh'
 
     def battle_shop(self):
-        """Original BattleShopUI: real BattleShop rows, no simulated payment."""
-        if getattr(self, 'shop_window', None) is not None:
-            try:
-                self.shop_window.lift()
-                return
-            except tk.TclError:
-                self.shop_window = None
-        self.shop_window = GameOverlay(self.app)
-        win = self.shop_window
-        win.title('战斗商店 · 原版 BattleShopUI')
-        win.transient(self.app.root)
-        win.resizable(False, False)
-        try:
-            layer = self.app.cocos_ui.render('BattleShopUI', (800, 480), {})
-            photo = ImageTk.PhotoImage(layer)
-            art = GameArtLabel(win, image=photo, bg='#101418', borderwidth=0)
-            art.image = photo
-            art.pack()
-        except (FileNotFoundError, ValueError, KeyError, OSError):
-            tk.Label(win, text='BattleShopUI 原版布局读取失败。',
-                     bg='#202b30', fg='#ffb0a0').pack(padx=20, pady=20)
-        info = tk.StringVar(value='战斗商店：购买后道具进入背包，战斗继续。')
-        body = tk.Frame(win, bg='#202b30')
-        body.pack(fill='both', expand=True, padx=12, pady=8)
-        tk.Label(body, textvariable=info, bg='#202b30', fg='#f2e7cf',
-                 font=('Microsoft YaHei UI', 10), anchor='w').pack(fill='x')
-        rows = sorted(self.app.data.tables['BattleShop'].items(),
-                      key=lambda pair: int(pair[0]))
-        goods_rect = (self.app.cocos_ui.hits.get('goods_ListView')
-                      or self.app.cocos_ui.rects.get('goods_ListView'))
-        list_frame = tk.Frame(win, bg='#202b30', highlightthickness=0)
-        if goods_rect:
-            list_frame.place(x=goods_rect[0], y=goods_rect[1],
-                             width=max(100, goods_rect[2]-goods_rect[0]),
-                             height=max(80, goods_rect[3]-goods_rect[1]))
-            list_frame.lift()
-        else:
-            list_frame.pack(fill='both', expand=True, padx=12, pady=8)
-        box = tk.Listbox(list_frame, width=82, height=9, font=('Microsoft YaHei UI', 9),
-                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
-        bar = tk.Scrollbar(list_frame, command=box.yview)
-        box.configure(yscrollcommand=bar.set)
-        box.pack(side='left', fill='both', expand=True)
-        bar.pack(side='right', fill='y')
-        for key, row in rows:
-            currency = self.app.data.tables['Money'].get(
-                str(row['moneyType']), {}).get('name', row['moneyType'])
-            box.insert('end', f'{row["name"]}  {row["price"]} {currency}  — {row.get("des", "")}')
-
-        def buy():
-            if not box.curselection():
-                info.set('请先选择商品。')
-                return
-            key, row = rows[box.curselection()[0]]
-            try:
-                self.app.state.buy('BattleShop', key)
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            info.set(f'购买成功：{row["name"]} · 背包数量 '
-                     f'{self.app.state.count(row["goodsKid"])}')
-
-        def close():
-            try:
-                win.destroy()
-            except tk.TclError:
-                pass
-            self.shop_window = None
-
-        tk.Button(body, text='购买', bg='#5b7c52', fg='white',
-                  command=buy).pack(side='left', padx=6, anchor='n')
-        tk.Button(body, text='关闭', command=close).pack(side='left', padx=6, anchor='n')
-        self.shop_box = box
-        self.shop_actions = {'buy': buy, 'close': close}
-        win.protocol('WM_DELETE_WINDOW', close)
-        win.bind('<Escape>', lambda _: close())
+        """BattleShopUILayer: original cards and BuyConfirmUI inside the game."""
+        if self.app.ui_open:
+            return
+        from event_runtime import Request
+        self.app.open_ui(Request('openui', 'battle-shop', 0,
+                                {'parameters': {'uiid': 69}}))
 
     def _after_action(self):
         b = self.battle

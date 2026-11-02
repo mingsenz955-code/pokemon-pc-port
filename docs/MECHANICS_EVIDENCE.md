@@ -698,3 +698,13 @@ research/ride-menu-original.txt、research/ride-tips-original.txt。
 ### 同版补充：背包老爸的信正文回看
 
 Item 270057「老爸的信」useType=0，des 只有「尼尔爸爸留给尼尔的信」。完整原文位于 pEvent5807003.json、id=12、talk「信:……」。原版表未配置背包使用/消耗效果；此次按用户明确要求在 PC 背包“重要”页详情区补充正文回看，保持原 BagUI 和可滚动详情，直接引用事件原文并去掉 #1/#0 富文本控制码。此回看入口是 PC 便利补充，不声称原版背包已配置全文阅读效果。不会运行原事件（原事件含发物品、开功能、移动和传送），也不改任务状态或道具数量。check_letter_reading.py 核对完整原文、正文末尾、其他道具简介不变以及真实背包页/滚轮操作前后完整状态一致。
+
+## 0.2.66 战斗商店（2026-11-02）
+
+原版 BattleShopUILayer::getItemLayout 0x34f67c 读取 ShopGoodsUI.csb 的 root_Panel；itemListViewInit 0x34fa28 将 BattleShopData 商品填入 goods_ListView；buyButtonRespond 0x34f706 读取选中项并调用 showBuyConfirmUI 0x34f6d8，进入 BuyConfirmUILayer 并设置商品 key。原布局 BattleShopUI 的横向列表宽512.4、高233.1，item_margin=10；商品、价格和币种读取 BattleShop 表全部12行。
+
+旧移植实现是 GameOverlay 内先 pack 一张800x480图片，再 pack系统说明/购买/关闭控件，后者超出固定480像素高的页面；另用系统Listbox覆盖列表，未给原版关闭/购买按钮绑定事件。商店也没设置宿主 ui_open，战斗仍在持续渲染和演出。用户因此看到“打开后卡住、无法使用”。
+
+修复：商店进入统一原版页面调度（PC uiid69），复用原商品卡、货币组件、横向滚动及 BuyConfirmUI。打开期间宿主暂停战斗绘制和时间推进；买完或取消返回商店，关闭返回同一场战斗。关闭购物页不会 resume 剧情 pending fight。操作不消耗战斗回合；钱不够不扣钱/道具，购买成功按表扣款和入包，回战斗后可使用。无额外操作系统窗口、无图片下方不可见按钮。
+
+新增 check_native_battle_shop.py 验证真实指针打开/买卖/取消/关闭、全部12个商品滚动、数量费用、不足回滚、购物暂停和背景点击阻断、剧情战斗等待保持、透明映射窗口的实际缩放点击，以及买药后回战斗使用。使用临时存档，不操作用户正在运行的游戏。

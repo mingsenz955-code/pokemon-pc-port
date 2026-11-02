@@ -104,7 +104,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.65（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.66（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -496,6 +496,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         62: ('HatchCheckUI', '孵化检查'),
         63: ('ShopUI', '金币商店'),
         68: ('LuckyDrawUI', '抽宠'),
+        69: ('BattleShopUI', '战斗商店'),
         64: ('PublicNoticeUI', '公告'),
         65: ('SystemUI', '系统设置'),
         66: ('BluetoothListUI', '蓝牙'),
@@ -668,7 +669,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self._hatch_body(body, info)
         elif uiid in (16, 17):
             self._pet_shop_body(body, info, parameters.get('par1') or 601)
-        elif uiid in (1, 2, 3, 22, 28):
+        elif uiid in (1, 2, 3, 22, 28, 69):
             self._shop_body(body, info, uiid)
         elif uiid == 29:
             self._roulette_body(body, info)
@@ -986,6 +987,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.ui_rects = {}
         self.ui_actions, self.ui_base_layer, self.ui_hover, self.ui_info = {}, None, None, None
         self.ui_pressed, self.ui_render_args = None, None
+        if self.battle and (int(self.ui_parameters.get('uiid', 0)) == 69
+                            or self.ui_parameters.get('table') == 'BattleShop'):
+            # Shopping is outside the turn and must not resume a pending fight.
+            return
         pending = self.runtime.pending
         if self.pending_wait:
             self.pending_wait = None
@@ -1064,7 +1069,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.65')
+        win.title('任务指引 · 原生 0.2.66')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1677,7 +1682,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                                  '301' if self.battle else self.map.info.get('bgmId', '0')), loop=not bool(result_music))
         elapsed = max(0.0, now-self._play_clock)
         self._play_clock = now
-        if not self.booting and self.ui_open and self.ui_window and self.ui_window.winfo_exists() and not self.battle:
+        if not self.booting and self.ui_open and self.ui_window and self.ui_window.winfo_exists():
             # The modal owns a captured scene and its own animation timer.
             # Do not redraw the entire map behind that immutable scene.
             self.last_time = now
