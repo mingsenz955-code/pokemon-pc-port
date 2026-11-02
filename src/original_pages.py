@@ -168,7 +168,7 @@ class OriginalPages(PetPages):
         from activities import Activities
         body.pack_forget()
         def paint():
-            seconds = max(0, int(self.state.activities.get('lucky_free_at', 0)-time.time()))
+            seconds = max(0, int(self.state.activities.get('lucky_free_at', 0))-int(time.time()))
             page = Page(self, 'LuckyDrawUI', timeline_frame=60, text={
                 'surplusTime_BitmapFontLabel': f'{seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02}',
                 'price_1_BitmapFontLabel': '10', 'price_2_BitmapFontLabel': '25',
@@ -177,16 +177,24 @@ class OriginalPages(PetPages):
                 'cost_2_BitmapFontLabel': str(self.state.count('700002')),
                 'cost_3_BitmapFontLabel': str(self.state.count('700002'))},
                 visible={'weixin_Button': False})
-            page.actions.update({'draw_1_Button': lambda: draw(1, seconds == 0),
+            page.actions.update({'draw_1_Button': lambda: draw(1),
                                  'draw_2_Button': lambda: draw(2), 'draw_3_Button': lambda: draw(3),
                                  'draw_3_1_Button': lambda: draw(3), 'close_Button': self.close_ui})
             page.publish()
-        def draw(kind, free=False):
+            # Keep the visible countdown current, but only while this exact
+            # page remains open; returning from a result starts a new clock.
+            def refresh():
+                if self.original_page is page and self.ui_window and self.ui_window.winfo_exists():
+                    paint()
+            self.root.after(1000, refresh)
+        def draw(kind):
             if self.state.functions.get('8', 0) != 1:
                 self._page_tip('抽宠会在完成原版道馆训练剧情后开放。', paint)
                 return
             try:
-                pets = Activities(self.state).draw_pets(kind, free=free)
+                now = int(time.time())
+                free = kind == 1 and now >= int(self.state.activities.get('lucky_free_at', 0))
+                pets = Activities(self.state).draw_pets(kind, free=free, now=now)
             except (ValueError, KeyError) as error:
                 self._page_tip(str(error), paint)
                 return
@@ -231,10 +239,12 @@ class OriginalPages(PetPages):
 
     def reward_overlay(self, items, back=None, title='获得物品'):
         previous = self.ui_base_layer.copy() if back and self.ui_base_layer is not None else None
+        previous_wheel = getattr(self, 'page_wheel', None)
         items = [(str(k), int(n)) for k, n in items if int(n) > 0]
         offset = [0]
         def done():
             self.reward_visible = False
+            self._page_wheel(previous_wheel)
             (back or self.close_ui)()
         def paint():
             page = Page(self, 'GetItemUI', timeline_frame=60)
@@ -520,17 +530,14 @@ class OriginalPages(PetPages):
             # access to unseen maps or manufacture a price from editor samples.
             if mid not in maps:
                 return
+            try:
+                x, y = self._transport_arrival(mid)
+            except ValueError as error:
+                self._page_tip(str(error), paint)
+                return
             self.close_ui()
             self.guide.stop()
-            self.load_map(mid)
-            tile = self.guide.nearest_valid(self.x, self.y) if hasattr(self.guide, 'nearest_valid') else None
-            if tile:
-                self.x, self.y = tile
-            elif self.map.blocked(self.x, self.y):
-                cells = [(x*64+32, y*64+32) for y in range(self.map.height) for x in range(self.map.width)
-                         if not self.map.blocked(x*64+32, y*64+32)]
-                if cells:
-                    self.x, self.y = min(cells, key=lambda p: (p[0]-self.x)**2+(p[1]-self.y)**2)
+            self.load_map(mid, x, y)
             self.runtime.notify('tomap', map=mid)
             self.drive()
 
@@ -538,6 +545,33 @@ class OriginalPages(PetPages):
             offset[0] = max(0, min(max(0, len(maps)*48-328), offset[0]+(-48 if event.delta > 0 else 48)))
             paint()
         paint()
+
+    def _transport_arrival(self, mid):
+        """Use the original <map>01 entry, checking ground before spending.
+
+        VillageAreaMapUiLayer::handleSelectMapUISelectedEvent 0x3c56fc
+        passes selectedMap*100+1 to changeMap. Use the matching exit object,
+        never an NPC with the same name or the arbitrary map centre.
+        """
+        world = self.data.load_map(mid)
+        exits = [obj for obj in world.objects if obj.get('group') == 'spriteLayer'
+                 and not obj.get('gid') and obj.get('props', {}).get('toExit')]
+
+        def valid(x, y):
+            return not world.blocked(x, y) and not any(
+                float(obj.get('x', 0)) <= x < float(obj.get('x', 0))+float(obj.get('width', 64))
+                and float(obj.get('y', 0)) <= y < float(obj.get('y', 0))+float(obj.get('height', 64))
+                for obj in exits)
+
+        entry = next((obj for obj in exits if str(obj.get('name')) == str(int(mid)*100+1)), None)
+        origin = self.exit_spawn(world, entry) if entry else (world.width*32, world.height*32)
+        if valid(*origin):
+            return origin
+        cells = [(x*64+32, y*64+32) for y in range(world.height) for x in range(world.width)
+                 if valid(x*64+32, y*64+32)]
+        if not cells:
+            raise ValueError('目的地没有可安全到达的落点，未使用传送道具。')
+        return min(cells, key=lambda p: (p[0]-origin[0])**2+(p[1]-origin[1])**2)
 
     def _bag_body(self, body, info):
         body.pack_forget()
@@ -628,9 +662,15 @@ class OriginalPages(PetPages):
                 return
             if kid == '220001':
                 def fly(mid):
+                    try:
+                        x, y = self._transport_arrival(mid)
+                    except ValueError as error:
+                        self._page_tip(str(error), lambda: self._transport_item_page(kid, fly, paint, info))
+                        return
                     self.state.consume([kid], [1])
                     self.close_ui()
-                    self.load_map(mid)
+                    self.guide.stop()
+                    self.load_map(mid, x, y)
                     self.runtime.notify('tomap', map=mid)
                     self.drive()
                 self._transport_item_page(kid, fly, paint, info)
@@ -734,7 +774,11 @@ class OriginalPages(PetPages):
         return key, ''
 
     def _page_wheel(self, callback):
-        self.ui_art_label.bind('<MouseWheel>', callback)
+        self.page_wheel = callback
+        if callback is None:
+            self.ui_art_label.unbind('<MouseWheel>')
+        else:
+            self.ui_art_label.bind('<MouseWheel>', callback)
 
     def _shop_body(self, body, info, uiid):
         body.pack_forget()

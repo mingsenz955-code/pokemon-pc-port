@@ -1,3 +1,9 @@
+## PR #13 复审修复 / 0.2.58
+
+继续使用本 PR 的全部 0.2.57 页面改动，新增修复不得回退：传送先调用 `_transport_arrival` 验证原 `<map>01` 出口落点再扣道具；抽宠在点击时重查资格并把同一 `now` 传给 Activities；奖励弹窗通过 `_page_wheel` 保存/恢复实际滚轮回调。所有新增回归在 tools/check_pr13_review.py，使用临时存档，不能拿玩家真实进度做测试。
+
+---
+
 ## 2026-11-02 / 0.2.57 接续
 
 基线 origin/main=c104ab8，分支 codex/fix-original-inventory-pages。新增 pet_pages.py（原宠物行/说明框）和 particles.py（原 plist 星光）。不要回退最近商店/地图/战斗改动。优先跑 check_inventory_interactions.py、check_original_page_flows.py、check_pet_list_ui.py、check_pet_property_ui.py、check_continuous_login.py、check_treasure.py、check_activities.py、check_regressions.py。

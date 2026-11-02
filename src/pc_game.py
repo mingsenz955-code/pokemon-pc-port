@@ -97,7 +97,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.57（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.58（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -477,6 +477,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.shop_underlay = self.ui_base_layer.copy() if self.ui_base_layer else None
         self.ui_parameters = parameters
         self.original_page = None
+        self.page_wheel = None
         self.page_drag = None
         self.page_drag_start = None
         uiid = int(parameters.get('uiid', 0) or 0)
@@ -1024,7 +1025,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.57')
+        win.title('任务指引 · 原生 0.2.58')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
