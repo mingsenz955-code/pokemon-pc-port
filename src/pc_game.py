@@ -7,6 +7,7 @@ import math
 import os
 import time
 import tkinter as tk
+from game_overlay import GameOverlay, GameArtLabel
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -35,12 +36,14 @@ from npc_motion import NpcMotion
 
 
 class NativeGame(OriginalPages, ActivityUI, Preview):
+    TARGET_FPS = 60
     WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
     DYNAMIC_SCENERY = True
     def __init__(self, root, data):
         self.state = GameState(data.tables)
         self.cocos_ui = CocosUI(data)
         self.runtime = EventRuntime(data, self.state)
+        self.runtime.present_rewards = True
         self.booting = True
         self.runtime_error = ''
         self.display_request = None
@@ -93,11 +96,15 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.npc_motion = NpcMotion(self)
-        self.canvas.bind('<Button-1>', self.on_click)
-        self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
-        self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
-        self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.60（全系统还原进行中）')
+        from game_viewport import GameViewport
+        self.viewport = GameViewport(self)
+        self.viewport.bind('<Button-1>', self.on_click)
+        self.viewport.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
+        self.viewport.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
+        self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
+        self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
+        self.runtime.play_sound = self.audio.effect
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.65（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -116,6 +123,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         super().load_map(mid, x, y)
         self.chest_fx = None
         self.obstacle_fx = None
+        self.treasure_search_fx = None
         self._apply_removed_obstacles()
         if hasattr(self, 'state') and not self.booting:
             self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
@@ -350,6 +358,43 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             animation = animation.replace('stand', 'walk')
         return self.scene_sprite(self.player_sprite, animation)
 
+    def search_treasure(self):
+        from treasure import TreasureHunt
+        hunt = TreasureHunt(self.state)
+        current = hunt.active()
+        if not current:
+            raise ValueError('当前没有藏宝图。')
+        sprite = self.data.tables['TChest'][current['chest_id']]['spriteId']
+        box = json.loads(self.data.sprite_tiles()[sprite]['box'])
+        x, y = self.camera_origin()
+        viewport = (x/self.SCALE, y/self.SCALE, (x+self.WIDTH)/self.SCALE, (y+self.HEIGHT)/self.SCALE)
+        found = hunt.use_magnifier(map_id=self.map_id, viewport=viewport, box=box)
+        texts = json.loads((self.data.assets/'Data/Text.json').read_text(encoding='utf-8'))
+        key = 'treasureTips3' if found else 'treasureTips4'
+        self.treasure_search_fx = {'age': 0.0, 'text': next(row['text'] for row in texts if row['name'] == key)}
+        return found
+
+    def _draw_treasure_search(self, frame):
+        fx = getattr(self, 'treasure_search_fx', None)
+        if not fx:
+            return
+        index = int(fx['age']*60)
+        if index < 61:
+            art = self.data.armature('leida', 'Animation1', index)
+            if art is not None:
+                scale = self.WIDTH/800
+                ox, oy = art.info.get('origin', (art.width/2, art.height/2))
+                art = art.resize((max(1, round(art.width*scale)), max(1, round(art.height*scale))), Image.Resampling.LANCZOS)
+                frame.alpha_composite(art, (round(self.WIDTH/2-ox*scale), round(self.HEIGHT/2-oy*scale)))
+        # Original TipsUiNode grows its scale9 background with the text.
+        # The authored 180px sample label otherwise clips the final characters.
+        width = math.ceil(self.cocos_ui.font('', 30).getlength(fx['text']))+2
+        tip = self.cocos_ui.render('TipsUiNode', (self.WIDTH, self.HEIGHT),
+                                   text={'tip_Text': fx['text']},
+                                   sizes={'bg_Image': (width+72, 59), 'tip_Text': (width, 34)},
+                                   positions={'Node': (400, 240), 'tip_Text': ((width+72)/2, 29.5)})
+        frame.alpha_composite(tip)
+
     def _draw_chest_fx(self, frame):
         fx = getattr(self, 'chest_fx', None)
         if not fx:
@@ -449,7 +494,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         60: ('SkillLearnConfirmUI', '技能学习确认'),
         61: ('EvolutionConditionUI', '进化条件'),
         62: ('HatchCheckUI', '孵化检查'),
-        63: ('ContinuousTopUpUI', '连充奖励'),
+        63: ('ShopUI', '金币商店'),
         68: ('LuckyDrawUI', '抽宠'),
         64: ('PublicNoticeUI', '公告'),
         65: ('SystemUI', '系统设置'),
@@ -487,10 +532,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 self.ui_actions[f'tag_{i}_Button'] = lambda p=page: self.task_page.select_page(p)
             return
         self.task_page = None
+        self.keys.clear()
         layout, name = self.UI_LAYOUTS.get(uiid, ('MainUI', f'原版界面 {uiid}'))
         if self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.destroy()
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title(f'{name} · 原版 Cocos 界面')
         win.transient(self.root)
         win.resizable(False, False)
@@ -508,7 +554,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.ui_buttons = dict(self.cocos_ui.buttons)
             self.ui_button_text = dict(self.cocos_ui.button_text)
             photo = ImageTk.PhotoImage(layer)
-            label = tk.Label(win, image=photo, bg='#101418')
+            label = GameArtLabel(win, image=photo, bg='#101418', borderwidth=0)
             label.image = photo
             label.pack()
             label.bind('<ButtonPress-1>', self.on_ui_press)
@@ -522,6 +568,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             tk.Label(win, text=f'原 UI 布局读取失败：{error}', fg='#ffb0a0',
                      bg='#202b30').pack(padx=20, pady=20)
         body = tk.Frame(win, bg='#202b30')
+        self.ui_body = body
         body.pack(fill='both', expand=True, padx=12, pady=8)
         info = tk.StringVar()
         self.ui_info = info
@@ -532,13 +579,25 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self._login_body(body, info)
         elif uiid == 11:
             currency, cost = self.state.cure_cost()
+            from original_pages import Page
+            page = Page(self, 'CureConfirmUI', timeline_frame=60,
+                        text={'times_BitmapFontLabel': str(self.state.count('700006')),
+                              'cost_BitmapFontLabel': f'x{cost}'},
+                        visible={'costTip_Text': currency == '700001',
+                                 'cost_BitmapFontLabel': currency == '700001',
+                                 'tips2_Text': currency != '700001',
+                                 'times_BitmapFontLabel': currency != '700001'})
+            page.publish()
             info.set(f'治疗全部携带宠物：{cost} {self.data.tables["Money"][currency]["name"]}' if currency else '医疗卡治疗免费。')
             def cure():
                 try:
                     self.heal_party()
-                    info.set('全部携带宠物已恢复。')
+                    if self.runtime.pending and self.runtime.pending.kind in ('openui', 'wait'):
+                        self.close_ui('yes')  # Continue the nurse's original healed dialogue.
+                    else:
+                        self._page_tip('全部携带宠物的生命和能量已恢复。', lambda: self.close_ui('yes'))
                 except ValueError as error:
-                    info.set(str(error))
+                    self._page_tip(str(error), lambda: self.open_ui(request))
             self.ui_actions['confirm_Button'] = cure
             self.ui_actions['cancel_Button'] = lambda: self.close_ui('no')
             body.pack_forget()
@@ -557,7 +616,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             # append a host Tk form below it.
             body.pack_forget()
         elif uiid == 63:
-            self._topup_page(body, info)
+            self._gold_store_page(body, info)
         elif uiid == 68:
             self._lottery_page(body, info)
         elif uiid == 64:
@@ -567,16 +626,27 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.ui_actions['close_Button'] = self.close_ui
             body.pack_forget()
         elif uiid == 65:
-            info.set('原版系统设置页。音乐/音效开关尚未接入宿主音频，'
-                     '不会伪装成已生效。')
+            info.set('F11 / Alt+Enter 切换全屏，Esc 返回窗口；音乐和音效开关立即生效。')
             self.ui_actions['close_Button'] = self.close_ui
             self.ui_actions['about_Button'] = self.about
-            for name in ('moreGame_Button', 'control_click_Button',
-                         'control_direct_Button', 'music_open_Button',
-                         'music_close_Button', 'effect_open_Button',
-                         'effect_close_Button'):
-                self.ui_actions[name] = lambda: info.set(
-                    '该设置项尚未接入，当前不会修改游戏状态。')
+            def sound_setting(kind, enabled):
+                self.audio.set_enabled(kind, enabled)
+                self.state.presentation[kind+'_enabled'] = enabled
+                visibility = {
+                    'music_open_Button': self.audio.music_enabled,
+                    'music_close_Button': not self.audio.music_enabled,
+                    'effect_open_Button': self.audio.effects_enabled,
+                    'effect_close_Button': not self.audio.effects_enabled, 'moreGame_Button': False}
+                self.ui_render_args['visible'] = visibility
+                self.ui_base_layer = self.cocos_ui.render('SystemUI', (800, 480), visible=visibility)
+                self.ui_hits = dict(self.cocos_ui.hits)
+                self.ui_buttons = dict(self.cocos_ui.buttons)
+                self.ui_art_label.set_layer(self.ui_base_layer)
+            for kind in ('music', 'effect'):
+                self.ui_actions[kind+'_open_Button'] = lambda k=kind: sound_setting(k, False)
+                self.ui_actions[kind+'_close_Button'] = lambda k=kind: sound_setting(k, True)
+            sound_setting('music', self.state.presentation.get('music_enabled', True))
+            sound_setting('effect', self.state.presentation.get('effect_enabled', True))
             body.pack_forget()
         elif uiid == 66:
             info.set('原版蓝牙页。Windows 单机版不使用蓝牙联机，'
@@ -677,8 +747,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         elif uiid == 38:
             self._treasure_tip_body(body, info)
         elif uiid in (27, 36):
-            info.set('原版礼包购买入口；支付与奖励表尚未接入，不能伪造发货。')
-            self.ui_actions['buy_Button'] = lambda: info.set('礼包购买与奖励表尚未接入，未扣除货币。')
+            self._gold_store_page(body, info)
         elif uiid == 34:
             self._fuse_body(body, info)
         else:
@@ -723,6 +792,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             except (ValueError, KeyError, PendingMechanic) as error:
                 if self.ui_info:
                     self.ui_info.set(str(error))
+                if getattr(self, 'original_page', None) is not None:
+                    self._page_tip(str(error), self.original_page.publish)
             return
         if base in {'close_Button', 'closeButton', 'leave_Button', 'cancel_Button',
                     'cancelButton', 'giveUp_Button', 'takeBack_Button'}:
@@ -779,9 +850,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 ImageDraw.Draw(layer).rectangle(
                     (round(rect[0]), round(rect[1]), round(rect[2]-1), round(rect[3]-1)),
                     outline='#ffe36e', width=3)
-        photo = ImageTk.PhotoImage(layer)
-        self.ui_art_label.configure(image=photo)
-        self.ui_art_label.image = photo
+        self.ui_art_label.set_layer(layer)
 
     def on_ui_motion(self, event):
         start = getattr(self, 'page_drag_start', None)
@@ -853,86 +922,55 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.state.cure_party()
 
     def accept_task_ui(self, request):
-        """AcceptBTaskUI: original layout/buttons and a real yes/no choice."""
-        parameters = request.data.get('parameters', {})
-        key = str(parameters.get('btask', ''))
+        """The original accept card, rewards and choices in the game surface."""
+        from original_pages import Page
+        from pet_pages import text_box
+        key = str(request.data.get('parameters', {}).get('btask', ''))
         row = self.data.tables['BranchTask'].get(key)
         if not row:
-            self.display_request = None
             self.runtime.resume(False)
             self.drive()
             return
+        self.open_ui(Request('openui', 'accept-task-panel', request.step,
+                            {'parameters': {'uiid': 50}}))
         self.display_request = request
-        win = tk.Toplevel(self.root)
-        self.accept_task_window = win
-        win.title('接受支线任务 · 原版界面')
-        win.transient(self.root)
-        win.resizable(False, False)
-        layer = None
-        buttons = {}
-        try:
-            layer = self.cocos_ui.render(
-                'AcceptBTaskUI', (800, 480),
-                {'name_Text': row['name'], 'info_Text': row['des']})
-            buttons = dict(self.cocos_ui.buttons)
-        except (FileNotFoundError, ValueError, KeyError, OSError):
-            layer = None
-        self.accept_task_buttons = dict(buttons)
-        if layer is not None:
-            photo = ImageTk.PhotoImage(layer)
-            art = tk.Label(win, image=photo, bg='#101418')
-            art.image = photo
-            art.pack()
-            art.bind('<Button-1>', lambda event: click_art(event.x, event.y))
-        else:
-            tk.Label(win, text='AcceptBTaskUI 原版布局读取失败。', fg='#ffb0a0',
-                     bg='#202b30').pack(padx=20, pady=20)
-
-        rewards = []
-        reward_ids = [int(v) for v in str(row.get('rewardIds', '')).split(',') if v.strip()]
-        reward_counts = [int(v) for v in str(row.get('rewardCounts', '')).split(',') if v.strip()]
-        for item_id, count in zip(reward_ids, reward_counts):
-            item = (self.data.tables.get('Item', {}).get(str(item_id))
-                    or self.data.tables.get('Pet', {}).get(str(item_id))
-                    or self.data.tables.get('Money', {}).get(str(item_id)))
-            rewards.append(f'{item.get("name", item_id) if item else item_id}×{count}')
-        body = tk.Frame(win, bg='#202b30')
-        body.pack(fill='x', padx=12, pady=8)
-        tk.Label(body, text=row['name'], bg='#202b30', fg='#f2e7cf',
-                 font=('Microsoft YaHei UI', 13, 'bold'), anchor='w').pack(fill='x')
-        tk.Label(body, text=row['des'].replace('#1', '').replace('#4', '').replace('#0', ''),
-                 bg='#202b30', fg='#e8d8b8', justify='left', wraplength=760,
-                 font=('Microsoft YaHei UI', 10), anchor='w').pack(fill='x', pady=4)
-        if rewards:
-            tk.Label(body, text='奖励：'+'、'.join(rewards), bg='#202b30', fg='#f5d28a',
-                     font=('Microsoft YaHei UI', 10), anchor='w').pack(fill='x')
-        buttons_bar = tk.Frame(body, bg='#202b30')
-        buttons_bar.pack(fill='x', pady=6)
-        tk.Button(buttons_bar, text='接受', bg='#5b7c52', fg='white',
-                  command=lambda: finish(True)).pack(side='left')
-        tk.Button(buttons_bar, text='关闭', command=lambda: finish(False)).pack(side='left', padx=6)
-
-        def click_art(x, y):
-            for name, choice in (('accept_Button', True), ('close_Button', False)):
-                rect = buttons.get(name)
-                if rect and rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
-                    finish(choice)
-                    return
-
+        scroll, limit = [0, 0], [0, 0]
+        areas = [None, None]
+        rewards = [(kid, n) for kid, n in zip(numbers(row['rewardIds']), numbers(row['rewardCounts'])) if kid and n]
+        def paint():
+            page = Page(self, 'AcceptBTaskUI', text={'name_Text': row['name'], 'info_Text': ''}, timeline_frame=60)
+            areas[0] = next(r for k, r in page.rects.items() if k.endswith('/info_Text'))
+            limit[0] = text_box(page, areas[0], row['des'], self.cocos_ui.font('', 15), scroll[0])
+            area = areas[1] = next(r for k, r in page.rects.items() if k.endswith('/reward_ListView'))
+            limit[1] = max(0, ((len(rewards)+1)//2)*110-(area[3]-area[1]))
+            for i, (kid, count) in enumerate(rewards):
+                name, icon = self._item_data(str(kid))
+                page.add('RewardItemUI', (round(area[0]+(i%2)*96), round(area[1]+(i//2)*110-scroll[1])),
+                         size=(96, 104), canvas_size=(96, 104), prefix=f'accept_reward_{i}/', clip=area,
+                         text={'count_BitmapFontLabel': str(count), 'name_Text': name},
+                         resources={'icon_Image': icon},
+                         positions={'iconBg_Image': (38, 66), 'count_BitmapFontLabel': (8, 14)})
+            page.actions.update({'accept_Button': lambda: finish(True), 'close_Button': lambda: finish(False)})
+            page.publish()
+            self._page_wheel(wheel)
+        def wheel(event):
+            x, y = event.x, event.y
+            for i, rect in enumerate(areas):
+                if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
+                    scroll[i] = max(0, min(limit[i], scroll[i]+(-24 if event.delta > 0 else 24)))
+                    paint()
+                    break
         def finish(choice):
-            if self.accept_task_window is not win:
+            if self.runtime.pending is not request:
                 return
-            self.accept_task_window = None
             self.display_request = None
-            try:
-                win.destroy()
-            except tk.TclError:
-                pass
-            self.runtime.resume(bool(choice))
+            self.close_transient_ui()
+            self.runtime.resume(choice)
             self.drive()
-
         self._accept_task_finish = finish
-        win.protocol('WM_DELETE_WINDOW', lambda: finish(False))
+        paint()
+        self.ui_window.protocol('WM_DELETE_WINDOW', lambda: finish(False))
+
 
     def close_ui(self, result=None):
         job = getattr(self, 'ui_effect_job', None)
@@ -960,9 +998,20 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         elif pending and pending.kind == 'closeui':
             self.ui_close_result = None
             self.runtime.resume(choice)
+        elif pending and pending.kind == 'reward':
+            self.runtime.resume()
         self.drive()
 
     def key_down(self, event):
+        panels = getattr(self, '_game_overlays', [])
+        if panels:
+            if event.keysym.lower() == 'escape':
+                panels[-1].escape()
+            return
+        if self.ui_open and self.ui_window and self.ui_window.winfo_exists():
+            if event.keysym.lower() == 'escape':
+                self.ui_window._close()
+            return
         if getattr(self, 'task_page', None):
             if event.keysym.lower() == 'escape':
                 self.close_ui('no')
@@ -1014,8 +1063,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.battle:
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
-        win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.60')
+        win = GameOverlay(self)
+        win.title('任务指引 · 原生 0.2.65')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1219,6 +1268,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             raise PendingMechanic(f'原画面指令 {kind} 未实现')
 
     def on_click(self, event):
+        if getattr(self, '_game_overlays', []):
+            return
         if getattr(self, 'task_page', None):
             self.task_page_event('press', event)
             return
@@ -1230,7 +1281,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.display_request and self.display_request.kind == 'button':
             # Original tutorial buttons wait for the highlighted node itself;
             # a click on empty ground must not dismiss both hide/restore tips.
-            if self.main_ui_visible and not self.ui_open and self.scene_ui.click(event.x, event.y):
+            key = self.display_request.data.get('nodekey', '')
+            rect = self.scene_ui.hits.get(key)
+            if self.main_ui_visible and not self.ui_open and rect and rect[0] <= event.x <= rect[2] and rect[1] <= event.y <= rect[3]:
+                self.scene_ui.action(key)
                 self.advance_button_tip()
             return
         if not self.runtime.running and not self.ui_open and self.main_ui_visible:
@@ -1329,6 +1383,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         else:
             battle = make_npc_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
         battle.select_initial_player(self.state.active_pet)
+        if battle.enemy_active:
+            self.state.record_seen_pet(battle.enemy_active.pet.species)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
         battle.source_id = str(npcid)
         self.battle_tips = []
@@ -1409,7 +1465,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                                 petid=int(battle.caught_pet.species if battle.caught_pet else battle.enemy_active.pet.species))
         for unit in battle.player:
             unit.pet.hp, unit.pet.energy = unit.hp, unit.energy
+            if unit.pet.trial_id and unit.pet.trial_remaining > 0 and (unit.participated or unit is battle.player_active):
+                unit.pet.trial_remaining -= 1
         self.state.active_pet = min(battle.player_index, max(0, len(self.state.pets)-1))
+        if self.state.pets and self.state.pets[self.state.active_pet].trial_remaining == 0:
+            self.state.active_pet = next((i for i, p in enumerate(self.state.pets) if p.hp > 0 and p.trial_remaining != 0), 0)
         self.runtime.battle_result = 'win' if result in ('win', 'caught') else (
             'escape' if result == 'escape' else 'lose')
         self.battle, self.battle_ui = None, None
@@ -1495,14 +1555,25 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     if request.kind == 'aside':
                         self.dialogue = '旁白:'+self.dialogue
                     return
+                if request.kind == 'reward':
+                    self.show_reward('获得奖励', request.data['items'])
+                    return
                 if request.kind in ['button', 'tapscreen']:
                     text = request.data.get('text') or '\n'.join(request.data.get('texts', []))
                     if self.battle:
-                        if text:
-                            self.battle.messages.append(text.strip())
-                            self.battle_tips.append(text.strip())
                         self.runtime.resume()
                         continue
+                    if request.kind == 'button':
+                        key = request.data.get('nodekey', '')
+                        # mainUp now performs task navigation, not the old shop
+                        # list; never show the obsolete shop tutorial there.
+                        self.scene_ui.render(Image.new('RGBA', (self.WIDTH, self.HEIGHT)))
+                        if key == 'mainUp_Button' or not self.main_ui_visible or getattr(self, 'screen_black', False) or key not in self.scene_ui.hits:
+                            self.runtime.resume()
+                            continue
+                        self.display_request = request
+                        self.dialogue = None
+                        return
                     self.display_request = request
                     self.dialogue = text or '点击继续'
                     return
@@ -1559,6 +1630,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 return
 
     def battle_action_complete(self):
+        if self.battle and self.battle.enemy_active:
+            self.state.record_seen_pet(self.battle.enemy_active.pet.species)
         if self.pending_wait and self.runtime.pending is self.pending_wait:
             self.pending_wait = None
             self.runtime.resume()
@@ -1593,8 +1666,24 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
 
     def tick(self):
         now = time.monotonic()
+        if hasattr(self, 'audio'):
+            for kind, flag in [('music', 'music_enabled'), ('effect', 'effects_enabled')]:
+                enabled = self.state.presentation.get(kind+'_enabled', True)
+                if getattr(self.audio, flag) != enabled:
+                    self.audio.set_enabled(kind, enabled)
+            result = self.battle.result if self.battle and not self.battle_ui.anim else None
+            result_music = {'win': '401', 'lose': '402', 'caught': '403'}.get(result)
+            self.audio.music(result_music or (self.battle.bgm if self.battle and str(self.battle.bgm) != '0' else
+                                 '301' if self.battle else self.map.info.get('bgmId', '0')), loop=not bool(result_music))
         elapsed = max(0.0, now-self._play_clock)
         self._play_clock = now
+        if not self.booting and self.ui_open and self.ui_window and self.ui_window.winfo_exists() and not self.battle:
+            # The modal owns a captured scene and its own animation timer.
+            # Do not redraw the entire map behind that immutable scene.
+            self.last_time = now
+            self.state.activities['play_seconds'] = float(self.state.activities.get('play_seconds', 0))+elapsed
+            self.root.after(33, self.tick)
+            return
         if not self.booting:
             self.scene_animation_time += elapsed
             self.player_walking = False
@@ -1610,6 +1699,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
             self.battle_ui.advance(seconds=elapsed)
+        if getattr(self, 'treasure_search_fx', None):
+            self.treasure_search_fx['age'] += elapsed
+            if self.treasure_search_fx['age'] >= 2:
+                self.treasure_search_fx = None
         if getattr(self, 'chest_fx', None):
             self.chest_fx['age'] += 1
             if self.chest_fx['age'] >= 26:
@@ -1652,6 +1745,27 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.status.set(self.runtime_error or ('方向键/WASD移动 · 空格/E对话 · F5保存 · F9读取 · G指引'
                                                ' | 原剧情状态机、战斗核心与原版战斗UI已接入' + guide_note))
 
+    def _draw_button_tutorial(self, frame):
+        request = self.display_request
+        if not request or request.kind != 'button':
+            return
+        key = request.data.get('nodekey', '')
+        rect = self.scene_ui.hits.get(key)
+        if not rect:
+            return
+        text = request.data.get('text', '')
+        font_size = 30
+        width = min(700, math.ceil(self.cocos_ui.font('', font_size).getlength(text))+4)
+        height = max(42, math.ceil(self.cocos_ui.font('', font_size).getlength(text)/width)*33)
+        layer = self.cocos_ui.render('TipsUiNode', (self.WIDTH, self.HEIGHT),
+                    text={'tip_Text': text}, sizes={'bg_Image': (width+32, height+20), 'tip_Text': (width, height)},
+                    positions={'Node': (400, 390), 'tip_Text': ((width+32)/2, (height+20)/2)})
+        frame.alpha_composite(layer)
+        marker = self.data.armature('dianji', 'Animation1', int(self.scene_animation_time*60))
+        if marker is not None:
+            origin = marker.info.get('origin', (marker.width/2, marker.height/2))
+            frame.alpha_composite(marker, (round((rect[0]+rect[2])/2-origin[0]), round((rect[1]+rect[3])/2-origin[1])))
+
     def make_frame(self):
         if self.battle and self.battle_ui:
             return self.battle_ui.render()
@@ -1668,12 +1782,17 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if original_dialogue is None:
             self._draw_chest_fx(frame)
             self._draw_obstacle_fx(frame)
+            self._draw_treasure_search(frame)
         if original_dialogue is not None:
-            name, sep, content = original_dialogue.partition(':')
+            name, sep, content = original_dialogue.replace('：', ':', 1).partition(':')
             if not sep:
                 name, content = '', original_dialogue
             is_player = name in ['尼尔', '皮尔']
             portrait = next((r['icon'] for r in self.data.tables['Npc'].values() if r['name'] == name), None)
+            if name == '宠物护士':
+                # The generic pink-haired nurse (village npc9) shares the
+                # recovered pink-haired head portrait used by the shop clerk.
+                portrait = self.data.tables['Npc']['13']['icon']
             if portrait:
                 image = self.data.image('res/UI/HeadIcon/'+portrait).copy()
                 size = (round(image.width*self.WIDTH/800), round(image.height*self.HEIGHT/480))
@@ -1686,6 +1805,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             frame.alpha_composite(overlay)
         else:
             self.draw_guide(frame)
+            self._draw_button_tutorial(frame)
         if time.monotonic() < getattr(self, 'flash_until', 0):
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'), .7)
         if getattr(self, 'task_page', None):
@@ -1756,9 +1876,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             state = GameState.load(self.data.tables, self.save_path)
             self.repair_legacy_obstacle_coordinates(state)
             runtime = EventRuntime(self.data, state)
+            runtime.present_rewards = True
+            TaskProgress(state).update()
             runtime.restore(state.pending_runtime)
             self.close_transient_ui()
             self.state, self.runtime = state, runtime
+            self.runtime.play_sound = self.audio.effect
             self.guide.rebind(state)
             # Loading the map initializes a fresh encounter, consuming RNG.
             # Restore the saved RNG as well as its existing encounter below.
@@ -1791,7 +1914,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.drive()
             return True
         except (ValueError, KeyError, OSError) as error:
-            messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
+            self.game_tip(str(error))
             return False
 
     def repair_legacy_obstacle_coordinates(self, state):
@@ -1896,7 +2019,13 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.task_page = None
         # Loading must not acknowledge an old event through close_ui().
         if self.ui_window and self.ui_window.winfo_exists():
+            job = getattr(self, 'ui_effect_job', None)
+            if job:
+                self.ui_window.after_cancel(job)
             self.ui_window.destroy()
+        self.ui_effect_job = None
+        self.original_page = None
+        self.page_wheel = None
         self.ui_window, self.ui_open = None, False
 
     def treasure_ui(self):
@@ -1935,13 +2064,19 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                              {'parameters': {'uiid': 45}}))
 
     def listing(self, title, content):
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title(title)
         box = tk.Text(win, width=68, height=25, wrap='word', font=('Microsoft YaHei UI', 11))
         box.pack(fill='both', expand=True)
         box.insert('1.0', content)
         box.config(state='disabled')
         return win
+
+    def game_tip(self, text):
+        if self.ui_open and getattr(self, 'original_page', None) is not None:
+            self._page_tip(text, self.original_page.publish)
+        else:
+            self.open_ui(Request('openui', 'message', 0, {'parameters': {'uiid': 51, 'text': text}}))
 
     def show_reward(self, title, items):
         """Open the original GetItemUI for a real reward list."""
@@ -1955,9 +2090,19 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 self.open_ui(Request('openui', 'task-reward', 1, {'parameters': {
                     'uiid': 49, 'items': list(items), 'title': title, 'back_task': True}}))
                 return
-            self.event_issue = title + '：' + '、'.join(
-                f'{self.data.tables["Item"].get(str(key), self.data.tables["Pet"].get(str(key), self.data.tables["Money"].get(str(key), {}))).get("name", key)} × {count}'
-                for key, count in items)
+            saved = {key: getattr(self, key, None) for key in (
+                'ui_base_layer', 'ui_hits', 'ui_buttons', 'ui_rects', 'ui_button_text',
+                'ui_actions', 'ui_render_args', 'original_page', 'page_wheel')}
+            body = getattr(self, 'ui_body', None)
+            packing = body.pack_info() if body is not None and body.winfo_manager() == 'pack' else None
+            if packing:
+                body.pack_forget()
+            def restore_panel():
+                self.__dict__.update(saved)
+                self._paint_hover()
+                if packing:
+                    body.pack(**packing)
+            self.reward_overlay(items, restore_panel, title)
             return
         self.open_ui(Request('openui', 'get-item', 1, {
             'parameters': {'uiid': 49, 'title': title, 'items': list(items)}}))
@@ -1966,7 +2111,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         body.pack_forget()
         back = (lambda: self.open_ui(Request('openui', 'task', 1, {'parameters': {
             'uiid': 44, 'page': 'daily'}}))) if self.ui_parameters.get('back_task') else None
-        self.reward_overlay(self.ui_parameters.get('items', []), back, title=self.ui_parameters.get('title', '获得物品'))
+        self.reward_overlay(self.ui_parameters.get('items', []), back, title=self.ui_parameters.get('title', '获得物品'), underlay=False)
 
     def _legacy_get_item_body(self, body, info):
         parameters = self.ui_parameters
@@ -2049,6 +2194,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.ui_actions['close_Button'] = lambda: self.close_ui('no')
 
     def _tip_body(self, body, info):
+        body.pack_forget()
         text = str(self.ui_parameters.get('text', ''))
         if getattr(self, 'ui_art_label', None) is not None:
             layer = self.cocos_ui.render('TipConfirmUI', (800, 480), {'tip_Text': text})
@@ -2143,26 +2289,26 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.ui_actions['close_Button'] = self.close_ui
 
     def _open_chest_body(self, body, info):
-        key_count = self.state.count('240001')
-        text = f'开启宝箱需要钥匙 ×1（持有 {key_count}）'
-        if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('OpenChestConfirmUI', (800, 480), {
-                'title_Text': '开启宝箱', 'need_BitmapFontLabel': str(key_count)})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        info.set(text)
+        from original_pages import Page
+        body.pack_forget()
+        def paint():
+            row = self.data.tables['ChestItem']['210001']
+            key, count = str(numbers(row['costIds'])[0]), numbers(row['costCounts'])[0]
+            page = Page(self, 'OpenChestConfirmUI', timeline_frame=60,
+                        text={'title_Text': '需要钥匙开启', 'need_BitmapFontLabel': f'x{count}'},
+                        resources={'icon_Sprite': self._item_data(key)[1]}, sizes={'icon_Sprite': (44, 44)},
+                        positions={'title_Text': (0, 50)})
+            page.actions.update({'confirm_Button': confirm, 'cancel_Button': self.close_ui, 'close_Button': self.close_ui})
+            page.publish()
         def confirm():
             try:
                 rewards = self.state.open_chest_item()
             except (ValueError, KeyError) as error:
-                info.set(str(error))
+                self._page_tip(str(error), paint)
                 return
-            self.close_ui()
-            self.show_reward('宝箱获得', rewards)
-        self.ui_actions['confirm_Button'] = confirm
-        self.ui_actions['cancel_Button'] = self.close_ui
-        self.ui_actions['close_Button'] = self.close_ui
+            self.reward_overlay(rewards, self.close_ui, '宝箱获得')
+        paint()
+
 
     def open_free_pet(self, uid, back=47):
         self.open_ui(Request('openui', 'free-pet', 1, {
@@ -2293,71 +2439,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             'parameters': {'uiid': 61, 'uid': uid, 'back': back}}))
 
     def _evolution_body(self, body, info):
-        from game_state import numbers
-        parameters = self.ui_parameters
-        uid = str(parameters.get('uid') or
-                  (self.state.pets[0].uid if self.state.pets else ''))
-        back_uiid = int(parameters.get('back', 47) or 47)
-        pet = next((candidate for candidate in self.state.pets
-                    if str(candidate.uid) == uid), None)
-        if pet is None:
-            info.set('这只宠物不在携带栏。')
-            return
-        tables = self.data.tables
-        pet_name = tables['Pet'][pet.species]['name']
-        evolution = tables['Evolution'].get(str(pet.species))
-        target = tables['Pet'].get(str(evolution['petId'])) if evolution else None
-        if not evolution or not target:
-            info.set(f'{pet_name} 没有可用的原版进化路线。')
-            self.ui_actions['evolution_Button'] = lambda: info.set('没有可用的原版进化路线。')
-            self.ui_actions['close_Button'] = self.close_ui
-            return
-        need_level = int(evolution.get('level', 1) or 1)
-        item_ids = [str(v) for v in numbers(evolution.get('itemIds', ''))]
-        item_counts = [int(v) for v in numbers(evolution.get('itemCounts', ''))]
-        lines = [f'等级 {pet.level} / {need_level}',
-                 f'进化为 {target["name"]}']
-        for item_id, count in zip(item_ids, item_counts):
-            row = tables['Item'].get(item_id, {})
-            have = self.state.count(item_id)
-            lines.append(f'{row.get("name", item_id)} {have} / {count}')
-        if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('EvolutionConditionUI', (800, 480), {
-                'petName_Text': f'{pet_name} → {target["name"]}',
-                'cost_BitmapFontLabel': str(len(item_ids))})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
-        rect = self.ui_hits.get('condition_ListView') or self.ui_rects.get('condition_ListView')
-        if rect:
-            frame.place(x=rect[0], y=rect[1], width=max(150, rect[2]-rect[0]),
-                        height=max(90, rect[3]-rect[1]))
-            frame.lift()
-        else:
-            frame.pack(fill='both', expand=True)
-        box = tk.Listbox(frame, font=('Microsoft YaHei UI', 9), exportselection=False,
-                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
-        box.pack(fill='both', expand=True)
-        for line in lines:
-            box.insert('end', line)
-        info.set(f'{pet_name} → {target["name"]} · ' + ' · '.join(lines))
-        def back():
-            self.close_ui()
-            if back_uiid == 57 and pet in self.state.pets:
-                self.open_pet_property(pet.uid)
-            else:
-                self.pets_ui()
-        def confirm():
-            try:
-                self.state.evolve(pet.uid)
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            back()
-        self.ui_actions['evolution_Button'] = confirm
-        self.ui_actions['close_Button'] = back
-        self.ui_window.bind('<Escape>', lambda _event: back())
+        self._evolution_page(body, info)
+
 
     def open_skill_learn_confirm(self, uid, key, scroll=None, replace=None, back=None):
         self.open_ui(Request('openui', 'skill-learn-confirm', 1, {
@@ -2457,29 +2540,23 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             'parameters': {'uiid': 58, 'uid': uid, 'back': back}}))
 
     def _lucky_pet_body(self, body, info):
-        uid = str(self.ui_parameters.get('uid') or
-                  (self.state.pets[-1].uid if self.state.pets else ''))
+        from original_pages import Page
+        body.pack_forget()
+        uid = str(self.ui_parameters.get('uid', ''))
         back = self.ui_parameters.get('back')
-        pet = next((candidate for candidate in self.state.pets+self.state.bank
-                    if str(candidate.uid) == uid), None)
+        pet = next((p for p in self.state.pets+self.state.bank if p.uid == uid), None)
         if pet is None:
-            info.set('抽宠记录不在携带栏。')
+            self._page_tip('找不到抽宠记录。', self.close_ui)
             return
         stats = pet.stats(self.data.tables)
-        name = self.data.tables['Pet'][pet.species]['name']
-        if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('LuckyDrawPetInfoUI', (800, 480), {
-                'name_Text': name,
-                'arrtLife_BitmapFontLabel': str(stats[0]),
-                'arrtEnergy_BitmapFontLabel': str(stats[1]),
-                'arrtStrength_BitmapFontLabel': str(stats[2]),
-                'arrtDefense_BitmapFontLabel': str(stats[3]),
-                'arrtSpeed_BitmapFontLabel': str(stats[4])})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        info.set(f'抽到 {name} Lv.{pet.level} · 生命 {stats[0]} / 能量 {stats[1]} / '
-                 f'攻击 {stats[2]} / 防御 {stats[3]} / 速度 {stats[4]}')
+        text, visible, resources = self._pet_base_fields(pet)
+        visible['weixin_Button'] = False
+        for name, value in zip(('Life', 'Energy', 'Strength', 'Defense', 'Speed'), stats):
+            text[f'arrt{name}_BitmapFontLabel'] = str(value)
+        page = Page(self, 'LuckyDrawPetInfoUI', text=text, visible=visible,
+                    resources=resources, timeline_frame=60)
+        point = next((r for k, r in page.rects.items() if k.endswith('/petPos_Node')), (400, 300, 400, 300))
+        page.animated_pets.append((pet.species, point, (200, 70, 600, 360), 190))
         def finish():
             self.close_ui()
             if back == 'lottery':
@@ -2488,9 +2565,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     self.open_lucky_pet_info(remaining.pop(0), back='lottery')
                 else:
                     self.lottery_ui(force=True)
-        self.ui_actions['confirm_Button'] = finish
-        self.ui_actions['weixin_Button'] = finish
-        self.ui_actions['close_Button'] = finish
+        page.actions.update({'confirm_Button': finish, 'close_Button': finish})
+        page.publish()
+
 
     def open_pet_property(self, uid):
         self.open_ui(Request('openui', 'pet-property', 1, {
@@ -2784,7 +2861,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.ui_open:
             return
         self.open_ui(Request('openui', 'store', 1,
-                            {'parameters': {'uiid': 1}}))
+                            {'parameters': {'uiid': 63}}))
 
     def recharge_ui(self):
         if self.battle:

@@ -23,7 +23,7 @@ class TaskProgress:
             return self.state.count(identifier)
         if kind == 1:
             pets = [p for p in self.state.pets+self.state.bank
-                    if (identifier == -1 or p.species == str(identifier))
+                    if not p.trial_id and (identifier == -1 or p.species == str(identifier))
                     and (level == -1 or p.level == level)]
             return len({p.species for p in pets}) if unique == 1 else len(pets)
         raise ValueError(f'Original collection kind {kind} is not implemented')
@@ -68,7 +68,13 @@ class TaskProgress:
                     if len(parameters) == width and all(expected == -1 or expected == actual
                                                        for expected, actual in zip(condition, parameters)):
                         counts[index] += 1
-            results = [actual >= target for actual, target in zip(counts, required)]
+            # Event-driven native tasks call setReachCount only after an
+            # actual matching event. A table count of zero is not permission
+            # to complete the task during a passive menu refresh (area task 7
+            # would otherwise enter state 4 and block its state-3 plot trigger).
+            event_driven = condition_type in (1, 3, 5, 6, 7, 8) or condition_type == 4
+            results = [actual >= max(1, target) if event_driven else actual >= target
+                       for actual, target in zip(counts, required)]
             ready = any(results) if int(row.get('conditionAny', 0)) else all(results)
             updated = 4 if ready else 3
             if category == 'main':

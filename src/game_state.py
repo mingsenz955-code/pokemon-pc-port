@@ -48,6 +48,8 @@ class Pet:
     breakthrough: int = 0
     held_item: str = '0'
     quality: int = 1
+    trial_id: str = ''
+    trial_remaining: int = -1
 
     def update_quality(self, tables):
         total = 0.0
@@ -160,6 +162,7 @@ class GameState:
         self.chests = []
         self.removed_obstacles = []
         self.encyclopedia = []
+        self.seen_species = []
         self.budokans = {}
         self.arenas = {}
         self.arena_ranks = {}
@@ -200,6 +203,7 @@ class GameState:
         self.bank = []
         self.active_pet = 0
         self.encyclopedia = []
+        self.seen_species = []
         self.rides, self.ride = [], 0
         self.initialization = int(key)
         self.starter_id = 0
@@ -220,7 +224,15 @@ class GameState:
         self.infinite_highest = 1
         self.infinite_honor = 0
 
+    def record_seen_pet(self, species):
+        species = str(species)
+        if species not in self.tables['Pet']:
+            raise KeyError('原版宠物表中没有这个宠物。')
+        if species not in self.seen_species:
+            self.seen_species.append(species)
+
     def record_pet(self, species):
+        self.record_seen_pet(species)
         if str(species) not in self.encyclopedia:
             self.encyclopedia.append(str(species))
         # Ride.petId connects captured/evolved/purchased pets to their mount.
@@ -239,10 +251,14 @@ class GameState:
         return self.branch_states.get(str(task_id), 2) == int(state)
 
     def count(self, item_id):
+        if str(item_id) == '700003':
+            return self.inventory.get('700001', 0)//100
         return self.inventory.get(str(item_id), 0)
 
     def grant(self, item_id, amount):
         item_id, amount = str(item_id), int(amount)
+        if item_id == '700003':
+            item_id, amount = '700001', amount*100
         if item_id == '0' or amount == 0:
             return
         if amount < 0:
@@ -305,13 +321,80 @@ class GameState:
             self.bank.append(pet)
         else:
             raise ValueError('宠物背包和银行都已满。')
-        self.record_pet(pet.species)
+        if pet.trial_id:
+            self.record_seen_pet(pet.species)
+        else:
+            self.record_pet(pet.species)
+
+    @atomic_mutation
+    def receive_trial_pet(self, key):
+        key = str(key)
+        row = self.tables['TrialPet'].get(key)
+        if not row or int(row['trialCount']) <= 0:
+            raise ValueError('这只宠物没有免费试用次数。')
+        if any(p.trial_id for p in self.pets+self.bank):
+            raise ValueError('已经携带试用宠物，请先归还。')
+        if key in self.activities.get('trial_received', []):
+            raise ValueError('这只宠物的免费试用已经领取过。')
+        if len(self.pets) >= self.pet_capacity():
+            raise ValueError('携带宠物栏已满，请先到银行腾出位置。')
+        pet = self.preset_pet(key, 'TrialPet')
+        pet.trial_id, pet.trial_remaining = key, int(row['trialCount'])
+        self.receive_pet(pet)
+        self.active_pet = len(self.pets)-1
+        self.activities.setdefault('trial_received', []).append(key)
+        return pet
+
+    @atomic_mutation
+    def buy_store(self, key):
+        row = self.tables['Store'][str(key)]
+        if row['shopType'] not in ('1', '2', '7'):
+            raise ValueError('请选择对应玩法中的商品。')
+        if row['costMoneyType'] == '700001' and row['gotItemKid'] == '700001':
+            raise ValueError('金币充值商品已移除，不能用金币购买金币。')
+        purchase = 'Store:'+str(key)
+        if row['repeat'] == '0' and self.shop_purchases.get(purchase, 0):
+            raise ValueError('这件限购商品已经购买过了。')
+        rewards = (json.loads(row['items']) if row['items'] != '[]' else
+                   [[row['gotItemKid'], int(row['gotCount'])]])
+        if not rewards or any(str(k) == '0' or int(n) <= 0 for k, n in rewards):
+            raise ValueError('这个商品没有可领取的奖励。')
+        self.consume([row['costMoneyType']], [int(row['costCount'])])
+        for key_id, count in rewards:
+            self.grant(key_id, count)
+        self.shop_purchases[purchase] = self.shop_purchases.get(purchase, 0)+1
+        spent = self.activities.setdefault('shop_spent', {})
+        money = row['costMoneyType']
+        spent[money] = int(spent.get(money, 0))+int(row['costCount'])
+        from daily_tasks import DailyTasks
+        DailyTasks(self).record('purchase')
+        return [(str(k), int(n)) for k, n in rewards]
+
+    @atomic_mutation
+    def buy_trial_pet(self, key):
+        key = str(key)
+        row = self.tables['TrialPet'][key]
+        store = self.tables['Store'][row['storeId']]
+        current = next((p for p in self.pets if p.trial_id == key), None)
+        if not current and self.pet_free_slots() < 1:
+            raise ValueError('宠物背包和银行都已满。')
+        self.consume([store['costMoneyType']], [int(store['costCount'])])
+        if current:
+            pet = current
+            pet.trial_id, pet.trial_remaining = '', -1
+            self.record_pet(pet.species)
+        else:
+            pet = self.preset_pet(key, 'TrialPet')
+            self.receive_pet(pet)
+        return pet
 
     def move_pet(self, uid, *, to_bank):
         source, destination = (self.pets, self.bank) if to_bank else (self.bank, self.pets)
         pet = next((p for p in source if p.uid == uid), None)
         if pet is None:
             raise ValueError('找不到这只宠物。')
+        if pet.trial_id:
+            raise ValueError('试用宠物请在宠物使者处归还，不能存入银行。')
         if len(destination) >= self.pet_capacity(to_bank):
             raise ValueError('目标宠物格已满。')
         if to_bank and len(source) <= 1:
@@ -390,6 +473,8 @@ class GameState:
             raise ValueError('Cost IDs and counts must have equal lengths')
         costs = {}
         for key, n in zip(ids, amounts):
+            if str(key) == '700003':
+                key, n = '700001', int(n)*100
             if str(key) != '0':
                 if int(n) < 0:
                     raise ValueError('Negative item cost')
@@ -468,9 +553,9 @@ class GameState:
             raise ValueError('当前没有需要回复的宠物。')
         if not any(p is pet for p in self.pets):
             raise ValueError('只能对携带的宠物使用回复道具。')
-        if not needs_recovery(pet):
-            raise ValueError('这只宠物不需要此道具回复。')
         result = recovery(effect, pet.hp, pet.energy, *pet.stats(self.tables)[:2])
+        if (result.hp, result.energy) == (pet.hp, pet.energy):
+            raise ValueError('这只宠物不需要此道具回复。')
         pet.hp, pet.energy = result.hp, result.energy
         self.consume([item_id], [1])
         uses = dict(self.activities.get('heal_items', {}))
@@ -562,12 +647,17 @@ class GameState:
         return pet
 
     @atomic_mutation
-    def evolve(self, uid):
+    def evolve(self, uid, *, use_gold=False):
         pet = next(p for p in self.pets+self.bank if p.uid == uid)
+        if pet.trial_id:
+            raise ValueError('试用宠物不能进化。')
         row = self.tables['Evolution'].get(pet.species)
         if not row or pet.level < int(row['level']):
             raise ValueError('未满足原版进化等级或该宠物不可进化')
-        self.consume(numbers(row['itemIds']), numbers(row['itemCounts']))
+        if use_gold:
+            self.consume(['700001'], [50000])
+        else:
+            self.consume(numbers(row['itemIds']), numbers(row['itemCounts']))
         pet.species = str(row['petId'])
         self.record_pet(pet.species)
         self.activities['evolve_total'] = int(self.activities.get('evolve_total', 0))+1
@@ -719,6 +809,9 @@ class GameState:
             raise ValueError('Unrecognized save fields')
         for key, value in payload['state'].items():
             setattr(result, key, value)
+        old_cash = int(result.inventory.pop('700003', 0))
+        if old_cash:
+            result.inventory['700001'] = result.inventory.get('700001', 0)+old_cash*100
         # 0.2.3 and older saves do not carry the arena rank/title fields.
         for field in ('arena_ranks', 'arena_titles', 'arena_wins', 'arena_streak'):
             if not hasattr(result, field):
@@ -738,6 +831,11 @@ class GameState:
             result.arena_streak.setdefault(key, 0)
         result.pets = [Pet(**p) for p in payload['pets']]
         result.bank = [Pet(**p) for p in payload['bank']]
+        # Older saves never tracked sightings. Recover owned species only;
+        # constructor presets and unseen opponents must not become sightings.
+        result.seen_species = list(dict.fromkeys(str(k) for k in payload['state'].get('seen_species', result.encyclopedia)))
+        if any(k not in tables['Pet'] for k in result.seen_species):
+            raise ValueError('存档的已见图鉴中存在未知宠物。')
         if 'starter_id' not in payload['state'] and result.sprite_id == '10001' and result.pets:
             result.starter_id = result.initialization
             result.initialization = 1

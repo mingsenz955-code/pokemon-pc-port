@@ -18,6 +18,8 @@ class TaskPage:
         self.selected = 0
         self.scroll = 0
         self.reward_scroll = 0
+        self.info_scroll = 0
+        self.info_limit = 0
         self.pressed = None
         self.drag = None
         self.frame = None
@@ -48,16 +50,25 @@ class TaskPage:
 
     def select_page(self, page):
         self.page, self.selected, self.scroll, self.reward_scroll = page, 0, 0, 0
+        self.info_scroll = 0
         self.sync()
         self.frame = None
         if getattr(self.app, 'ui_info', None):
             self.app.ui_info.set(self.info())
 
     def receive(self):
-        if self.page != 'daily' or not self.rows:
-            return  # Original receiveButtonRespond is not a task-guide button.
+        if not self.rows:
+            return
         key, row, status, counts = self.rows[self.selected]
         if status != 4:
+            return
+        if self.page != 'daily':
+            # Main/branch rewards are submitted by the original NPC event.
+            # Expose a useful claim entry without bypassing that conversation.
+            target = self.app.guide.resolver.from_task(self.page, key, row, status)
+            if target:
+                self.app.close_ui('no')
+                self.app.guide.start(target)
             return
         result = DailyTasks(self.app.state).claim(key)
         self.sync()
@@ -74,7 +85,7 @@ class TaskPage:
 
     def render(self):
         self.sync()
-        signature = (self.page, self.selected, self.scroll, self.reward_scroll, self.pressed, repr(self.rows))
+        signature = (self.page, self.selected, self.scroll, self.reward_scroll, self.info_scroll, self.pressed, repr(self.rows))
         if self.frame is not None and signature == self.signature:
             return self.frame
         self.signature = signature
@@ -90,17 +101,30 @@ class TaskPage:
             text['progress_BitmapFontLabel'] = f'{len(self.app.state.completed_branch)}/{len(self.app.state.tables["BranchTask"])}'
         else:
             text['progress_BitmapFontLabel'] = f'{DailyTasks(self.app.state).normal_completed()}/7'
-        visible['receive_Button'] = bool(self.page == 'daily' and self.rows and self.rows[self.selected][2] != 5)
+        visible['receive_Button'] = bool(self.rows and (self.rows[self.selected][2] == 4 or
+                                          self.page == 'daily' and self.rows[self.selected][2] != 5))
         if self.rows:
             key, row, status, counts = self.rows[self.selected]
-            text['info_Text'] = row['des']
             for i, required in enumerate(numbers(row['counts'])[:4], 1):
-                visible[f'progress_{i}_Text'] = True
+                visible[f'progress_{i}_Text'] = False
                 text[f'progress_{i}_Text'] = f'{counts[i-1] if i <= len(counts) else 0}/{required}'
         frame = self.ui.render('TaskUI', (800, 480), text, visible, resources,
                                pressed={self.pressed: True} if self.pressed else {}, rich_text=('info_Text',))
         self.hits = {k: v for k, v in self.ui.buttons.items() if '/' not in k}
         self.rects = dict(self.ui.rects)
+        if self.rows:
+            from pet_pages import text_box
+            from types import SimpleNamespace
+            paper = self.rects['info_bg_Image']
+            description = (paper[0]+64, paper[1]+62, paper[2]-56, paper[1]+142)
+            self.info_limit = text_box(SimpleNamespace(layer=frame), description,
+                     self.rows[self.selected][1]['des'], self.ui.font('', 15), self.info_scroll)
+            self.hits['description'] = description
+            progress = '  '.join(f'{counts[i] if i < len(counts) else 0}/{required}'
+                                for i, required in enumerate(numbers(row['counts'])) if required > 0)
+            text_box(SimpleNamespace(layer=frame),
+                     (description[0], paper[1]+145, description[2], paper[1]+166),
+                     progress, self.ui.font('', 16))
         left, top, right, bottom = [round(v) for v in self.rects[self.page+'Item_ListView']]
         viewport = Image.new('RGBA', (right-left, bottom-top))
         for index, (key, row, status, counts) in enumerate(self.rows):
@@ -131,6 +155,9 @@ class TaskPage:
         button_image = frame.crop(button_rect) if button_rect else None
         rect = self.rects['reward_ListView']
         left, top, right, bottom = [round(v) for v in rect]
+        top += 9
+        # Keep every reward inside the paper, above the claim control.
+        bottom = min(bottom, round(self.rects['reward_Panel'][3]))
         clip = Image.new('RGBA', (right-left, bottom-top))
         self.hits['rewards'] = (left, top, right, bottom)
         for index, (key, count) in enumerate(zip(numbers(row.get('rewardIds', '0')), numbers(row.get('rewardCounts', '0')))):
@@ -145,10 +172,11 @@ class TaskPage:
                     icon = str(path.relative_to(self.app.data.assets)).replace('\\', '/')
                     if icon.startswith('res/'):
                         icon = icon[4:]
-            art = self.ui.render('RewardItemUI', (160, 76),
-                                 {'count_BitmapFontLabel': str(count), 'name_Text': source.get('name', '')},
-                                 resources={'icon_Image': icon} if icon else None)
-            clip.alpha_composite(art, (0, round(index*76-self.reward_scroll)))
+            art = self.ui.render('RewardItemUI', (96, 104), canvas_size=(96, 104),
+                                 text={'count_BitmapFontLabel': str(count), 'name_Text': source.get('name', '')},
+                                 resources={'icon_Image': icon} if icon else None,
+                                 positions={'iconBg_Image': (38, 66), 'count_BitmapFontLabel': (8, 14)})
+            clip.alpha_composite(art, ((index % 2)*96, round((index//2)*110-self.reward_scroll)))
         frame.alpha_composite(clip, (left, top))
         if button_image is not None:
             frame.alpha_composite(button_image, button_rect[:2])
@@ -184,6 +212,7 @@ class TaskPage:
         if key and key.startswith('task_row_'):
             self.selected = int(key.rsplit('_', 1)[1])
             self.reward_scroll = 0
+            self.info_scroll = 0
         elif key and key.startswith('tag_'):
             self.select_page(('main', 'branch', 'daily')[int(key.split('_')[1])-1])
         elif key == 'receive_Button':
@@ -194,10 +223,14 @@ class TaskPage:
     def reward_limit(self):
         if not self.rows:
             return 0
-        return max(0, len([i for i in numbers(self.rows[self.selected][1].get('rewardIds', '0')) if i])*76-151)
+        count = len([i for i in numbers(self.rows[self.selected][1].get('rewardIds', '0')) if i])
+        height = self.hits.get('rewards', (0, 0, 0, 109))
+        return max(0, max(0, ((count+1)//2)-1)*110+104-(height[3]-height[1])) if count else 0
 
     def wheel(self, delta, x=None, y=None):
-        if x is not None and self.hit(x, y) == 'rewards':
+        if x is not None and self.hit(x, y) == 'description':
+            self.info_scroll = max(0, min(self.info_scroll-delta*24, self.info_limit))
+        elif x is not None and self.hit(x, y) == 'rewards':
             self.reward_scroll = max(0, min(self.reward_scroll-delta*44, self.reward_limit()))
         else:
             self.scroll = max(0, min(self.scroll-delta*44, max(0, len(self.rows)*44-319)))

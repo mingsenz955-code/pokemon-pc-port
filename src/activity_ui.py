@@ -2,6 +2,7 @@
 import os
 import time
 import tkinter as tk
+from game_overlay import GameOverlay, GameArtLabel
 from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -566,7 +567,7 @@ class ActivityUI:
             progress.leave(aid)
             self.close_ui('no')
         def rule():
-            win = tk.Toplevel(self.root)
+            win = GameOverlay(self)
             win.title('竞技场规则')
             text = tk.Text(win, width=62, height=18, wrap='word')
             text.pack(fill='both', expand=True)
@@ -612,27 +613,7 @@ class ActivityUI:
         tk.Button(body, text='离开竞技场', command=leave).pack(pady=3)
 
     def _trial_body(self, body, info):
-        rows = list(self.data.tables['TrialPet'].values())
-        body.pack_forget()
-        if not rows:
-            info.set('原版 TrialPet 表为空。')
-            return
-        box = tk.Listbox(body, width=38, height=7)
-        box.pack(fill='x')
-        for row in rows:
-            pet = self.data.tables['Pet'].get(str(row['petId']), {})
-            box.insert('end', f'{pet.get("name", row["petId"])} Lv.{row["level"]} 次数{row["trialCount"]}')
-        box.selection_set(0)
-        def trial():
-            if not box.curselection():
-                return
-            row = rows[box.curselection()[0]]
-            pet = self.data.tables['Pet'][str(row['petId'])]['name']
-            info.set(f'试炼宠物：{pet} Lv.{row["level"]}；技能/天赋按 TrialPet 原表登记。')
-        self.ui_actions['trial_Button'] = trial
-        self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
-        self.ui_actions['close_Button'] = self.close_ui
-        tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
+        self._trial_pet_page(body, info)
 
 
     def _budokan_body(self, body, info, budokan_id=1):
@@ -1119,25 +1100,8 @@ class ActivityUI:
         paint()
 
     def _treasure_buy_body(self, body, info, par1=None):
-        rows = self.data.tables.get('Treasure', {})
-        row = rows.get(str(par1)) or next(iter(rows.values()), None)
-        if not row:
-            info.set('原版 Treasure 表为空。')
-            return
-        clue = TreasureHunt(self.state).clue(row)
-        money = self.data.tables.get('Money', {}).get(clue['money'], {})
-        info.set(f'{clue["text"]}\n需花费 {clue["price"]} {money.get("name", clue["money"])}；'
-                 '购买后获得原版行配置的放大镜。')
-        def buy():
-            try:
-                entry = TreasureHunt(self.state).buy(row['keyId'])
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            self.close_ui('yes')
-        self.ui_actions['buy_Button'] = buy
-        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
-        tk.Button(body, text='购买藏宝图', command=buy).pack(pady=3)
+        body.pack_forget()
+        self._treasure_buy_page(info, par1)
 
     def _treasure_tip_body(self, body, info):
         hunt = TreasureHunt(self.state)
@@ -1193,7 +1157,7 @@ class ActivityUI:
                 info.set('当前没有正在寻找的藏宝图；请先购买藏宝图。')
                 return
             try:
-                hunt.use_magnifier(current['pos_id'])
+                self.search_treasure()
             except (ValueError, KeyError) as error:
                 info.set(str(error))
                 return
@@ -1249,7 +1213,7 @@ class ActivityUI:
         def cancel():
             self.close_ui('no')
         def rule():
-            win = tk.Toplevel(self.root)
+            win = GameOverlay(self)
             win.title('无限竞技场规则')
             text = tk.Text(win, width=62, height=18, wrap='word')
             text.pack(fill='both', expand=True)
@@ -1264,7 +1228,7 @@ class ActivityUI:
         tk.Button(body, text='查看规则', command=rule).pack(pady=3)
 
     def starter_window(self, key):
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title('选择初始伙伴')
         win.protocol('WM_DELETE_WINDOW', self.close_ui)
         self.ui_window, self.ui_open = win, True
@@ -1283,70 +1247,28 @@ class ActivityUI:
         tk.Button(win, text='再考虑一下', command=self.close_ui).pack(pady=8)
 
     def _starter_body(self, body, info):
+        from original_pages import Page
+        body.pack_forget()
         key = str(self.ui_parameters.get('par1', 1))
-        row = self.data.tables['InitPet'].get(key)
-        if not row:
-            info.set(f'InitPet 中不存在 {key}')
-            body.pack_forget()
+        if key not in self.data.tables['InitPet']:
+            self._page_tip('没有这个初始伙伴。', self.close_ui)
             return
-        species = str(row['petId'])
-        pet = self.data.tables['Pet'][species]
-        art = self.data.pet_image(species)
-        kind = {1: 'plant', 2: 'sea', 3: 'fly', 4: 'beast',
-                5: 'metal'}.get(int(pet.get('kind', 1) or 1), 'beast')
-        restraint = {1: 'plant', 2: 'sea', 3: 'fly', 4: 'beast',
-                     5: 'metal'}.get(int(pet.get('restraint', 1) or 1), 'plant')
-        land = {1: 'plain', 2: 'sea', 3: 'sky', 4: 'cave',
-                5: 'relic', 6: 'arena'}.get(int(pet.get('landType', 1) or 1), 'plain')
-        stars = max(0, min(5, int(pet.get('starLevel', 1) or 1)))
-        evolution = max(0, int(pet.get('evolutionCount', 0) or 0))
-        visible = {
-            'buy_Sprite': False,
-            'moneyIcon_Image': False,
-            'cost_BitmapFontLabel': False,
-            'costTip_Text': False,
-            'cantEvolution_Sprite': evolution == 0,
-        }
-        for i in range(1, 6):
-            visible[f'star_Sprite_{i}'] = i <= stars
-            visible[f'star_Sprite_{i}_black'] = i > stars
-        for i in range(1, 7):
-            visible[f'heart_Sprite_{i}'] = i <= 3
-            visible[f'heart_Sprite_{i}_black'] = i > 3
-        layer = self.cocos_ui.render('ChooseFirstPetUI', (800, 480), {
-            'name_Text': pet['name'],
-            'number_BitmapFontLabel': str(pet.get('keyId', species)),
-            'lv_BitmapFontLabel': str(row.get('level', 1)),
-            'evolutionTimes_BitmapFontLabel': str(evolution),
-        }, visible=visible, resources={
-            'kind_Sprite': f'UI/text_kind_{kind}.png',
-            'kindIcon_Sprite': f'UI/pet_kind_{kind}.png',
-            'landType_Sprite': f'UI/text_land_type_{land}.png',
-            'restraint_Sprite': f'UI/text_kind_{restraint}.png',
-        })
-        if art is not None:
-            art = art.copy()
-            art.thumbnail((250, 280), Image.Resampling.LANCZOS)
-            layer.alpha_composite(art, (330 - art.width//2, 250 - art.height//2))
-        self.ui_base_layer = layer
-        self.ui_hits = dict(self.cocos_ui.hits)
-        self.ui_rects = dict(self.cocos_ui.rects)
-        self.ui_buttons = dict(self.cocos_ui.buttons)
-        self.ui_button_text = dict(self.cocos_ui.button_text)
-        if getattr(self, 'ui_art_label', None) is not None:
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        info.set(f'初始伙伴 {pet["name"]} · 等级 {row.get("level", 1)}')
-
+        pet = self.state.preset_pet(key)
+        text, visible, resources = self._pet_base_fields(pet)
+        visible.update({'buy_Sprite': False, 'moneyIcon_Image': False,
+                        'cost_BitmapFontLabel': False, 'costTip_Text': False,
+                        'number_BitmapFontLabel': False, 'lv_BitmapFontLabel': False})
+        page = Page(self, 'ChooseFirstPetUI', text=text, visible=visible, resources=resources,
+                    percentages={'exp_LoadingBar': 0}, timeline_frame=60)
+        self._pet_base_art(page, pet)
         def choose():
             try:
                 self.choose_starter(key)
             except (ValueError, KeyError) as error:
-                info.set(str(error))
-        self.ui_actions['confirm_Button'] = choose
-        self.ui_actions['close_Button'] = self.close_ui
-        body.pack_forget()
+                self._page_tip(str(error), page.publish)
+        page.actions.update({'confirm_Button': choose, 'close_Button': self.close_ui})
+        page.publish()
+        info.set('初始伙伴 '+self.data.tables['Pet'][pet.species]['name'])
 
     def _pet_shop_body(self, body, info, key):
         body.pack_forget()
@@ -1532,6 +1454,7 @@ class ActivityUI:
                 box.selection_set(index)
                 box.see(index)
                 info.set(f'获得 {box.get(index)} · 剩余轮盘券 {self.state.count("220009")}')
+                self.show_reward('轮盘奖励', [(reward['item'], reward['count'])])
             except (ValueError, KeyError) as error:
                 info.set(str(error))
         tk.Button(body, text='开始（1 张轮盘券）', command=spin).pack(side='left', pady=4)
@@ -1553,7 +1476,7 @@ class ActivityUI:
         if self.state.functions.get('8', 0) != 1:
             self.event_issue = '抽宠功能尚未在剧情中开启。'
             return
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title('抽宠')
         win.protocol('WM_DELETE_WINDOW', self.close_ui)
         self.ui_window, self.ui_open = win, True

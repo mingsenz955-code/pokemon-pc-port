@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import tkinter as tk
+from game_overlay import GameOverlay
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -92,18 +93,10 @@ class Preview:
         self.play_music(row)
 
     def play_music(self, row):
-        if sys.platform != 'win32':
-            return
-        import ctypes
-        filenames = [v for v in row.values() if v.endswith(('.mp3', '.wav'))]
-        if not filenames:
-            return
-        p = self.data.assets/'Audio'/filenames[0]
-        if p.exists():
-            api = ctypes.windll.winmm.mciSendStringW
-            api('close pocketmusic', None, 0, None)
-            if api(f'open "{p}" type mpegvideo alias pocketmusic', None, 0, None) == 0:
-                api('play pocketmusic repeat', None, 0, None)
+        if not hasattr(self, 'audio'):
+            from game_audio import GameAudio
+            self.audio = GameAudio(self.data)
+        self.audio.music(row)
 
     def actors(self):
         result = []
@@ -329,6 +322,7 @@ class Preview:
                 max(0, min(focus[1]*self.SCALE-self.HEIGHT/2, self.background.height-self.HEIGHT)))
 
     def tick(self):
+        frame_started = time.perf_counter()
         now = time.monotonic()
         dt, self.last_time = min(.06, now-self.last_time), now
         if self.dialogue is None and not self.steps:
@@ -345,7 +339,10 @@ class Preview:
                 self.move_to(self.x, ny)
                 self.try_exit()
         self.frame = self.make_frame()
-        self.tk_image = ImageTk.PhotoImage(self.frame)
+        if hasattr(self, 'viewport'):
+            self.viewport.present(self.frame)
+        else:
+            self.tk_image = ImageTk.PhotoImage(self.frame)
         if not hasattr(self, 'canvas_image'):
             self.canvas_image = self.canvas.create_image(0, 0, anchor='nw', image=self.tk_image)
         else:
@@ -353,7 +350,8 @@ class Preview:
         self.status.set(self.event_issue or ('WASD/方向键移动 · 空格/E对话 · M地图 · F5保存 · Esc结束脚本'
                                             + (' · F3穿墙核验开启' if self.noclip else '')
                                             + '   |   开发验证版：战斗、养成、任务流程尚未完成'))
-        self.root.after(40, self.tick)
+        delay = max(8, round(1000/getattr(self, 'TARGET_FPS', 25)-(time.perf_counter()-frame_started)*1000))
+        self.root.after(delay, self.tick)
 
     def move_to(self, x, y):
         if self.noclip or not self.map.blocked(x, y):
@@ -364,7 +362,7 @@ class Preview:
         return 320.0
 
     def choose(self, title, rows, callback):
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title(title)
         win.geometry('600x600')
         query = tk.StringVar()
@@ -407,7 +405,7 @@ class Preview:
                 for k, r in sorted(self.data.tables['Pet'].items(), key=lambda x: int(x[0]))]
         def show(k):
             r = self.data.tables['Pet'][k]
-            win = tk.Toplevel(self.root)
+            win = GameOverlay(self)
             win.title(r['name']+' · 原始配置')
             text = tk.Text(win, font=('Microsoft YaHei UI', 11), wrap='word', width=68, height=24)
             text.pack(fill='both', expand=True)

@@ -1,3 +1,33 @@
+## 0.2.64 接续
+
+先读 VERIFICATION_0.2.64.md。用户明确取消真实充值：1 元＝10000 金币，Store 原金额单位分；禁止金币买金币。背景音乐自动随场景播放，不做音乐商品/音乐欣赏页。新增 game_viewport/economy/game_audio 和十项检查。日常奖励不能继承任务边框或确认框 underlay。
+
+## 0.2.63 接续
+
+分支 codex/fix-global-labels-capture-trial 接续 PR18。先读 VERIFICATION_0.2.63.md。不要恢复固定 Text 样本宽度锚点、背包标签旧层级或捕获后的额外结算循环；试用必须使用事件 par1 的 TrialPet。新增 check_global_layout_lottery_capture.py 十项。
+
+## 0.2.62 接续
+
+分支 codex/restore-evolution-login-treasure 基于 PR16 并合入 origin/main/89ff3af 的骑宠修复。先读 VERIFICATION_0.2.62.md。不要恢复半透明矩形 bg_Panel；不要用爱心样图代替放大镜/钥匙；成就星级不等于品质。登录页面动画走 set_layer 单向上传，普通模态页打开时暂停背后重复地图绘制。check_restore_followups.py 七项为本轮入口。
+
+## 2026-11-02 / 0.2.61 单窗口与奖励修复
+
+分支 codex/fix-single-window-reward-flows 接续 PR15/bddcee2。优先读 VERIFICATION_0.2.61.md。TipConfirmUI 的文字是 tip_Text；误写 info_Text 会显示背包满样文。任务 counts=0 的事件类型不能在菜单刷新时自动完成；尤其主线 7 的剧情触发要求状态 3。护士 580504 在斯塔镇银行，101009 是临时教学。奖励图片有透明边缘，内边距必须按可见纸张检查。新增 check_single_window_flows.py；不强杀旧游戏、不改玩家存档文件。
+
+## 2026-11-02 / 0.2.60 试玩阻塞修复
+
+分支 codex/fix-playtest-blockers，接续 PR14/fca759e。用户五张截图暴露：选宠悬停恢复空模板、误用世界Boss结算卡、空指向教程、捕捉成功读取Pet.name后刷新中断、敌方随机发呆及低帧率。当前修复/边界见 VERIFICATION_0.2.60.md。
+
+不要再把普通战斗套入 WorldMonsterBattleResultUI；当前资源包缺 BattleResultInfoUI.csb，完整原版经验/升级/掉落串联仍待补，不能用排行榜代替。目标帧率60不等于稳定60；姿态以30Hz采样但秒数不变。旧剧情按钮若不可见或已换功能必须跳过，正常剧情不可批量删除。
+
+优先回归 check_playtest_blockers.py，必须覆盖投球成功后的实际结果绘制、宿主tick和返回，不能只断言扣道具。旧包/玩家存档保留，不强杀玩家正在运行的游戏。
+
+## 2026-11-02 / 0.2.59 接续
+
+分支 codex/restore-special-battle-effects，基于 origin/main/5be35b5，包含 PR13 及 9f11787 review 修复。新增六类特效计划与多命中时间线、已见图鉴保存、可见区域寻宝与原雷达。优先跑 check_special_battle_effects.py、check_seen_encyclopedia.py、check_treasure_search.py，以及 battle/原页面/道具/存档回归。详见 VERIFICATION_0.2.59.md。
+
+不要将 path2 当成敌方特效；目标读取 Skill.effectpos。寻找宝藏必须传入当前地图和世界坐标可见矩形；搜索失败仍会消耗道具。新 seen_species 存档字段的历史缺失只能从捕获记录恢复。完整剩余项仍在 RESTORATION_REMAINING.md 顶部。
+
 ## PR #13 复审修复 / 0.2.58
 
 继续使用本 PR 的全部 0.2.57 页面改动，新增修复不得回退：传送先调用 `_transport_arrival` 验证原 `<map>01` 出口落点再扣道具；抽宠在点击时重查资格并把同一 `now` 传给 Activities；奖励弹窗通过 `_page_wheel` 保存/恢复实际滚轮回调。所有新增回归在 tools/check_pr13_review.py，使用临时存档，不能拿玩家真实进度做测试。

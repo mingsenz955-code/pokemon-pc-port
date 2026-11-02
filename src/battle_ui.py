@@ -8,9 +8,11 @@ original Spine package rather than from screenshots.
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 import tkinter as tk
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
+from game_overlay import GameOverlay, GameArtLabel
 
 W, H = 960, 576
 FONT = 'C:/Windows/Fonts/msyh.ttc'
@@ -40,7 +42,7 @@ class BattleUI:
         self.battle = battle
         from battle_effects import BattleEffects, EffectAudio
         self.effects = BattleEffects(app.data)
-        self.effect_audio = EffectAudio(app.data)
+        self.effect_audio = getattr(app, 'audio', None) or EffectAudio(app.data)
         self.pet_bones = {}
         self.screen = 'main'
         self.hits = {}
@@ -54,8 +56,12 @@ class BattleUI:
         self.shop_hit = None
         self.item_filter = None
         self.info = ''
-        # Replay action groups in order using authored Spine poses. The hit
-        # phase and duration are still provisional, not native effect callbacks.
+        self._hud_cache = OrderedDict()
+        self._pose_cache = OrderedDict()
+        self._background_cache = {}
+        self.result_page = 'outcome'
+        # Replay authored action callbacks. Unsupported plans retain the
+        # explicitly provisional 26-tick fallback.
         self.anim = None
         self.anim_queue = []
         self.anim_frame = 0
@@ -70,24 +76,26 @@ class BattleUI:
 
     # -- animation -----------------------------------------------------------
     def advance(self, steps=1, *, seconds=None):
-        # Keep the existing provisional action phases, but advance them in
-        # elapsed time rather than one unit per potentially slow render.
+        # Use elapsed time so slow renders still cross every authored callback.
         steps = max(0.0, float(steps) if seconds is None else float(seconds)*25)
         self.anim_idle += steps
         remaining = steps
         while self.anim and remaining > 0:
-            before = self.anim['age']
             amount = min(remaining, self.anim['duration']-self.anim['age'])
             self.anim['age'] += amount
             remaining -= amount
             plan = self.anim.get('effect')
             if plan and hasattr(self.app, 'root'):
-                for when, name in plan['events']:
-                    if before <= when < self.anim['age'] and name == 'sound':
+                played = self.anim.setdefault('played_events', set())
+                for index, (when, name) in enumerate(plan['events']):
+                    if self.anim['age'] >= when and index not in played and name == 'sound':
                         self.effect_audio.play(plan['sound'])
-            if self.anim['age'] >= self.anim.get('hit_at', self.anim['duration']/2):
-                for event in self.anim.get('damages', []):
-                    if event.get('uid'):
+                        played.add(index)
+            for event in self.anim.get('damages', []):
+                if not event.get('presented') and self.anim['age'] >= event['when']:
+                    event['presented'] = True
+                    self.anim['impact'] = event
+                    if event.get('uid') and 'hp' in event:
                         self.visual_hp[(event['side'], event['uid'])] = event['hp']
             if self.anim['age'] >= self.anim['duration']:
                 self.anim = self.anim_queue.pop(0) if self.anim_queue else None
@@ -123,9 +131,22 @@ class BattleUI:
         current = None
         for event in fresh:
             kind = event.get('type')
-            if kind in ('attack', 'skill'):
+            if kind == 'catch_attempt':
+                success = any(e.get('type') == 'caught' for e in fresh)
+                # PetController::executeAction 0x2d32c6/0x2d330c maps
+                # catchsuccess -> Animation1, catchfailed -> Animation7.
+                name = 'Animation1' if success else 'Animation7'
+                frames = 20 if success else 210
+                current = {'side': 'enemy', 'target': 'enemy', 'kind': 'capture',
+                           'source_uid': self.battle.enemy_active.pet.uid,
+                           'amount': 0, 'crit': False, 'age': 0,
+                           'duration': frames*25/60, 'damages': [],
+                           'capture_clip': name, 'capture_success': success}
+                self.anim_queue.append(current)
+            elif kind in ('attack', 'skill'):
                 current = {'side': event.get('side', 'player'), 'target': '', 'kind': kind,
                            'source_uid': event.get('uid'), 'amount': 0, 'crit': False,
+                           'idle': event.get('skill_id') == '300071',
                            'age': 0, 'duration': 26, 'damages': []}
                 plan = self.effects.plan(event.get('skill_id', '300056'), current['side'])
                 if plan:
@@ -133,7 +154,7 @@ class BattleUI:
                     current['duration'] = plan['duration']
                     current['hit_at'] = plan['hit'] if plan['hit'] is not None else plan['duration']
                 self.anim_queue.append(current)
-            elif kind == 'damage':
+            elif kind in ('damage', 'heal'):
                 if current is None:
                     current = {'side': '', 'target': event['side'], 'kind': 'damage',
                                'amount': 0, 'crit': False, 'age': 0, 'duration': 26, 'damages': []}
@@ -142,7 +163,10 @@ class BattleUI:
                 current['target_uid'] = event.get('uid')
                 current['amount'] += int(event.get('amount', 0))
                 current['crit'] |= bool(event.get('crit'))
-                current['damages'].append(event)
+                hits = current.get('effect', {}).get('hits', ())
+                when = (hits[min(int(event.get('hit_index', 0)), len(hits)-1)] if hits else
+                        current.get('hit_at', current['duration']/2))
+                current['damages'].append({**event, 'when': when})
         if self.anim is None and self.anim_queue:
             self.anim = self.anim_queue.pop(0)
         self._signature = None
@@ -170,6 +194,16 @@ class BattleUI:
             return None
         petrow = self.app.data.tables['Pet'][active.pet.species]
         shown_hp = self.display_hp.get(('enemy' if enemy else 'player', active.pet.uid), active.hp)
+        cache_key = (enemy, active.pet.uid, active.pet.level, active.name, active.max_hp,
+                     active.max_energy, shown_hp, active.energy)
+        cached = self._hud_cache.get(cache_key)
+        if cached is not None:
+            layer, targets, rects, shop = cached
+            self.target_hits.update(targets)
+            self._hud_rects[side] = rects
+            self.shop_hit = shop
+            self._hud_cache.move_to_end(cache_key)
+            return layer
         text = {
             f'{side}_name_Text': active.name,
             'lv_BitmapFontLabel': str(active.pet.level),
@@ -195,6 +229,10 @@ class BattleUI:
         self._hud_rects[side] = {
             key: value for key, value in self.app.cocos_ui.rects.items()
             if key.endswith('/hp_LoadingBar') or key.endswith('/energy_LoadingBar')}
+        targets = dict(self.target_hits)
+        self._hud_cache[cache_key] = (layer, targets, self._hud_rects[side], self.shop_hit)
+        if len(self._hud_cache) > 8:
+            self._hud_cache.popitem(last=False)
         return layer
 
     def _bar(self, draw, rect, ratio, color):
@@ -237,8 +275,8 @@ class BattleUI:
 
     # -- frame ---------------------------------------------------------------
     def render(self):
-        signature = (self.screen, self.page, self.ball_page, self.notice, self.info,
-                     int(self.anim_idle*12/25),
+        signature = (self.screen, self.page, self.ball_page, self.notice, self.info, self.result_page, getattr(self, 'result_index', 0),
+                     int(self.anim_idle*30/25),
                      int(self.anim['age']*60/25) if self.anim else -1,
                      self.item_filter, repr(self.selected), self.battle.result,
                      self.battle.player_index, self.battle.enemy_index,
@@ -260,21 +298,28 @@ class BattleUI:
                 continue
         if background is None:
             background = getattr(self.app, 'background', None)
-        frame.alpha_composite(cover(background, (W, H)))
+        if land not in self._background_cache:
+            self._background_cache[land] = cover(background, (W, H))
+        frame.alpha_composite(self._background_cache[land])
         source_offset, target_offset, flash = self._animation_offsets()
         if self.anim:
             enemy_offset = source_offset if self.anim['side'] == 'enemy' else target_offset
             player_offset = source_offset if self.anim['side'] == 'player' else target_offset
         else:
             enemy_offset, player_offset = (0, 0), (0, 0)
-        self._draw_pet(frame, self.presentation_unit(True),
+        pets_layer = Image.new('RGBA', frame.size)
+        self._draw_pet(pets_layer, self.presentation_unit(True),
                        tuple(round(v)+d for v, d in zip(self.pet_positions['enemy'], enemy_offset)),
                        235, True, flash if self.anim and self.anim['target'] == 'enemy' else 0)
-        self._draw_pet(frame, self.presentation_unit(False),
+        self._draw_pet(pets_layer, self.presentation_unit(False),
                        tuple(round(v)+d for v, d in zip(self.pet_positions['player'], player_offset)),
                        250, False, flash if self.anim and self.anim['target'] == 'player' else 0)
+        self.effects.draw(frame, self, rear=True)
+        frame.alpha_composite(pets_layer)
         self.effects.draw(frame, self)
-        hide_hud = bool(self.anim and self.anim.get('effect', {}).get('hide_ui'))
+        if self.anim and self.anim['kind'] == 'capture':
+            self._draw_capture(frame)
+        hide_hud = bool(self.battle.result and not self.anim) or bool(self.anim and self.anim.get('effect', {}).get('hide_ui'))
         for layer in (() if hide_hud else (self._hud_layer(True), self._hud_layer(False))):
             if layer:
                 frame.alpha_composite(layer)
@@ -308,9 +353,6 @@ class BattleUI:
         if self.notice:
             draw.rectangle((40, H-150, W-40, H-118), fill=(0, 0, 0, 190))
             self._label(draw, (W//2, H-134), self.notice, 17, anchor='mm')
-        if getattr(self.app, 'battle_tips', None):
-            draw.rectangle((40, 82, W-40, 124), fill=(0, 0, 0, 185))
-            self._label(draw, (W//2, 103), self.app.battle_tips[-1], 18, anchor='mm')
         if self.info:
             layer, _, _ = self._crop_layout('SkillInfoNode', {'info_Text': self.info},
                                             offset=(W*.35, H*.35))
@@ -322,19 +364,39 @@ class BattleUI:
     def _draw_pet(self, frame, unit, center, height, enemy=False, flash=0.0):
         if not unit:
             return
+        if self.battle.result and not self.anim and not unit.alive:
+            return
+        if enemy and self.anim and self.anim['kind'] == 'capture':
+            fi = self.anim['age']*60/25
+            if self.anim['capture_success'] or 75 <= fi < 190:
+                return
         setup = self.app.data.pet_image(unit.pet.species)
         if setup is None:
             return
         clip, age, loop = 'stand', self.anim_idle, True
         side = 'enemy' if enemy else 'player'
-        if self.anim and self.anim['side'] == side:
+        if self.anim and self.anim['kind'] in ('attack', 'skill') and self.anim['side'] == side and not self.anim.get('idle'):
             clip, age, loop = 'attack', self.anim['age'], False
-        elif self.anim and self.anim['target'] == side and self.anim['age'] >= self.anim.get('hit_at', self.anim['duration']/2):
-            clip, age, loop = 'underattack', self.anim['age']-self.anim.get('hit_at', self.anim['duration']/2), False
-        image = self.app.data.pet_frame(unit.pet.species, clip, int(age*12/25), loop)
+        elif self.anim and self.anim.get('impact', {}).get('side') == side and self.anim['impact']['type'] == 'damage':
+            clip, age, loop = 'underattack', self.anim['age']-self.anim['impact']['when'], False
+        fps = 30
+        pose_frame = int(age*fps/25)
+        duration = self.app.data.pet_clip_duration(unit.pet.species, clip)
+        if duration > 0:
+            pose_frame = pose_frame % max(1, math.ceil(duration*fps)) if loop else min(pose_frame, math.ceil(duration*fps))
+        pose_key = (unit.pet.species, clip, pose_frame, loop, height, enemy)
+        cached = self._pose_cache.get(pose_key) if not flash else None
+        if cached is not None:
+            image, origin, points = cached
+            self.pet_bones[side] = {key: (center[0]+p[0], center[1]+p[1]) for key, p in points.items()}
+            frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
+            self._pose_cache.move_to_end(pose_key)
+            return
+        limit = max(300, min(550, round(550*height/setup.height)))
+        image = self.app.data.pet_frame(unit.pet.species, clip, pose_frame, loop, fps=fps, limit=limit)
         if image is None:
             image = setup
-        ratio = height/max(1, setup.height)
+        ratio = height/max(1, setup.height)*setup.info.get('pixels_per_unit', 1)/image.info.get('pixels_per_unit', 1)
         self.pet_bones[side] = {key: (center[0]+point[0]*ratio*(-1 if not enemy else 1),
                                       center[1]+point[1]*ratio)
                                 for key, point in image.info.get('bone_points', {}).items()}
@@ -344,27 +406,49 @@ class BattleUI:
         if not enemy:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
             origin = (image.width-origin[0], origin[1])
+        points = {key: (p[0]-center[0], p[1]-center[1]) for key, p in self.pet_bones[side].items()}
+        self._pose_cache[pose_key] = (image, origin, points)
+        if len(self._pose_cache) > 64:
+            self._pose_cache.popitem(last=False)
         if flash:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
             image = Image.blend(image, overlay, min(.55, .55*flash))
         frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
 
-    def _draw_damage(self, draw):
-        if not self.anim or self.anim['amount'] <= 0:
+    def _draw_capture(self, frame):
+        art = self.app.data.armature('kaichong', self.anim['capture_clip'],
+                                     int(self.anim['age']*60/25))
+        if art is None:
             return
-        half = self.anim.get('hit_at', self.anim['duration']/2)
+        origin = art.info.get('origin', (art.width/2, art.height))
+        # The enemy controller mirrors the authored armature; its flight
+        # begins on our side. Preserve the authored moving origin.
+        scale = W/800
+        art = art.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        origin = (art.width-origin[0], origin[1])
+        art = art.resize((max(1, round(art.width*scale)), max(1, round(art.height*scale))), Image.Resampling.LANCZOS)
+        point = self.pet_positions['enemy']
+        frame.alpha_composite(art, (round(point[0]-origin[0]*scale), round(point[1]-origin[1]*scale)))
+
+    def _draw_damage(self, draw):
+        impact = self.anim.get('impact') if self.anim else None
+        if not impact or int(impact.get('amount', 0)) <= 0:
+            return
+        half = impact['when']
         if self.anim['age'] < half:
             return
         phase = min(1.0, (self.anim['age']-half)/max(1, half))
-        side = self.anim['target']
+        side = impact['side']
         x = round(self.pet_positions[side][0])
         y = round(self.pet_positions[side][1])-260
         y -= round(34*phase)
-        text = f'-{self.anim["amount"]}'
-        if self.anim['crit']:
+        healing = impact['type'] == 'heal'
+        text = ('+' if healing else '-')+str(impact['amount'])
+        if impact.get('crit'):
             text += ' 暴击!'
-        self._label(draw, (x, y), text, 28 if self.anim['crit'] else 24,
-                    (255, 236, 120, 255) if self.anim['crit'] else (255, 92, 72, 255), 'mm')
+        self._label(draw, (x, y), text, 28 if impact.get('crit') else 24,
+                    (112, 245, 138, 255) if healing else
+                    (255, 236, 120, 255) if impact.get('crit') else (255, 92, 72, 255), 'mm')
 
     def _draw_bars(self, draw):
         for side, rects in self._hud_rects.items():
@@ -556,42 +640,53 @@ class BattleUI:
             draw.rounded_rectangle(rect, 8, fill=(70, 92, 66, 240))
             self._label(draw, ((rect[0]+rect[2])//2, (rect[1]+rect[3])//2), label, 19, anchor='mm')
 
+    def _result_lines(self):
+        lines = [f'{name} 获得 {gained} 点经验。' for name, gained, _levels in self.battle.exp_gained]
+        lines += [f'获得 {self._reward_name(item)} ×{amount}' for item, amount in self.battle.drops]
+        if self.battle.caught_pet:
+            name = self.app.data.tables['Pet'][self.battle.caught_pet.species]['name']
+            lines.insert(0, f'捕捉到了 {name}！')
+        return lines
+
     def _draw_result(self, frame, draw):
+        # WorldMonsterBattleResultUI is a world-boss ranking page, not the
+        # normal battle settlement. Use the recovered outcome/calculation UI.
         result = self.battle.result
-        won = result in ('win', 'caught')
-        total_exp = sum(int(entry[1]) for entry in self.battle.exp_gained)
-        pet_name = (self.battle.exp_gained[0][0] if self.battle.exp_gained else
-                    (self.battle.player_active.name if self.battle.player_active else ''))
-        if result == 'win':
-            tip = f'获得 {total_exp} 点经验'
-        elif result == 'caught':
-            tip = '捕捉成功'
-        elif result == 'escape':
-            tip = '成功逃跑'
+        if self.result_page == 'outcome':
+            if result == 'caught' and self.battle.caught_pet:
+                pet = self.battle.caught_pet
+                stats = pet.stats(self.app.data.tables)
+                text = {'name_Text': self.app.data.tables['Pet'][pet.species]['name'],
+                        'lv_BitmapFontLabel': str(pet.level)}
+                for name, value in zip(('Life', 'Energy', 'Strength', 'Defense', 'Speed'), stats):
+                    text['arrt'+name+'_BitmapFontLabel'] = str(value)
+                rarity = int(self.app.data.tables['Pet'][pet.species]['starLevel'])
+                layer = self.app.cocos_ui.render('PetCatchedEffectUI', (W, H), text,
+                    visible={f'star_Sprite_{i}': i <= rarity for i in range(1, 6)}, timeline_frame=60)
+                art = self.app.data.pet_image(pet.species)
+                if art is not None:
+                    art = art.copy()
+                    art.thumbnail((250, 250), Image.Resampling.LANCZOS)
+                    layer.alpha_composite(art, (round(W/2-art.width/2), round(H*.53-art.height)))
+            else:
+                layer = self.app.cocos_ui.render('ChallengeResultUI', (W, H),
+                    visible={'success_Panel': result == 'win', 'fail_Panel': result == 'lose',
+                             'rank_Panel': False, 'rankUp_Sprite': False, 'cool_Sprite': False},
+                    resources={'success_Sprite': 'UI/RankChallenge/rankChallenge_shengli.png'}, native_resources=('success_Sprite',),
+                    positions={'success_Sprite': (0, 0), 'fail_Sprite': (0, 0)}, timeline_frame=60)
+            frame.alpha_composite(layer)
         else:
-            tip = '战斗失败'
-        # The original result layer owns the title, win/lose plate, pet name,
-        # score and confirm button; do not draw a host-made dialog over it.
-        layer = self.app.cocos_ui.render(
-            'WorldMonsterBattleResultUI', (W, H),
-            {'name_Text': pet_name, 'score_BitmapFontLabel': str(self.battle.damage_dealt),
-             'successTip_Text': tip, 'reward_ListView': ''},
-            visible={'title_win_Image': won, 'title_lose_Image': result == 'lose'})
-        frame.alpha_composite(layer)
-        draw = ImageDraw.Draw(frame, 'RGBA')
-        rect = self.app.cocos_ui.rects.get('reward_ListView')
-        if rect:
-            lines = [f'{name} +{gained} 经验' for name, gained, _levels in self.battle.exp_gained]
-            lines += [f'获得 {self._reward_name(item)} × {amount}'
-                      for item, amount in self.battle.drops]
-            if self.battle.caught_pet:
-                lines.append(f'捕获 {self.battle.caught_pet.name}')
-            for index, line in enumerate(lines[:6]):
-                self._label(draw, (rect[0]+8, rect[1]+8+index*15), line, 13,
-                            (70, 58, 42, 255), 'la')
-        hit = self.app.cocos_ui.rects.get('confirm_Button')
-        if hit:
-            self.hits['result_continue'] = tuple(round(v) for v in hit)
+            lines = self._result_lines()
+            index = getattr(self, 'result_index', 0)
+            text = lines[index] if index < len(lines) else '战斗结束。'
+            layer = self.app.cocos_ui.render('BattleCalculationUI', (W, H),
+                       text={'chat_Text': text}, visible={'head_Sprite': False},
+                       positions={'chat_Text': (234, 64)}, sizes={'chat_Text': (340, 84)}, timeline_frame=60)
+            frame.alpha_composite(layer)
+        # The original calculation layer advances on a screen tap.
+        self.hits['result_continue'] = (0, 0, W, H)
+        if result == 'caught':
+            self.hits['result_continue'] = tuple(self.app.cocos_ui.buttons.get('confirm_Button', (W-150, H-85, W, H)))
 
     def _reward_name(self, item):
         row = (self.app.data.tables['Item'].get(str(item)) or
@@ -612,7 +707,17 @@ class BattleUI:
             return 'refresh'
         if self.battle.result:
             if self._inside(self.hits.get('result_continue'), x, y):
-                return 'finish'
+                if self.battle.result == 'caught':
+                    return 'finish'  # Native captured-pet confirmation closes this result.
+                lines = self._result_lines()
+                if self.result_page == 'outcome' and lines:
+                    self.result_page, self.result_index = 'calculation', 0
+                elif self.result_page == 'calculation' and getattr(self, 'result_index', 0)+1 < len(lines):
+                    self.result_index += 1
+                else:
+                    return 'finish'
+                self.frame = None
+                return 'refresh'
             return None
         for key, rect in sorted(self.hits.items(), key=lambda pair:
                                 (pair[1][2]-pair[1][0])*(pair[1][3]-pair[1][1])):
@@ -692,6 +797,10 @@ class BattleUI:
                     self.notice = '该道具数量不足。'
                     self.screen = 'main'
                     return 'refresh'
+                if str(item) in ('220004', '220005', '220006') and self.app.state.pet_free_slots() <= 0:
+                    self.notice = '宠物携带栏和银行都已满，请先腾出位置。'
+                    self.screen = 'main'
+                    return 'refresh'
                 events = b.choose_item(item)
                 if any(event['type'] == 'catch_attempt' or
                        (event['type'] == 'item_used' and event.get('side') == 'player')
@@ -718,7 +827,7 @@ class BattleUI:
                 return
             except tk.TclError:
                 self.shop_window = None
-        self.shop_window = tk.Toplevel(self.app.root)
+        self.shop_window = GameOverlay(self.app)
         win = self.shop_window
         win.title('战斗商店 · 原版 BattleShopUI')
         win.transient(self.app.root)
@@ -726,7 +835,7 @@ class BattleUI:
         try:
             layer = self.app.cocos_ui.render('BattleShopUI', (800, 480), {})
             photo = ImageTk.PhotoImage(layer)
-            art = tk.Label(win, image=photo, bg='#101418')
+            art = GameArtLabel(win, image=photo, bg='#101418', borderwidth=0)
             art.image = photo
             art.pack()
         except (FileNotFoundError, ValueError, KeyError, OSError):

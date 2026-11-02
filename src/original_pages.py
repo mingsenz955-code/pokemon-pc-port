@@ -28,6 +28,7 @@ class Page:
         self.app = app
         self.specs = []
         self.particles = []
+        self.animated_pets = []
         self.hits, self.buttons, self.rects, self.actions = {}, {}, {}, {}
         self.layer = self.add(name, (0, 0), **args)
 
@@ -72,7 +73,7 @@ class Page:
             self.hits[key], self.actions[key] = rect, callback
 
     def feedback(self, active):
-        result = self.layer.copy()
+        result = getattr(self, 'display_frame', self.layer).copy()
         if not active or active not in self.buttons:
             return result
         for name, size, args, at, prefix, clip in reversed(self.specs):
@@ -92,7 +93,9 @@ class Page:
     def publish(self):
         app = self.app
         app.original_page = self
-        app.ui_base_layer = self.layer
+        self.effect_start = time.monotonic()
+        app.ui_base_layer = self.pet_frame(self.layer.copy(), 0)
+        self.display_frame = app.ui_base_layer
         app.ui_hits, app.ui_buttons, app.ui_rects = self.hits, self.buttons, self.rects
         # Public short rects support existing host callers/tests, while callbacks
         # and hit testing retain unique full paths for each repeated card.
@@ -102,65 +105,109 @@ class Page:
         app.ui_actions = self.actions
         label = getattr(app, 'ui_art_label', None)
         if label is not None and label.winfo_exists():
-            photo = ImageTk.PhotoImage(self.layer)
-            label.configure(image=photo)
-            label.image = photo
-        if self.particles and getattr(app, 'ui_window', None) is not None:
+            label.set_layer(app.ui_base_layer)
+        if (self.particles or self.animated_pets) and getattr(app, 'ui_window', None) is not None:
             job = getattr(app, 'ui_effect_job', None)
             if job:
                 app.ui_window.after_cancel(job)
             self.effect_start = time.monotonic()
             app.ui_effect_job = app.ui_window.after(40, self.animate)
 
+    def pet_frame(self, frame, elapsed):
+        for species, point, area, limit in self.animated_pets:
+            duration = self.app.data.pet_clip_duration(species, 'stand')
+            index = int((elapsed % duration if duration else elapsed)*25)
+            art = self.app.data.pet_frame(species, 'stand', index, True, fps=25, limit=max(220, limit))
+            setup = self.app.data.pet_image(species)
+            if art is None or setup is None:
+                continue
+            ratio = min(limit/setup.width, limit/setup.height)*setup.info.get('pixels_per_unit', 1)/art.info.get('pixels_per_unit', 1)
+            origin = art.info.get('origin', (art.width/2, art.height))
+            art = art.resize((max(1, round(art.width*ratio)), max(1, round(art.height*ratio))), Image.Resampling.LANCZOS)
+            layer = Image.new('RGBA', frame.size)
+            layer.alpha_composite(art, (round(point[0]-origin[0]*ratio), round(point[1]-origin[1]*ratio)))
+            x, y, right, bottom = map(round, area)
+            frame.alpha_composite(layer.crop((x, y, right, bottom)), (x, y))
+        return frame
+
     def animate(self):
+        started = time.perf_counter()
         app = self.app
         if getattr(app, 'original_page', None) is not self or not app.ui_window or not app.ui_window.winfo_exists():
             return
         from particles import draw_emitter
-        frame = self.layer.copy()
+        frame = self.pet_frame(self.layer.copy(), time.monotonic()-self.effect_start)
         for resource, position, scale, alpha, clip in self.particles:
             path = app.data.assets/'res'/resource
             if path.exists():
                 draw_emitter(frame, path, position, scale, time.monotonic()-self.effect_start, alpha, clip)
-        photo = ImageTk.PhotoImage(frame)
-        app.ui_art_label.configure(image=photo)
-        app.ui_art_label.image = photo
-        app.ui_effect_job = app.ui_window.after(40, self.animate)
+        self.display_frame = frame
+        app.ui_base_layer = frame
+        app.ui_art_label.set_layer(frame)
+        delay = max(8, round(1000/30-(time.perf_counter()-started)*1000))
+        app.ui_effect_job = app.ui_window.after(delay, self.animate)
 
 
 class OriginalPages(PetPages):
-    def _topup_page(self, body, info):
+    def _choice_page(self, message, yes, no):
+        previous = self.ui_base_layer.copy()
+        page = Page(self, 'SecondConfirmUI', text={'tip_Text': message})
+        # Use the resource's authored text node; no host OS dialog.
+        fields = {k: message for k in page.rects if k.endswith(('/tip_Text', '/info_Text'))}
+        if fields:
+            page = Page(self, 'SecondConfirmUI', text=fields)
+        art = page.layer
+        page.layer = previous
+        page.layer.alpha_composite(art)
+        page.actions.update({'confirm_Button': yes, 'cancel_Button': no, 'close_Button': no})
+        page.publish()
+
+    def _gold_store_page(self, body, info):
         body.pack_forget()
-        rows = sorted((r for r in self.data.tables['ContinuousTopUp'].values() if r['platform'] == '-1'),
-                      key=lambda r: int(r['keyId']))
-        selected, offset = [0], [0]
+        goods = [(k, r) for k, r in sorted(self.data.tables['Store'].items(), key=lambda p: int(p[0]))
+                 if r['platform'] == '0' and r['shopType'] in ('1', '2', '7')
+                 and not (r['costMoneyType'] == '700001' and r['gotItemKid'] == '700001')]
+        offset, selected = [0], [0]
         def paint():
-            row = rows[selected[0]]
-            page = Page(self, 'ContinuousTopUpUI', timeline_frame=60,
-                        text={'days_BitmapFontLabel': '0', 'topUpMoneyCount_BitmapFontLabel': '0',
-                              'info_Text': row['des']})
+            row = goods[selected[0]][1]
+            page = Page(self, 'ShopUI', text={'info_Text': row['des'], **self._money_text()},
+                        resources=self._money_icons(), sizes={'info_Text': (335, 60)})
             area = page.rects['Layer/root_Panel/goods_ListView']
-            for i, r in enumerate(rows):
-                x, y = round(area[0]+i*160-offset[0]), round(area[1])
+            for i, (key, row) in enumerate(goods):
+                x, y = round(area[0]+i*163-offset[0]), round(area[1])
                 if x+153 <= area[0] or x >= area[2]:
                     continue
-                name, icon = self._item_data(r['rewardKid'])
-                page.add('ContinuousTopUpItemUI', (x, y), prefix=f'topup_{i}/', clip=area,
-                         text={'day_BitmapFontLabel': str(i+1), 'name_Text': name,
-                               'count_BitmapFontLabel': f'x{r["rewardCount"]}',
-                               'needTopUpCount_Text': f'{int(r["condition"])/100:g}元'},
-                         resources={'icon_Image': icon}, native_resources=('icon_Image',),
-                         visible={'selected_Image': i == selected[0], 'receive_Image': False,
-                                  'received_Image': False, 'wait_Image': True, 'receive_Particle': False},
-                         actions={'get_Button': lambda: self._page_tip('尚未达到今日领取条件。', paint)})
-                page.hit(f'topup_card_{i}', (x, y, x+153, y+240), lambda v=i: choose(v), area)
+                money = self.data.tables['Money'][row['costMoneyType']]
+                page.add('ShopGoodsUI', (x, y), prefix=f'gold_store_{i}/', clip=area,
+                    sizes={'cost_BitmapFontLabel': (64, 22)},
+                    text={'name_Text': row['name'], 'cost_BitmapFontLabel': row['costCount'],
+                          'count_BitmapFontLabel': f"x{row['gotCount']}" if row['gotItemKid'] != '0' else ''},
+                    resources={'icon_Image': 'ItemIcon/'+row['texture'],
+                               'moneyIcon_Image': 'UI/'+money['littleIconTexture']},
+                    native_resources=('icon_Image',),
+                    visible={'selected_Image': i == selected[0], 'free_Image': False,
+                             'yuan_Image': False, 'addSend_Image': False, 'discount_Panel': False,
+                             'timesLimitedSale_Image': False},
+                    actions={'buy_Button': lambda k=key: choose_buy(k)})
+                page.hit(f'gold_store_card_{i}', (x, y, x+153, y+180), lambda n=i: select(n), area)
             page.actions['close_Button'] = self.close_ui
             page.publish()
-        def choose(value):
-            selected[0] = value
+        def select(index):
+            selected[0] = index
             paint()
+        def choose_buy(key):
+            row = self.data.tables['Store'][key]
+            money = self.data.tables['Money'][row['costMoneyType']]['name']
+            def buy():
+                try:
+                    rewards = self.state.buy_store(key)
+                except (ValueError, KeyError) as error:
+                    self._page_tip(str(error), paint)
+                    return
+                self.reward_overlay(rewards, back=paint, underlay=False)
+            self._choice_page(f"购买{row['name']}：{row['costCount']} {money}？", buy, paint)
         def wheel(event):
-            offset[0] = max(0, min(max(0, len(rows)*160-517), offset[0]+(-160 if event.delta > 0 else 160)))
+            offset[0] = max(0, min(max(0, len(goods)*163-517), offset[0]+(-163 if event.delta > 0 else 163)))
             paint()
         self._page_wheel(wheel)
         paint()
@@ -174,10 +221,16 @@ class OriginalPages(PetPages):
                 'surplusTime_BitmapFontLabel': f'{seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02}',
                 'price_1_BitmapFontLabel': '10', 'price_2_BitmapFontLabel': '25',
                 'price_3_BitmapFontLabel': '50', 'price_3_old_BitmapFontLabel': '75',
-                'cost_1_BitmapFontLabel': str(self.state.count('700002')),
-                'cost_2_BitmapFontLabel': str(self.state.count('700002')),
-                'cost_3_BitmapFontLabel': str(self.state.count('700002'))},
-                visible={'weixin_Button': False})
+                'cost_1_BitmapFontLabel': self.data.tables['Store']['70601']['costCount'],
+                'cost_2_BitmapFontLabel': self.data.tables['Store']['70602']['costCount'],
+                'cost_3_BitmapFontLabel': self.data.tables['Store']['70603']['costCount']},
+                visible={'weixin_Button': False, 'yuan_Image': False, 'yuan_2_Image': False,
+                         'price_1_BitmapFontLabel': False, 'price_2_BitmapFontLabel': False,
+                         'draw_3_Button': False, 'draw_3_1_Button': True,
+                         'free_Image': seconds == 0, 'moneyIcon_1_Image': seconds > 0,
+                         'cost_1_BitmapFontLabel': seconds > 0,
+                         'moneyIcon_2_Image': True, 'cost_2_BitmapFontLabel': True,
+                         'moneyIcon_3_Image': True, 'cost_3_BitmapFontLabel': True})
             page.actions.update({'draw_1_Button': lambda: draw(1),
                                  'draw_2_Button': lambda: draw(2), 'draw_3_Button': lambda: draw(3),
                                  'draw_3_1_Button': lambda: draw(3), 'close_Button': self.close_ui})
@@ -208,6 +261,9 @@ class OriginalPages(PetPages):
         from treasure import TreasureHunt
         body.pack_forget()
         hunt = TreasureHunt(self.state)
+        if hunt.active() is None:
+            self._treasure_buy_page(info, par1)
+            return
         def paint():
             current = hunt.active()
             row = self.data.tables['Treasure'].get(str(current['id'])) if current else None
@@ -215,13 +271,20 @@ class OriginalPages(PetPages):
             if current and current.get('revealed'):
                 text += '\n宝藏已经显现，前往线索地点寻找吧。'
             page = Page(self, 'TreasureCheckUI', timeline_frame=60, text={
-                'tip_Text': text, 'costTip_Text': '每次使用消耗一个放大镜', 'haveTip_Text': '持有数量',
-                'have_BitmapFontLabel': str(self.state.count('220007'))})
+                'tip_Text': '', 'costTip_Text': '每次使用消耗一个放大镜',
+                'haveTip_Text': f'持有数量：{self.state.count("220007")}',
+                'have_BitmapFontLabel': str(self.state.count('220007'))},
+                resources={'icon_Image': self._item_data('220007')[1]},
+                visible={'have_BitmapFontLabel': False},
+                sizes={'icon_Image': (52, 52), 'tipBg_Image': (450, 94), 'haveTip_Text': (150, 18)})
+            from pet_pages import text_box
+            box = next(r for k, r in page.rects.items() if k.endswith('/tipBg_Image'))
+            text_box(page, (box[0]+18, box[1]+15, box[2]-18, box[3]-15), text, self.cocos_ui.font('', 16))
             page.actions.update({'use_Button': search, 'giveUp_Button': give_up, 'close_Button': self.close_ui})
             page.publish()
         def search():
             try:
-                hunt.use_magnifier()
+                self.search_treasure()
             except (ValueError, KeyError) as error:
                 self._page_tip(str(error), paint)
                 return
@@ -235,11 +298,33 @@ class OriginalPages(PetPages):
             page.publish()
         def abandon():
             hunt.give_up()
-            paint()
+            self._treasure_buy_page(info)
         paint()
 
-    def reward_overlay(self, items, back=None, title='获得物品'):
-        previous = self.ui_base_layer.copy() if back and self.ui_base_layer is not None else None
+    def _treasure_buy_page(self, info, key=None):
+        from treasure import TreasureHunt
+        rows = self.data.tables['Treasure']
+        # Explicit original UI parameters retain their original destination.
+        key = str(key) if str(key) in rows else min(rows, key=int)
+        row = rows[key]
+        def paint():
+            currency = self.data.tables['Money'][row['moneyType']]['name']
+            page = Page(self, 'TreasureBuyConfirmUI', timeline_frame=60,
+                        text={'costTip_Text': f'需花费{currency}：', 'cost_BitmapFontLabel': 'x'+row['price']})
+            page.actions.update({'buy_Button': buy, 'close_Button': self.close_ui})
+            page.publish()
+        def buy():
+            try:
+                TreasureHunt(self.state).buy(key)
+            except ValueError as error:
+                self._page_tip(str(error), paint)
+                return
+            back = lambda: self._treasure_page(self.ui_body, info)
+            self.reward_overlay([(row['itemId'], int(row['itemCount']))], back, '藏宝图附赠道具')
+        paint()
+
+    def reward_overlay(self, items, back=None, title='获得物品', *, underlay=True):
+        previous = self.ui_base_layer.copy() if underlay and back and self.ui_base_layer is not None else None
         previous_wheel = getattr(self, 'page_wheel', None)
         items = [(str(k), int(n)) for k, n in items if int(n) > 0]
         offset = [0]
@@ -248,20 +333,24 @@ class OriginalPages(PetPages):
             self._page_wheel(previous_wheel)
             (back or self.close_ui)()
         def paint():
-            page = Page(self, 'GetItemUI', timeline_frame=60)
+            page = Page(self, 'GetItemUI', timeline_frame=60, text={'title_Text': ''},
+                        sizes={'bg_Image': (336, 320)},
+                        positions={'item_ListView': (-134.4237, -65), 'confirm_Button': (0, -95)})
             if previous is not None:
                 art = page.layer
                 page.layer = previous.copy()
                 page.layer.alpha_composite(art)
+            ImageDraw.Draw(page.layer).text((400, 117), '恭喜您获得了：', font=self.cocos_ui.font('', 22),
+                                             fill='#693100', anchor='mm')
             area = page.rects['Layer/root_Panel/item_ListView']
             for index, (kid, count) in enumerate(items):
-                x, y = round(area[0]+index*132-offset[0]), round(area[1])
+                x, y = round(area[0]+max(0, (area[2]-area[0]-(len(items)*132-4))/2)+index*132-offset[0]), round(area[1])
                 if x+128 <= area[0] or x >= area[2]:
                     continue
                 name, icon = self._item_data(kid)
                 page.add('GetItemUIItemUI', (x, y), prefix=f'reward_{index}/', clip=area,
                          text={'item_name_Text': name, 'itemCount_BitmapFontLabel': f'x{count}'},
-                         resources={'icon_Image': icon}, sizes={'item_name_Text': (128, 24)},
+                         resources={'icon_Image': icon},
                          native_resources=('icon_Image',))
             page.actions.update({'confirm_Button': done, 'close_Button': done})
             page.publish()
@@ -419,7 +508,7 @@ class OriginalPages(PetPages):
         if self.ui_info is not None:
             self.ui_info.set(message)
         previous = self.ui_base_layer.copy()
-        page = Page(self, 'TipConfirmUI', text={'info_Text': message})
+        page = Page(self, 'TipConfirmUI', text={'tip_Text': message})
         art = page.layer
         page.layer = previous
         page.layer.alpha_composite(art)
@@ -622,9 +711,13 @@ class OriginalPages(PetPages):
             page = Page(self, 'BagUI', text={'info_Text': '', **self._money_text()},
                         resources={**self._money_icons(), **{f'tag_{i}_Button':
                             'UI/tag_selected.png' if i == kind[0] else 'UI/tag_unselected.png' for i in range(1, 6)}},
-                        visible=visibility)
+                        visible=visibility, z_orders={f'tag_{i}_Button': 100 if i == kind[0] else 90 for i in range(1, 6)})
             from pet_pages import text_box
-            description_area[0] = next(r for k, r in page.rects.items() if k.endswith('/info_Text'))
+            # BagUI's root has an authored entrance timeline. Its Text node
+            # bounds can be above the paper; use the actual paper interior.
+            paper = next(r for k, r in page.rects.items() if k.endswith('/info_bg_Image'))
+            # The recovered paper texture includes a transparent/shadow border.
+            description_area[0] = (paper[0]+52, paper[1]+58, paper[2]-52, paper[3]-52)
             description_limit[0] = text_box(page, description_area[0], description,
                                             self.cocos_ui.font('', 18), description_scroll[0])
             area = page.rects['Layer/root_Panel/item_ListView']
@@ -865,7 +958,7 @@ class OriginalPages(PetPages):
         login = ContinuousLogin(self.state)
         rewards = login.rewards()
         stride = 153+self._list_margin('ContinuousLoginUI', 'goods_ListView')
-        selected = [max(0, login.status()['next_day']-1)]
+        selected = [max(0, (login.status()['day'] if login.status()['claimed_today'] else login.status()['next_day'])-1)]
         offset = [max(0, min(len(rewards)*stride-517, selected[0]*stride))]
 
         def paint():
@@ -891,11 +984,20 @@ class OriginalPages(PetPages):
                 ready = i+1 == status['next_day'] and status['can_claim']
                 page.add('ContinuousLoginItemUI', (x, y), prefix=f'login_{i}/', clip=area,
                          text={'day_BitmapFontLabel': str(i+1), 'name_Text': name,
-                               'count_BitmapFontLabel': f'x{row["rewardCount"]}'},
+                               'count_BitmapFontLabel': f'x{row["rewardCount"]}',
+                               'get_Button': ''},
                          resources={'icon_Image': icon}, native_resources=('icon_Image',),
                          visible={'selected_Image': selected[0] == i, 'receive_Image': ready,
-                                  'received_Image': received, 'wait_Image': not received and not ready},
+                                  'received_Image': received, 'wait_Image': False,
+                                  'receive_Particle': ready, 'Particle_1': ready},
                          actions={'get_Button': lambda index=i: claim(index)})
+                if not received and not ready:
+                    caption = '明日可领' if i+1 == status['next_day'] else f'第{i+1}天开放'
+                    caption_layer = Image.new('RGBA', page.layer.size)
+                    ImageDraw.Draw(caption_layer).text((x+76.439, y+216.657),
+                         caption, font=self.cocos_ui.font('', 16), fill='#693100', anchor='mm')
+                    left, top, right, bottom = map(round, area)
+                    page.layer.alpha_composite(caption_layer.crop((left, top, right, bottom)), (left, top))
                 page.hit(f'login_card_{i}', (x, y, x+153, y+240), lambda index=i: choose(index), area)
             page.actions['close_Button'] = self.close_ui
             page.actions['get_Button'] = lambda: claim(selected[0])
@@ -907,6 +1009,12 @@ class OriginalPages(PetPages):
 
         def claim(index):
             status = login.status()
+            if index+1 <= status['day']:
+                self._page_tip('这一天的登录奖励已经领取。', paint)
+                return
+            if status['claimed_today']:
+                self._page_tip('今天已经领取，下一份登录奖励明日开放。', paint)
+                return
             if index+1 != status['next_day']:
                 self._page_tip('请领取当天的登录奖励。', paint)
                 return

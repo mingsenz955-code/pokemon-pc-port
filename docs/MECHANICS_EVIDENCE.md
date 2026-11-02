@@ -1,3 +1,26 @@
+## 0.2.61 新增证据
+
+CureConfirmUILayer::confirmButtonRespond 0x365238 对应免费次数 700006×1 / 金币 700001×100；pEvent101009 / pEventTalk580504 对应教学和银行护士。MainTaskItemToArea::process 0x3002ac 只在匹配事件后触发 setReachCount 0x300f5e。PetController::executeAction 0x2d32c6/0x2d330c 对应 catchsuccess -> Animation1、catchfailed -> Animation7。具体修复与推断边界见 VERIFICATION_0.2.61.md。
+
+## 0.2.60：截图复现与刷新链
+
+- ChooseFirstPetUI 的宿主悬停重绘原先走无动态参数的静态模板；已改 Page.feedback，只重画命中的按钮区域，保留立绘/属性。伙伴来自 InitPet 预设，预览不提前发放或消耗。
+- 捕获的 caught_pet 是持久化 Pet，只有 species，没有 name。此前 _draw_result 读取 caught_pet.name 抛 AttributeError，让 Tk tick 在安排下一帧前退出。现在从 Pet 表取名，并以三种球真实菜单点击覆盖结果绘制、tick、返回。
+- WorldMonsterBattleResultUILayer 0x3c9a35 是排行榜世界怪兽页，不能代替正常结算。普通流程使用 ChallengeResultUI/BattleCalculationUI 原资源、捕捉使用 PetCatchedEffectUI；去除宿主多层黑色描边文字。当前包缺 BattleResultInfoUI.csb，完整原版经验表现仍未补齐。
+- PetController::newAi 0x2d4adc，在0x2d4b34..0x2d4b50读取getSkillList及索引，越界归零；0x2d4bd0..0x2d4c18检查该槽可用性，不能运行时回退300056普通攻击；0x2d4c1e增加索引。宿主不再以85%随机抽取技能造成低级对手首回合发呆。
+- 姿态采样12Hz提升到30Hz，render_pose以frame/fps计算相同秒数；专项测试比较0.5秒时两种采样的像素一致。缩小离屏渲染尺寸时用pixels_per_unit校正骨骼坐标/锚点，保持最终宠物高度。
+- Preview.tick按目标帧周期扣除绘制耗时，至少让出8ms给Tk输入/空闲处理，避免1ms重绘链让update持续忙等。HUD/背景/姿态缓存有容量上限。性能数据是本机离屏采样，不能宣称所有硬件稳定60fps。
+
+## 0.2.59：特殊战斗演出、已见图鉴与可见范围寻宝
+
+- showSkillEffect1 0x2c6dec 同时载入 path1/path2，分别加入前方z=101和后方z=99，不是我方/敌方文件。showSkillEffect2 0x2c685c 对反向目标旋转180度，300025 噪音特判 winSize/2+(0,21)。showSkillEffect3 0x2c6330 以选中骨骼世界坐标定位；showSkillEffect4 0x2c5cd0 创建六个 MoveBy，方向交替±84，每段0.4秒；showSkillEffect5 0x2c57d0 处理治愈。
+- 目标选择先读取 SkillData vtable+0x34=getEffectpos，骨骼读取+0x40=getBodyPos。SkillEffectData+0x18=getPath2、+0x1c=getPath1，未把 PosType 当成攻击对象。
+- xuanfeng/Animation1 原 dr=211，attack帧5/40/80/120/160/200；zhiyushui原dr=51，sound帧4、add帧5；kuangfeng_q/h均dr=41，只有前层带attack/sound事件。宿主按25/60换算原60Hz帧，不以绘制次数推进。
+- resetEnemyPet 0x2cba60 在0x2cbcf6把 IllustratedProcessEvent 类型设为1并发送；setPetIllustratedStatus 0x32b73e 只允许状态增加。宿主新增 seen_species，不授予捕获/坐骑；旧存档从原捕获列表恢复最低已知状态。
+- VillageChestControler::isInScreen 0x2d6574 将 spriteTile.box 转为世界矩形，与 VisibleRect 相交。handleTreasureChestFindEvent 0x2d877c 只对可见隐藏宝箱显现；TreasureChestFindEvent::handle 0x2ee2ec 独立发送消耗事件，因此未找到也扣道具。
+- spriteTile.json 中宝藏30002/30003/30004的box均[-32,-32,64,64]。原查找加载 leida.ExportJson（Animation1/dr=61），Text.json treasureTips3=恭喜您发现宝藏！、treasureTips4=没有发现宝藏！，原提示时间2秒。
+- tools/inspect_binary.py 新增控制流遍历，绕过函数内文字/浮点常量池；支持读取未导出的回调地址。不能把常量池作为指令解读。
+
 ## 0.2.58：PR #13 三项复审修复
 
 - 传送：沿用已核对的 `VillageAreaMapUiLayer::handleSelectMapUISelectedEvent` 0x3c56fc 的 `<map>01` 目标语义。通过原 TMX 中无 gid 的出口对象及现有 exit_spawn 计算落点，排除同名 NPC；验证地面碰撞与其他出口触发区。配置异常时只选择最近可行走格；无安全格则在扣道具前拒绝。不将地图几何中心当作原版落点。
@@ -668,13 +691,9 @@ research/ride-menu-original.txt、research/ride-tips-original.txt。
 
 验证：tools/check_ride_menu.py 覆盖真实 CSB 命中与透明图标、快速开合、再次展开、选择后收起、再次选择收回、未拥有单次提示、地形/地图短提示、建筑上收回、两种地面坐骑移动保持。使用临时/内存状态，不读写玩家存档；不代表完整付费坐骑商店或所有原版流程已完成。
 
-## 0.2.60 零血宠物普通回复道具修复（2026-11-02）
+## 死亡用药规则纠正（2026-11-02）
 
-根源：src/item_effects.py 的 recovery() 曾主动拒绝 hp<=0 且 type!=3，属于移植加入的限制，并非 1.20.4 背包规则。GameState.use_item 的 needs_recovery 捕获此异常并判断“无效果”，因此背包选宠和宠物列表选道具都无法治疗零血宠物。
-
-原版追踪：BagUILayer::checkPetItemUse 0x34b9b8 检查道具数量后发送 UseItemEvent；PetListUILayer::checkSelectedPetItemUse 0x38cfbc 同样发送目标宠物的使用事件。UseItemEvent::handle 0x2ee578 调用 PlayerDataManager::useItem(int,int) 0x32ca56，后者调用 usePetItem 0x32aed4 并扣除一件道具。usePetItem 的 type1 调用 addAttribute 0x3260a0（调用点0x32af3c），type2 调用 addAttributePercent 0x326188（调用点0x32af52）；此路径没有“普通药禁止零血宠物”的门槛。canAddAttribute(int,int) 0x3254b0 也只比较当前值和上限。复活石 type3 的 resurrection 0x3261c8 最终同样调用 addAttributePercent；没有将普通回复限定为复活石的证据。
-
-本次仅移除已证实错误的公共回复门槛，保留背包使用场景、物品数量、目标归属、满值无效果、复活石及战斗强制换宠等独立约束。战斗中选择已败退宠物、道具目标选择等流程不能由此声称已全部复原。新增 check_pet_recovery.py：五种 HP 道具零血回复、残血封顶、满血不扣、纯能量药不加血、复活石、无库存/非携带目标回滚、自动选宠和存读档、背包与宠物页真实回调。旧 check_activities 中要求普通药拒绝零血的断言按上述原版证据修正。
+撤回 0.2.60 关于“普通回复药允许复活”的结论：此前只追踪 usePetItem 的底层加属性调用，未验证完整上层使用限制，不能据此认定死亡宠物可用普通回复药。按用户对原版规则的明确纠正，恢复 hp<=0 时只允许 type3 复活石；普通回血/回能药拒绝使用且事务不扣道具。GameState.use_item 在指定目标时直接保留 recovery 的明确失败原因，不再将死亡原因笼统改成“不需要回复”。测试覆盖死亡拒绝、复活石可用、残血回复、满血不扣、两条真实 UI 路径与存读档。
 
 ### 同版补充：背包老爸的信正文回看
 

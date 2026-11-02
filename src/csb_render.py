@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+from economy import gold_text
 from functools import lru_cache
 from pathlib import Path
 
@@ -39,6 +40,7 @@ def nine_slice(image, size, cap):
 class CocosUI:
     def __init__(self, data):
         self.data = data
+        self.dim_background = False
         self.hits = {}
         self.diagnostics = []
 
@@ -91,7 +93,7 @@ class CocosUI:
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
                offset=(0, 0), pressed=None, positions=None, rich_text=(), alphas=None,
                native_resources=(), percentages=None, sizes=None, canvas_size=None,
-               auto_text=(), timeline_frame=None, bright=None):
+               auto_text=(), timeline_frame=None, bright=None, z_orders=None):
         layout = self.layout(name)
         root = layout['tree']
         design = canvas_size or root.get('size', [800, 480])
@@ -107,6 +109,7 @@ class CocosUI:
         alphas = alphas or {}
         percentages = percentages or {}
         sizes = sizes or {}
+        z_orders = z_orders or {}
         animated = {}
         if timeline_frame is not None:
             for track in layout.get('action', {}).get('tracks', []):
@@ -124,7 +127,7 @@ class CocosUI:
                     prior, value = following, following['value']
                 animated.setdefault(track['tag'], {})[track['property']] = value
 
-        def visit(node, parent=(0, 0), scale=(1, 1), alpha=1, depth=0, prefix=''):
+        def visit(node, parent=(0, 0), scale=(1, 1), alpha=1, depth=0, prefix='', text_bounds=None):
             if depth > 50:
                 raise ValueError('Cocos UI project-node recursion limit')
             key = node.get('name', '')
@@ -147,13 +150,20 @@ class CocosUI:
             node_scale = animation.get('Scale', node.get('scale', [1, 1]))
             sx, sy = scale[0]*node_scale[0], scale[1]*node_scale[1]
             width, height = resolve(sizes, node.get('size', [0, 0]))
-            if (key in auto_text or qualified in auto_text) and node['class'] == 'Text':
-                value = str(resolve(text, node.get('text', '')))
+            natural_text = node['class'] == 'Text' and (not node.get('custom_text_size', True) or key in auto_text or qualified in auto_text)
+            if natural_text:
+                value = re.sub(r'#[0-9]', '', gold_text(resolve(text, node.get('text', ''))))
                 ft = self.font(node.get('font_resource', {}).get('path', ''), node.get('font_size', 22))
-                width, height = max(1, math.ceil(ft.getlength(value))+2), ft.size+4
+                width, height = max(1, math.ceil(max((ft.getlength(line) for line in value.split('\n')), default=0))+2), (ft.size+3)*len(value.split('\n'))
             anchor = node.get('anchor', [0, 0])
             x, y = parent[0]+local[0]*scale[0], parent[1]+local[1]*scale[1]
             origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
+            if node['class'] == 'Text' and text_bounds:
+                left, bottom, right, top = text_bounds
+                width = min(width, max(1, (right-left-6)/max(.001, abs(sx))))
+                height = min(height, max(1, (top-bottom-6)/max(.001, abs(sy))))
+                origin = (max(left+3, min(x-width*anchor[0]*sx, right-3-width*sx)),
+                          max(bottom+3, min(y-height*anchor[1]*sy, top-3-height*sy)))
             alpha *= resolve(alphas, animation.get('Alpha', node.get('alpha', 255)))/255
             image = None
             if node['class'] == 'Particle' and node.get('resource', {}).get('path'):
@@ -203,6 +213,7 @@ class CocosUI:
                     image.paste((0, 0, 0, 0), (round(image.width*fill), 0, image.width, image.height))
                 frame.alpha_composite(image, (round(origin[0]), round(frame.height-origin[1]-height*abs(sy))))
             elif (classname in ['Panel', 'ListView', 'ScrollView'] and node.get('background_type') == 1
+                  and not (key == 'bg_Panel' and not self.dim_background)
                   and node.get('background_alpha', 255) > 0):
                 a, r, g, b = node.get('background_color', [255, 255, 255, 255])
                 background = Image.new('RGBA', frame.size)
@@ -210,7 +221,7 @@ class CocosUI:
                                                 round(origin[0]+width*sx), round(frame.height-origin[1])),
                                                fill=(r, g, b, round(alpha*a*node.get('background_alpha', 255)/255)))
                 frame.alpha_composite(background)
-            value = str(resolve(text, node.get('text', '')))
+            value = gold_text(resolve(text, node.get('text', '')))
             if value and classname in ['Text', 'Button', 'TextBMFont']:
                 if classname == 'TextBMFont':
                     try:
@@ -220,6 +231,11 @@ class CocosUI:
                 else:
                     glyphs = None
                 if glyphs is not None:
+                    if key in sizes or qualified in sizes:
+                        limit = resolve(sizes, node.get('size', [1, 1]))
+                        ratio = min(1, limit[0]/glyphs.width, limit[1]/glyphs.height)
+                        if ratio < 1:
+                            glyphs = glyphs.resize((max(1, round(glyphs.width*ratio)), max(1, round(glyphs.height*ratio))), Image.Resampling.LANCZOS)
                     # TextBMFont::setString updates content size. Anchors must
                     # follow the real glyph run, not the editor sample digits.
                     width, height = glyphs.size
@@ -227,6 +243,9 @@ class CocosUI:
                 if glyphs is None:
                     font = self.font(node.get('font_resource', {}).get('path', ''), node.get('font_size', 22))
                     value = re.sub(r'#[0-9]', '', value)
+                    if natural_text:
+                        while font.size > 9 and (max((font.getlength(line) for line in value.split('\n')), default=0) > width-1 or font.size > height):
+                            font = self.font(node.get('font_resource', {}).get('path', ''), font.size-1)
                     area = max(1, round(width)), max(1, round(height))
                     glyphs = Image.new('RGBA', area)
                     draw = ImageDraw.Draw(glyphs)
@@ -259,7 +278,15 @@ class CocosUI:
                 if sx != 1 or sy != 1:
                     glyphs = glyphs.resize((max(1, round(glyphs.width*abs(sx))),
                                             max(1, round(glyphs.height*abs(sy)))), Image.Resampling.LANCZOS)
-                frame.alpha_composite(glyphs, (round(origin[0]), round(frame.height-origin[1]-height*sy)))
+                ink_x, ink_y = round(origin[0]), round(frame.height-origin[1]-height*sy)
+                if classname == 'Text' and text_bounds:
+                    left, bottom, right, top = text_bounds
+                    bounds = (max(ink_x, math.ceil(left+2)), max(ink_y, math.ceil(frame.height-top+2)),
+                              min(ink_x+glyphs.width, math.floor(right-2)), min(ink_y+glyphs.height, math.floor(frame.height-bottom-2)))
+                    if bounds[0] < bounds[2] and bounds[1] < bounds[3]:
+                        frame.alpha_composite(glyphs.crop((bounds[0]-ink_x, bounds[1]-ink_y, bounds[2]-ink_x, bounds[3]-ink_y)), bounds[:2])
+                else:
+                    frame.alpha_composite(glyphs, (ink_x, ink_y))
             if node.get('touch') or classname == 'Button':
                 rect = [origin[0], frame.height-origin[1]-height*sy,
                         origin[0]+width*sx, frame.height-origin[1]]
@@ -273,8 +300,11 @@ class CocosUI:
             self.rects[qualified] = [origin[0], frame.height-origin[1]-height*sy,
                                      origin[0]+width*sx, frame.height-origin[1]]
             self.rects[key] = self.rects[qualified]
-            for child in sorted(node.get('children', []), key=lambda c: c.get('z', 0)):
-                visit(child, origin, (sx, sy), alpha, depth+1, qualified)
+            child_bounds = text_bounds
+            if (classname in ('ImageView', 'Button') or classname == 'Panel' and node.get('clip')) and width > 0 and height > 0:
+                child_bounds = (origin[0], origin[1], origin[0]+width*sx, origin[1]+height*sy)
+            for child in sorted(node.get('children', []), key=lambda c: z_orders.get(qualified+'/'+c['name'], z_orders.get(c['name'], c.get('z', 0)))):
+                visit(child, origin, (sx, sy), alpha, depth+1, qualified, child_bounds)
             if classname == 'ProjectNode' and node.get('project'):
                 project = Path(node['project']).stem
                 try:

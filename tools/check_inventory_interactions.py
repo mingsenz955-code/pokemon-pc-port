@@ -168,7 +168,7 @@ class InventoryChecks(unittest.TestCase):
         self.assertTrue(a.pet_description['text'])
         a.ui_base_layer.save(OUT/'pet-detail.png')
 
-    def test_lottery_and_topup_use_original_pages(self):
+    def test_lottery_and_gold_store_use_original_pages(self):
         a = self.app
         self.open(68)
         self.assertEqual('LuckyDrawUI', a.original_page.specs[0][0])
@@ -177,8 +177,8 @@ class InventoryChecks(unittest.TestCase):
         self.click(next(k for k in a.ui_buttons if k.endswith('/draw_1_Button')))
         self.assertEqual(before+1, len(a.state.pets)+len(a.state.bank))
         self.open(63)
-        self.assertEqual('ContinuousTopUpUI', a.original_page.specs[0][0])
-        self.assertTrue(any(s[0] == 'ContinuousTopUpItemUI' for s in a.original_page.specs))
+        self.assertEqual('ShopUI', a.original_page.specs[0][0])
+        self.assertTrue(any(s[0] == 'ShopGoodsUI' for s in a.original_page.specs))
         a.ui_base_layer.save(OUT/'topup.png')
 
     def test_all_three_balls_can_be_selected_confirmed_and_consumed(self):
@@ -222,6 +222,40 @@ class InventoryChecks(unittest.TestCase):
         for key, row in DATA.tables['Item'].items():
             self.assertTrue(row['des'], key)
             self.assertIsNotNone(DATA.image('ItemIcon/'+row['texture']), key)
+
+    def test_seen_but_uncaught_card_opens_without_unlocking_ownership(self):
+        a = self.app
+        species = min((k for k, r in DATA.tables['Pet'].items() if r['kind'] == '1' and r['open'] == '1'), key=int)
+        a.state.encyclopedia = []
+        a.state.record_seen_pet(species)
+        self.open(48)
+        self.click('illustrated_card_0', 45)
+        self.assertEqual('IllustratedPetInfoUI', a.original_page.specs[0][0])
+        self.assertEqual([], a.state.encyclopedia)
+
+    def test_starting_battle_records_only_active_opponent_as_seen(self):
+        a = self.app
+        before, owned = set(a.state.seen_species), list(a.state.encyclopedia)
+        a.start_battle('511051')
+        self.assertEqual(before | {a.battle.enemy_active.pet.species}, set(a.state.seen_species))
+        self.assertEqual(owned, a.state.encyclopedia)
+
+    def test_treasure_search_uses_camera_and_original_radar(self):
+        from treasure import TreasureHunt
+        a = self.app
+        a.state.inventory['700002'] = 50
+        entry = TreasureHunt(a.state).buy('1')
+        a.load_map(7401)
+        self.assertFalse(a.search_treasure())
+        self.assertEqual('没有发现宝藏！', a.treasure_search_fx['text'])
+        self.assertFalse(entry['revealed'])
+        a.load_map(entry['map_id'], entry['x'], entry['y'])
+        self.assertTrue(a.search_treasure())
+        self.assertEqual('恭喜您发现宝藏！', a.treasure_search_fx['text'])
+        self.assertEqual(1, a.state.count('220007'))
+        a.treasure_search_fx['age'] = .3
+        a.screen_black = False
+        a.make_frame().save(OUT/'treasure-radar.png')
 
 
 if __name__ == '__main__':

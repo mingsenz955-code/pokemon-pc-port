@@ -112,7 +112,7 @@ class SceneUI:
                    # The four-arrow HUD hide/show button sits over the
                    # illustrated-book icon when the right menu is expanded.
                    'uiDisappear_Button': right == 0,
-                   'timelimitGiftBag_Button': False, 'timelimitGiftBagTimeBg_Image': False,
+                   'rechargeReward_Button': False, 'timelimitGiftBag_Button': False, 'timelimitGiftBagTimeBg_Image': False,
                    # Single-player PC port: no online rank, gift-code exchange or
                    # Bluetooth battle entry points. Keep the original slots hidden
                    # instead of leaving dead buttons in the expanded menu.
@@ -203,7 +203,7 @@ class SceneUI:
                 if self.groups['up']['target']:
                     self.toggle('up')
             except ValueError as error:
-                messagebox.showinfo('指引', str(error), parent=app.root)
+                app.game_tip(str(error))
             return
         uiids = {'right_left_5_Button': 26, 'right_up_2_Button': 9,
                  'right_up_3_Button': 12, 'faDaJing_Button': 24}
@@ -214,4 +214,4 @@ class SceneUI:
             self.hidden = not self.hidden
             return
         # Unsupported pages must never silently consume a click or grant rewards.
-        messagebox.showinfo('尚未完成的原版功能', '这个入口的原版交互还在移植，当前不能完成该操作。', parent=app.root)
+        app.game_tip('这个入口的原版交互还在移植，当前不能完成该操作。')

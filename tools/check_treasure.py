@@ -1,5 +1,7 @@
 """Treasure map purchase, magnifier reveal, map chest and UI contract."""
 import json
+import os
+import atexit
 import sys
 import tempfile
 import tkinter as tk
@@ -36,12 +38,13 @@ except ValueError:
     pass
 assert state.count('700002') == 45
 assert state.count('220007') == 3
-hunt.use_magnifier()
+context = {'map_id': entry['map_id'], 'viewport': (entry['x']-100, entry['y']-100, entry['x']+100, entry['y']+100)}
+hunt.use_magnifier(**context)
 assert state.count('220007') == 2
 assert entry['revealed']
 assert hunt.visible_on('102')
 try:
-    hunt.use_magnifier()
+    hunt.use_magnifier(**context)
     raise AssertionError('revealed treasure was searched twice')
 except ValueError:
     pass
@@ -78,6 +81,16 @@ with tempfile.TemporaryDirectory() as folder:
     assert restored['map_id'] == saved['map_id']
 
 # --- real Tk host UI ---------------------------------------------------------
+saves = tempfile.TemporaryDirectory()
+prior_save_dir = os.environ.get('POCKET_NATIVE_SAVE_DIR')
+os.environ['POCKET_NATIVE_SAVE_DIR'] = saves.name
+def cleanup_saves():
+    if prior_save_dir is None:
+        os.environ.pop('POCKET_NATIVE_SAVE_DIR', None)
+    else:
+        os.environ['POCKET_NATIVE_SAVE_DIR'] = prior_save_dir
+    saves.cleanup()
+atexit.register(cleanup_saves)
 root = tk.Tk()
 root.withdraw()
 try:
@@ -89,9 +102,9 @@ try:
     app.state.inventory['220007'] = 0
     app.open_ui(Request('openui', 'treasure-test', 1,
                         {'parameters': {'uiid': 24, 'par1': 1}}))
-    assert app.ui_actions.get('use_Button')
-    app.ui_actions['use_Button']()
-    assert app.ui_open and '没有藏宝图' in app.ui_info.get()
+    assert app.ui_actions.get('buy_Button')
+    assert app.original_page.specs[0][0] == 'TreasureBuyConfirmUI'
+    assert app.state.count('700002') == 20
     app.close_ui()
 
     app.open_ui(Request('openui', 'treasure-buy', 1,
@@ -102,6 +115,7 @@ try:
     assert app.state.count('220007') == 3
     active = TreasureHunt(app.state).active()
     assert active and not active['revealed']
+    app.load_map(active['map_id'], active['x'], active['y'])
     app.open_ui(Request('openui', 'treasure-test', 1,
                         {'parameters': {'uiid': 24, 'par1': 1}}))
     app.ui_actions['use_Button']()
@@ -146,7 +160,7 @@ try:
     # Render the actual map with the revealed chest actor.
     active = TreasureHunt(app.state).active()
     assert active and not active['revealed']
-    TreasureHunt(app.state).use_magnifier()
+    TreasureHunt(app.state).use_magnifier(map_id=active['map_id'], viewport=(active['x']-100, active['y']-100, active['x']+100, active['y']+100))
     app.runtime.sequence, app.runtime.file, app.runtime.pending = [], '', None
     app.display_request = None
     app.screen_black = False

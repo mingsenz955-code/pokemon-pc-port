@@ -10,7 +10,34 @@ from elftools.elf.elffile import ELFFile
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def inspect(queries):
+def instructions(decoder, read, address, size, flow=False):
+    if not flow:
+        return decoder.disasm(read(address, size), address)
+    # Follow code branches instead of decoding inline literal pools as Thumb
+    # instructions. Do not follow calls into another function.
+    found, pending = {}, [address]
+    while pending:
+        current = pending.pop()
+        while address <= current < address+size and current not in found:
+            op = next(decoder.disasm(read(current, 4), current, count=1), None)
+            if op is None:
+                break
+            found[current] = op
+            name = op.mnemonic
+            if name.startswith('b') and name not in ('bl', 'blx', 'bic', 'bics', 'bfi', 'bfc') or name in ('cbz', 'cbnz'):
+                operand = op.op_str.split(',')[-1].strip()
+                if operand.startswith('#'):
+                    pending.append(int(operand[1:], 0) & ~1)
+                if name in ('b', 'b.w', 'bx'):
+                    break
+            if (name in ('pop', 'pop.w', 'ldm', 'ldm.w') and 'pc' in op.op_str) or name in ('tbb', 'tbh'):
+                break
+            current += op.size
+    return (found[key] for key in sorted(found))
+
+
+def inspect(queries, flow=False, address=None, size=1024):
+    requested_address = address
     symbols = json.loads((ROOT/'research/demangled-symbols.json').read_text(encoding='utf-8'))
     with (ROOT/'research/original-core.so').open('rb') as stream:
         elf = ELFFile(stream)
@@ -27,14 +54,15 @@ def inspect(queries):
         if reloc and plt:
             for i, r in enumerate(reloc.iter_relocations()):
                 lookup[plt['sh_addr']+20+12*i] = dynsym.get_symbol(r['r_info_sym']).name
-        for sym in symbols:
-            if not any(q in sym['demangled'] for q in queries):
+        targets = symbols if requested_address is None else [{'address': requested_address, 'size': size, 'demangled': f'raw_{requested_address:x}'}]
+        for sym in targets:
+            if requested_address is None and not any(q in sym['demangled'] for q in queries):
                 continue
             address = sym['address'] & ~1
             mode = CS_MODE_THUMB if sym['address'] & 1 else CS_MODE_ARM
             decoder = Cs(CS_ARCH_ARM, mode)
             print(f'\n{sym["demangled"]} @ {address:x}, {sym["size"]} bytes')
-            for op in decoder.disasm(read(address, sym['size']), address):
+            for op in instructions(decoder, read, address, sym['size'], flow):
                 note = ''
                 if op.mnemonic in ['bl', 'blx', 'b.w', 'b'] and op.op_str.startswith('#'):
                     target = int(op.op_str[1:], 0) & ~1
@@ -57,6 +85,11 @@ def inspect(queries):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('queries', nargs='+')
+    parser.add_argument('queries', nargs='*')
+    parser.add_argument('--address', type=lambda value: int(value, 0), help='Raw address, with Thumb bit when needed')
+    parser.add_argument('--size', type=lambda value: int(value, 0), default=1024)
+    parser.add_argument('--flow', action='store_true', help='Follow branches around inline literal pools')
     args = parser.parse_args()
-    inspect(args.queries)
+    if not args.queries and args.address is None:
+        parser.error('Provide a symbol query or --address')
+    inspect(args.queries, args.flow, args.address, args.size)
