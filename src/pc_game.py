@@ -96,7 +96,7 @@ class NativeGame(ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.49（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.50（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -450,6 +450,7 @@ class NativeGame(ActivityUI, Preview):
         60: ('SkillLearnConfirmUI', '技能学习确认'),
         61: ('EvolutionConditionUI', '进化条件'),
         62: ('HatchCheckUI', '孵化检查'),
+        63: ('RechargeFreeUI', '充值奖励'),
     }
 
     def open_ui(self, request):
@@ -531,12 +532,20 @@ class NativeGame(ActivityUI, Preview):
             tk.Button(body, text='治疗全部宠物', bg='#5b7c52', fg='white',
                       command=cure).pack(pady=6)
         elif uiid == 14:
-            info.set('保存当前游戏进度。')
+            info.set(f'保存当前进度到本机用户目录：\n{self.save_path}')
             def save_now():
-                self.save()
-                info.set(self.event_issue or '进度已保存。')
+                if self.save():
+                    info.set(f'进度已保存。\n{self.save_path}')
+                    self.close_ui('yes')
+                else:
+                    info.set(self.event_issue or '保存失败。')
             self.ui_actions['confirm_Button'] = save_now
-            tk.Button(body, text='保存进度', command=save_now).pack(pady=6)
+            self.ui_actions['cancel_Button'] = lambda: self.close_ui('no')
+        elif uiid == 63:
+            info.set('这里是原版充值奖励入口。当前单机移植不接入真实支付，'
+                     '不会伪造充值到账或扣费；可关闭本页继续游戏。')
+            self.ui_actions['confirm_Button'] = lambda: info.set(
+                '单机版没有计费点，不能伪造免费领取；请关闭本页。')
         elif uiid == 4:
             self._bank_body(body, info)
         elif uiid == 6:
@@ -1048,7 +1057,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.49')
+        win.title('任务指引 · 原生 0.2.50')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1731,33 +1740,51 @@ class NativeGame(ActivityUI, Preview):
             self.task_guide = TaskGuide(self)
         self.task_guide.draw(frame)
 
-    def save(self):
+    def save_ui(self):
         if self.booting:
             return
         if self.battle:
-            self.event_issue = '战斗中存档尚未接入原版战斗快照，未写入不一致的进度。'
+            self.event_issue = '战斗中不能保存，请先结束战斗。'
             return
-        self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
-        self.state.presentation = {
-            'face': self.face, 'player_visible': self.player_visible,
-            'player_visibility_map': self.map_id,
-            'sprite_collision_version': 2,
-            'obstacle_coordinates_version': 2,
-            'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
-            'camera_action': self.camera_action,
-            'story_motion_actions': self.story_motion.actions if getattr(self, 'story_motion', None) else [],
-            'story_motion_faces': self.story_motion.faces if getattr(self, 'story_motion', None) else {},
-            'npc_motion': self.npc_motion.snapshot() if getattr(self, 'npc_motion', None) else None,
-            'scene_animation_time': getattr(self, 'scene_animation_time', 0.0),
-            'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
-            'encounter_distance': self.encounter_distance,
-            'encounter_threshold': self.encounter_threshold,
-        }
-        self.runtime.persist()
-        self.state.activities['save_total'] = int(
-            self.state.activities.get('save_total', 0))+1
-        self.state.save(self.save_path)
-        self.event_issue = '已保存独立移植存档，包含当前剧情位置、背包、任务和随机数状态。'
+        if self.ui_open:
+            return
+        self.open_ui(Request('openui', 'save-button', 0,
+                            {'parameters': {'uiid': 14}}))
+
+    def save(self):
+        if self.booting:
+            return False
+        if self.battle:
+            self.event_issue = '战斗中存档尚未接入原版战斗快照，未写入不一致的进度。'
+            return False
+        try:
+            self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
+            self.state.presentation = {
+                'face': self.face, 'player_visible': self.player_visible,
+                'player_visibility_map': self.map_id,
+                'sprite_collision_version': 2,
+                'obstacle_coordinates_version': 2,
+                'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
+                'camera_action': self.camera_action,
+                'story_motion_actions': self.story_motion.actions if getattr(self, 'story_motion', None) else [],
+                'story_motion_faces': self.story_motion.faces if getattr(self, 'story_motion', None) else {},
+                'npc_motion': self.npc_motion.snapshot() if getattr(self, 'npc_motion', None) else None,
+                'scene_animation_time': getattr(self, 'scene_animation_time', 0.0),
+                'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
+                'encounter_distance': self.encounter_distance,
+                'encounter_threshold': self.encounter_threshold,
+            }
+            self.runtime.persist()
+            self.state.activities['save_total'] = int(
+                self.state.activities.get('save_total', 0))+1
+            self.state.save(self.save_path)
+        except (OSError, ValueError, TypeError) as error:
+            self.event_issue = f'保存失败：{error}'
+            return False
+        self.event_issue = f'已保存到本机用户存档：{self.save_path}'
+        if self.ui_info:
+            self.ui_info.set(self.event_issue)
+        return True
 
     def restore(self):
         if self.battle:
@@ -2728,6 +2755,24 @@ class NativeGame(ActivityUI, Preview):
             'close_Button': self.close_ui,
         })
         rebuild()
+
+    def store_ui(self):
+        if self.battle:
+            self.event_issue = '请先结束战斗。'
+            return
+        if self.ui_open:
+            return
+        self.open_ui(Request('openui', 'store', 1,
+                            {'parameters': {'uiid': 1}}))
+
+    def recharge_ui(self):
+        if self.battle:
+            self.event_issue = '请先结束战斗。'
+            return
+        if self.ui_open:
+            return
+        self.open_ui(Request('openui', 'recharge', 1,
+                            {'parameters': {'uiid': 63}}))
 
     def bag_ui(self):
         if self.battle:

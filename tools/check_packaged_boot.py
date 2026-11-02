@@ -9,7 +9,7 @@ from PIL import ImageGrab, ImageStat
 
 ROOT = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
-parser.add_argument('--version', default='0.2.49')
+parser.add_argument('--version', default='0.2.50')
 version = parser.parse_args().version
 name = f'口袋妖怪-PC移植开发版{version}'
 exe = ROOT/f'outputs/{name}/{name}.exe'

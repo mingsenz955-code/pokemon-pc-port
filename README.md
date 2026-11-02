@@ -1,19 +1,21 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.49%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.50%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.49 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.50 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
-0.2.49 修复野外遇敌：每次进入地图重新按 `enemyAppearInterval` 设置步数阈值，不再把阈值清成 0。
+0.2.50 修复野外遇敌：每次进入地图重新按 `enemyAppearInterval` 设置步数阈值，不再把阈值清成 0。
 胜利结算改用原版 `WorldMonsterBattleResultUI` 的胜利牌/名称/伤害值/经验/掉落和确认按钮，
 移除自制深色弹窗；教程 `button` 指令必须点击高亮的 `uiDisappear_Button` 才能继续，
-不会点空地跳过隐藏/还原界面步骤。
+不会点空地跳过隐藏/还原界面步骤。左上角保存入口改为打开原版 `SaveConfirmUI`，
+确认后才原子写入本机用户存档；取消不写盘，战斗中拒绝保存。商店、充值奖励入口也接回原版页面，
+单品不伪造计费。
 
 0.2.48 按用户确认的操作恢复“点击指引 → 自动走向任务点”：默认无常驻箭头，
 再次点击/方向键可停止；标记只跟随实际可走路径，不直指远处人物穿墙。
@@ -162,7 +164,9 @@ VillageEnemy → Pet 关联；全能训练改为领取另外七项日常奖励�
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
-游戏存档独立存放在 `%LOCALAPPDATA%/PocketNativePC/slot1.json`，新包沿用原移植存档。
+游戏存档独立存放在当前 Windows 用户的 `%LOCALAPPDATA%\PocketNativePC\slot1.json`；
+发布包不附带开发机存档，换用户/换电脑不会继承别人的进度。需要把进度交给另一台电脑时，
+复制这个文件到相同位置即可。左上角保存按钮会先打开原版 `SaveConfirmUI`，确认后才写入。
 恢复 APK 时可用 `python tools/recover_assets.py 游戏.apk original-1.20.4 --research-output research`；
 恢复工具会拒绝覆盖非空资源目录。原 APK、恢复资源、研究材料和发布包已保存到本仓库的
 [完整归档](archive/README.md)，按其中的分卷顺序拼接即可。
@@ -313,6 +317,9 @@ py -3.12 -m venv .venv
 
 # 教程高亮按钮才能继续（界面隐藏/还原）
 .\.venv\Scripts\python.exe tools\check_button_tip.py
+
+# 左上角保存 → 原版 SaveConfirmUI → 本机用户存档
+.\.venv\Scripts\python.exe tools\check_save_ui.py
 
 # 藏宝图购买、放大镜显现、地图宝箱、UI 24/37/38、真实事件 closeui yes
 .\.venv\Scripts\python.exe tools\check_treasure.py

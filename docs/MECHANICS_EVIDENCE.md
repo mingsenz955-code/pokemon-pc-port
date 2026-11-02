@@ -1,6 +1,6 @@
 # 1.20.4 规则核对记录
 
-## 0.2.49：野外遇敌、原版胜利页与教程按钮
+## 0.2.50：野外遇敌、原版胜利页与教程按钮
 
 用户反馈三点，分别核对到三个独立缺陷：
 
@@ -26,6 +26,18 @@
    现在 `button` 请求只接受高亮节点的命中，点击空地不推进；点
    `uiDisappear_Button` 后执行真实隐藏/还原并恢复事件。
    `tools/check_button_tip.py` 覆盖空地不推进、按钮命中推进、隐藏状态变化。
+
+4. **保存入口**
+   左上角 `save_Button` 原先直接写盘，没有原版确认页；现改为打开
+   `SaveConfirmUI`（原 `info_Text`：是否保存），`confirm_Button` 只在
+   `save()` 成功后关闭并写入，`cancel_Button` 不写盘。写入路径固定为
+   `%LOCALAPPDATA%\PocketNativePC\slot1.json`，属于当前 Windows 用户，
+   发布包不包含开发机存档；`POCKET_NATIVE_SAVE_DIR` 仅供测试隔离。
+   保存内容仍为当前地图/坐标、剧情运行时、背包、任务、宠物、镜头和
+   随机数状态；战斗中明确拒绝，不写半截战斗。`tools/check_save_ui.py`
+   验证原布局、确认/取消分支、原子文件和用户目录隔离。
+   商店按钮接 `ShopUI`，充值奖励按钮接原 `RechargeFreeUI`；“单机版没有
+   计费点”会在页内说明，不伪造充值或奖励。
 
 ## 0.2.48：修正指引触发和真实回家路线
 
@@ -291,7 +303,7 @@ fixture，不再假定任意真实存档都必须显示玩家（序章可以合�
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：58 个原版 UI 布局、148 个可见 Button 的真实命中区、pressed 纹理、43 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：59 个原版 UI 布局、150 个可见 Button 的真实命中区、pressed 纹理、44 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。
