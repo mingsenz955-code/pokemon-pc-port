@@ -41,6 +41,7 @@ class EventRuntime:
         self.queue = []
         self.battle_result = None
         self.save_event = True
+        self.trigger_npc_id = 0
 
     @property
     def running(self):
@@ -79,11 +80,18 @@ class EventRuntime:
                    and str(parameters.get(k)) != str(v)
                    for k, v in trigger['conditions_add'].items()):
                 continue
-            self.start(f'pEvent{trigger["id"]}.json', trigger)
+            self.start(f'pEvent{trigger["id"]}.json', trigger,
+                       npc_id=parameters.get('npcid') if kind == 'talk' else None)
             return True
+        if kind == 'talk':
+            from branch_tasks import BranchTasks
+            key = BranchTasks(self.state).for_npc(parameters['npcid'])
+            if key is not None:
+                self.start(f'pEventBTask{key}.json', npc_id=parameters['npcid'])
+                return True
         return False
 
-    def start(self, filename, trigger=None):
+    def start(self, filename, trigger=None, *, npc_id=None):
         if self.running:
             raise RuntimeError('Cannot replace a running original event')
         if filename == 'pEventContents.json':
@@ -94,6 +102,7 @@ class EventRuntime:
             raise ValueError(f'Duplicate step IDs in {filename}')
         self.file, self.sequence, self.index = filename, sequence, 0
         self.pending, self.active_trigger, self.battle_result = None, trigger, None
+        self.trigger_npc_id = int(npc_id or (trigger or {}).get('conditions_add', {}).get('npcid', 0))
         self.save_event = True
         self.persist()
 
@@ -127,8 +136,9 @@ class EventRuntime:
         if 'iarenaid' in condition:
             checks.append(int(self.state.arenas.get(str(condition['iarenaid']), 0)) == state)
         if 'npcid' in condition or 'npcId' in condition:
-            # NPC interaction state is not interchangeable with completed fights.
-            raise PendingMechanic('goto:npcid 的状态含义尚未由原程序核定')
+            # compareTriggerNpcId 0x2f7282 compares the NPC that initiated the
+            # conversation. This selector does not inspect "state" or wins.
+            checks.append(self.trigger_npc_id == int(condition.get('npcid', condition.get('npcId'))))
         return all(checks)
 
     def next(self):
@@ -266,6 +276,7 @@ class EventRuntime:
             self.state.story_ending = True
         self.file, self.sequence, self.index = '', [], 0
         self.pending, self.active_trigger = None, None
+        self.trigger_npc_id = 0
         queued, self.queue = self.queue, []
         self.persist()
         for index, event in enumerate(queued):
@@ -279,6 +290,7 @@ class EventRuntime:
 
     def snapshot(self):
         return {'file': self.file, 'index': self.index, 'trigger': self.active_trigger,
+                'trigger_npc_id': self.trigger_npc_id,
                 'queue': copy.deepcopy(self.queue), 'battle_result': self.battle_result,
                 'save_event': self.save_event,
                 'pending': copy.deepcopy(self.pending.__dict__) if self.pending else None}
@@ -293,5 +305,6 @@ class EventRuntime:
         self.queue = copy.deepcopy(snapshot['queue'])
         self.battle_result = snapshot['battle_result']
         self.save_event = snapshot['save_event']
+        self.trigger_npc_id = int(snapshot.get('trigger_npc_id', self.trigger_npc_id))
         self.pending = Request(**snapshot['pending']) if snapshot['pending'] else None
         self.persist()

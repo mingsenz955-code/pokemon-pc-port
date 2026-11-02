@@ -276,6 +276,7 @@ class Regressions(unittest.TestCase):
         b.player_active.buffs.append(Buff('5', 3, '0', 2))
         self.state.grant('2', 1)
         ui = BattleUI.__new__(BattleUI)
+        ui.anim, ui.anim_queue = None, []
         ui.battle, ui.app = b, SimpleNamespace(state=self.state)
         ui.selected, ui.screen, ui.notice = {'id': '2'}, 'confirm', ''
         ui._action('confirm_yes')
@@ -289,6 +290,7 @@ class Regressions(unittest.TestCase):
         b.player_active.hp = 10
         self.state.grant('2', 2)
         ui = BattleUI.__new__(BattleUI)
+        ui.anim, ui.anim_queue = None, []
         ui.battle, ui.app = b, SimpleNamespace(state=self.state)
         ui.selected, ui.screen, ui.notice = {'id': '2'}, 'confirm', ''
         ui._action('confirm_yes')

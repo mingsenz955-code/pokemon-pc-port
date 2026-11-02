@@ -91,7 +91,10 @@ class OriginalData:
             if path.exists():
                 im = render_setup(str(path)).copy()
                 scale = float(row.get('scale', 1))
-                return im.resize((max(1, round(im.width*scale)), max(1, round(im.height*scale))), Image.Resampling.LANCZOS)
+                result = im.resize((max(1, round(im.width*scale)), max(1, round(im.height*scale))), Image.Resampling.LANCZOS)
+                if 'origin' in im.info:
+                    result.info['origin'] = tuple(v*scale for v in im.info['origin'])
+                return result
             return None
         filename = filename if Path(filename).suffix else filename+'.png'
         if filename not in self.image_paths:
@@ -115,6 +118,23 @@ class OriginalData:
         if scale != 1:
             image = image.resize((max(1, round(image.width*scale)),
                                   max(1, round(image.height*scale))), Image.Resampling.LANCZOS)
+            if 'origin' in image.info:
+                image.info['origin'] = tuple(v*scale for v in image.info['origin'])
+        return image
+
+    def pet_frame(self, species, animation='stand', frame=0, loop=True):
+        row = self.tables['Pet'][str(species)]
+        path = self.assets/'Sprite/Spine'/(str(row['filePath'])+'.json')
+        if not path.exists():
+            return None
+        from spine_renderer import render_pose
+        image = render_pose(str(path), animation, int(frame), loop).copy()
+        scale = float(row.get('scale', 1) or 1)
+        if scale != 1:
+            origin = image.info['origin']
+            image = image.resize((max(1, round(image.width*scale)), max(1, round(image.height*scale))),
+                                 Image.Resampling.LANCZOS)
+            image.info['origin'] = tuple(v*scale for v in origin)
         return image
 
     @lru_cache(maxsize=64)

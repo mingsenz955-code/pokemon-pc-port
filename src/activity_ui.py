@@ -885,7 +885,7 @@ class ActivityUI:
                 box.see(box.curselection()[0])
             header.set({'main': f'主线 · {self.state.main_state}', 'branch': f'支线 · {len(rows)}',
                         'daily': f'每日 {daily.normal_completed()}/7'}.get(page, '任务'))
-            action.configure(text='领取选中任务' if page == 'daily' else '查看任务目标')
+            action.configure(text='领取选中任务' if page == 'daily' else '前往任务目标')
             show()
 
         def receive():
@@ -896,10 +896,18 @@ class ActivityUI:
                 info.set(text)
                 return
             if row['kind'] != 'daily':
-                text = ('主线/支线奖励按原版由目标 NPC 的 submittask 事件发放；'
-                        '这里不会伪造远程领取。请按任务描述前往目标。')
-                detail.set(text)
-                info.set(text)
+                category, key = row['kind'], row['id']
+                table = 'MainTask' if category == 'main' else 'BranchTask'
+                status = self.state.main_state if category == 'main' else self.state.branch_states[key]
+                target = self.guide.resolver.from_task(category, key, self.data.tables[table][key], status)
+                if not target or not target.map_id:
+                    text = target.detail if target else '当前任务没有可前往的地图目标。'
+                    detail.set(text)
+                    info.set(text)
+                    return
+                self.close_ui('no')
+                self.keys.clear()
+                self.guide.start(target)
                 return
             try:
                 result = daily.claim(row['id'])

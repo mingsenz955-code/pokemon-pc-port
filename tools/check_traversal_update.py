@@ -51,6 +51,7 @@ class TraversalChecks(unittest.TestCase):
         app.map = SimpleNamespace(scenery=lambda: [(256, 256, building)])
         app.actors = lambda: []
         app.actor_animation = lambda *args: 'standdown'
+        app.render_world_overlay = lambda *args: None
         app.player_image = lambda face: Image.new('RGBA', (10, 10), 'blue')
         app.camera_origin = lambda: (156, 100)
         frame = Preview.make_frame(app)
@@ -62,6 +63,8 @@ class TraversalChecks(unittest.TestCase):
         app.map.width = 20
         app.runtime.file, app.runtime.sequence, app.runtime.pending = '', [], None
         app.actors = lambda: [('10109', '20005', 608, 96)]
+        calls = []
+        app.interact = lambda npc_id, sprite_id=None: calls.append(npc_id)
         app.guide = Guide(app)
         app.guide.start(GuideTarget('npc', 'next quest NPC', 101, 608, 96, npc_id='10109'))
         for _ in range(25):
@@ -76,6 +79,7 @@ class TraversalChecks(unittest.TestCase):
         self.assertFalse(app.guide.active)
         self.assertAlmostEqual(544, app.x)
         self.assertEqual('standright', app.face)
+        self.assertEqual(['10109'], calls)
 
 
 if __name__ == '__main__':

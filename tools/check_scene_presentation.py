@@ -22,6 +22,100 @@ DATA = OriginalData(ROOT/'original-1.20.4')
 
 
 class SceneChecks(unittest.TestCase):
+    def test_starter_save_boundary_repair_allows_real_host_click_and_tick(self):
+        from event_runtime import EventRuntime
+        import time
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder)/'slot1.json'
+            state = GameState(DATA.tables, seed=43)
+            state.initialize(1)
+            state.add_preset(1)
+            state.starter_id = 1
+            state.map_id, state.x, state.y = 5801, 1376, 1024
+            state.main_task, state.main_state = 3, 4
+            state.presentation = {'player_visible': False, 'player_visibility_map': 5801,
+                                  'sprite_collision_version': 1, 'screen_black': False}
+            runtime = EventRuntime(DATA, state)
+            runtime.start('pEvent5801002.json')
+            runtime.index = 8
+            runtime.persist()
+            state.save(source)
+            original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            clone = Path(folder)/'playtest'
+            clone.mkdir()
+            (clone/'slot1.json').write_bytes(source.read_bytes())
+            previous = os.environ.get('POCKET_NATIVE_SAVE_DIR')
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = str(clone)
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                app = NativeGame(root, DATA)
+                self.assertTrue(app.player_visible)
+                self.assertLess(app.x, app.map.width*app.map.tw)
+                self.assertFalse(app.map.blocked(app.x, app.y))
+                # Finish both real starter dialogue rows, then use the real
+                # MainUI hit test and host tick, not Guide's isolated fake host.
+                app.on_click(SimpleNamespace(x=480, y=400))
+                app.on_click(SimpleNamespace(x=480, y=400))
+                self.assertFalse(app.runtime.running)
+                app.make_frame()
+                before = (app.x, app.y)
+                goal = (app.x-64, app.y)
+                camx, camy = app.camera_origin()
+                app.on_click(SimpleNamespace(x=goal[0]*app.SCALE-camx,
+                                             y=goal[1]*app.SCALE-camy))
+                self.assertTrue(app.guide.active)
+                for _ in range(10):
+                    app._play_clock = time.monotonic()-.04
+                    app.tick()
+                self.assertNotEqual(before, (app.x, app.y))
+                self.assertAlmostEqual(goal[0], app.x)
+                self.assertAlmostEqual(goal[1], app.y)
+                self.assertEqual(1, len(app.state.pets))
+                rect = app.scene_ui.hits['task_Button']
+                app.on_click(SimpleNamespace(x=(rect[0]+rect[2])/2, y=(rect[1]+rect[3])/2))
+                self.assertEqual('TaskUI', app.ui_render_args['name'])
+                app.ui_actions['receive_Button']()
+                self.assertFalse(app.ui_open)
+                self.assertTrue(app.guide.active)
+                for _ in range(160):
+                    app.guide.step(.04)
+                    if not app.guide.active:
+                        break
+                self.assertFalse(app.guide.active)
+                self.assertEqual('pEvent5801006.json', app.runtime.file)
+                self.assertEqual('toplace', app.runtime.pending.kind)
+                self.assertEqual(original_hash, hashlib.sha256(source.read_bytes()).hexdigest())
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    root.after_cancel(job)
+                root.destroy()
+                if previous is None:
+                    os.environ.pop('POCKET_NATIVE_SAVE_DIR', None)
+                else:
+                    os.environ['POCKET_NATIVE_SAVE_DIR'] = previous
+
+    def test_starter_repair_preserves_valid_position_and_prologue_hiding(self):
+        app = NativeGame.__new__(NativeGame)
+        app.state = GameState(DATA.tables)
+        app.state.main_task, app.state.main_state = 3, 4
+        app.state.starter_id = 1
+        app.map_id, app.player_visible = 5801, True
+        app.map = DATA.load_map(5801)
+        app.x, app.y = 1248, 992
+        app.runtime = SimpleNamespace(file='pEvent5801002.json', index=8,
+                                      sequence=DATA.event('pEvent5801002.json'))
+        app.repair_starter_save_position()
+        self.assertEqual((1248, 992), (app.x, app.y))
+        self.assertFalse(app.state.audit)
+        app.map_id, app.player_visible = 7401, False
+        app.repair_starter_save_position()
+        self.assertFalse(app.player_visible)
+        app.map_id = 5801
+        app.runtime.sequence = [{'type': 'spritevisible', 'parameters': {'spritetype': 1, 'visible': 0}}]
+        app.repair_starter_save_position()
+        self.assertFalse(app.player_visible)
+
     def test_original_main_ui_button_hits_and_page_callbacks(self):
         calls = []
         app = SimpleNamespace(WIDTH=960, HEIGHT=576, cocos_ui=CocosUI(DATA), data=DATA)
@@ -66,10 +160,24 @@ class SceneChecks(unittest.TestCase):
         app.repair_legacy_player_visibility()
         self.assertFalse(app.player_visible)
 
-    def test_cloned_current_save_renders_player_without_developer_bars(self):
-        source = Path(os.environ['LOCALAPPDATA'])/'PocketNativePC/slot1.json'
-        if not source.exists():
-            self.skipTest('no current user save available for read-only cloning')
+    def test_cloned_legacy_visibility_fixture_renders_player_without_developer_bars(self):
+        # This regression is the reported Stata-town save, not an assumption
+        # that every current user save must show the player (the prologue can
+        # legitimately hide them). Never depend on or mutate a real save.
+        from event_runtime import EventRuntime
+        original = tempfile.TemporaryDirectory()
+        self.addCleanup(original.cleanup)
+        source = Path(original.name)/'slot1.json'
+        state = GameState(DATA.tables, seed=40)
+        state.initialize(1)
+        state.map_id, state.x, state.y = 101, 928, 1056
+        state.main_task, state.main_state = 1, 4
+        state.presentation = {'player_visible': False, 'screen_black': False}
+        runtime = EventRuntime(DATA, state)
+        runtime.start('pEvent101001.json')
+        runtime.index = 5
+        runtime.next()
+        state.save(source)
         raw = source.read_bytes()
         snapshot = json.loads(raw)
         with tempfile.TemporaryDirectory() as directory:

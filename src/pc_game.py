@@ -92,7 +92,7 @@ class NativeGame(ActivityUI, Preview):
         self.booting = False
         self.npc_motion = NpcMotion(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.42（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.46（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -305,6 +305,40 @@ class NativeGame(ActivityUI, Preview):
     def scene_sprite(self, sid, animation):
         frame = int(getattr(self, 'scene_animation_time', 0)*60) if animation.startswith(('walk', 'stand')) else 0
         return self.data.village_sprite(sid, animation, frame)
+
+    def render_actor_overlay(self, frame, oid, sid, sx, sy, sprite, anchor):
+        if self.booting or not str(oid).isdigit() or not str(sid).isdigit() or not 20000 <= int(sid) < 30000:
+            return
+        from task_icons import TaskIcons
+        resolver = getattr(self, 'task_icons', None)
+        if resolver is None or resolver.state is not self.state:
+            resolver = self.task_icons = TaskIcons(self.state)
+        icon_id = resolver.for_npc(oid)
+        if not icon_id:
+            return
+        icon = self.data.image(f'TaskIcon/taskIcon{icon_id}.png')
+        scale = self.SCALE*.5
+        icon = icon.resize((max(1, round(icon.width*scale)), max(1, round(icon.height*scale))), Image.Resampling.LANCZOS)
+        bob = resolver.bob(getattr(self, 'scene_animation_time', 0))*self.SCALE
+        top = sy-anchor[1]*self.SCALE-icon.height+bob
+        frame.alpha_composite(icon, (round(sx-icon.width/2), round(top)))
+
+    def render_world_overlay(self, frame, camx, camy):
+        guide = getattr(self, 'guide', None)
+        if not guide or not guide.active or not guide.waypoints or self.runtime.running or self.battle:
+            return
+        dot = self.data.image('Sprite/dianji_path.png')
+        dot = dot.resize((max(1, round(dot.width*self.SCALE)), max(1, round(dot.height*self.SCALE))), Image.Resampling.LANCZOS)
+        for x, y in guide.waypoints[:-1]:
+            sx, sy = x*self.SCALE-camx, y*self.SCALE-camy
+            if -20 <= sx <= self.WIDTH+20 and -20 <= sy <= self.HEIGHT+20:
+                frame.alpha_composite(dot, (round(sx-dot.width/2), round(sy-dot.height/2)))
+        x, y = guide.waypoints[-1]
+        marker = self.data.armature('dianji', 'Animation1', int(getattr(self, 'scene_animation_time', 0)*60))
+        if marker is not None:
+            anchor = marker.info.get('origin', (marker.width/2, marker.height/2))
+            marker = marker.resize((max(1, round(marker.width*self.SCALE)), max(1, round(marker.height*self.SCALE))), Image.Resampling.LANCZOS)
+            frame.alpha_composite(marker, (round((x-anchor[0])*self.SCALE-camx), round((y-anchor[1])*self.SCALE-camy)))
 
     def player_image(self, face):
         animation = self.story_motion.animation(1, 0, face)
@@ -995,7 +1029,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.42')
+        win.title('任务指引 · 原生 0.2.46')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1042,7 +1076,7 @@ class NativeGame(ActivityUI, Preview):
         tk.Button(buttons, text='停止', command=lambda: self.guide.stop('已停止自动指引。')).pack(side='left', padx=6)
         tk.Button(buttons, text='关闭', command=win.destroy).pack(side='right')
 
-    def interact(self):
+    def interact(self, npc_id=None, sprite_id=None):
         if self.booting:
             return
         if self.display_request and self.display_request.kind in ['talk', 'aside', 'airtalk', 'tapscreen', 'button']:
@@ -1054,6 +1088,10 @@ class NativeGame(ActivityUI, Preview):
         if self.runtime.running or self.runtime_error:
             return
         actors = sorted(self.actors(), key=lambda a: (a[2]-self.x)**2+(a[3]-self.y)**2)
+        if npc_id is not None:
+            actors = [actor for actor in actors if str(actor[0]) == str(npc_id)]
+        if sprite_id is not None:
+            actors = [actor for actor in actors if str(actor[1]) == str(sprite_id)]
         if not actors or (actors[0][2]-self.x)**2+(actors[0][3]-self.y)**2 > 150**2:
             return
         oid = actors[0][0]
@@ -1203,7 +1241,48 @@ class NativeGame(ActivityUI, Preview):
         if not self.runtime.running and not self.ui_open and self.main_ui_visible:
             if self.scene_ui.click(event.x, event.y):
                 return
-        self.interact()
+        if self.runtime.running or self.display_request or self.pending_wait:
+            self.interact()
+            return
+        if self.ui_open or self.runtime_error:
+            return
+        self.click_walk(event.x, event.y)
+
+    def click_walk(self, screen_x, screen_y):
+        camx, camy = self.camera_origin()
+        target = None
+        for actor in sorted(self.actors(), key=lambda row: row[3], reverse=True):
+            oid, sid, x, y = actor
+            if str(oid).startswith(('temp:', 'fx:')):
+                continue
+            sprite = self.scene_sprite(sid, self.actor_animation(oid, sid))
+            if sprite is None:
+                continue
+            anchor = sprite.info.get('origin', (sprite.width/2, sprite.height))
+            left, top = (x-anchor[0])*self.SCALE-camx, (y-anchor[1])*self.SCALE-camy
+            px, py = int((screen_x-left)/self.SCALE), int((screen_y-top)/self.SCALE)
+            if 0 <= px < sprite.width and 0 <= py < sprite.height and sprite.getpixel((px, py))[3] > 0:
+                target = actor
+                break
+            if str(oid).isdigit() and str(sid).isdigit() and 20000 <= int(sid) < 30000:
+                from task_icons import TaskIcons
+                resolver = getattr(self, 'task_icons', None)
+                if resolver is None or resolver.state is not self.state:
+                    resolver = self.task_icons = TaskIcons(self.state)
+                icon_id = resolver.for_npc(oid)
+                if icon_id:
+                    icon = self.data.image(f'TaskIcon/taskIcon{icon_id}.png')
+                    width, height = round(icon.width*self.SCALE*.5), round(icon.height*self.SCALE*.5)
+                    icon_x = x*self.SCALE-camx-width/2
+                    icon_y = top-height+resolver.bob(getattr(self, 'scene_animation_time', 0))*self.SCALE
+                    if icon_x <= screen_x <= icon_x+width and icon_y <= screen_y <= icon_y+height:
+                        target = actor
+                        break
+        self.keys.clear()
+        if target:
+            self.guide.start_click(target[2], target[3], target[0], target[1])
+        else:
+            self.guide.start_click((screen_x+camx)/self.SCALE, (screen_y+camy)/self.SCALE)
 
     def start_battle(self, npcid, kind=None):
         if self.battle:
@@ -1236,6 +1315,7 @@ class NativeGame(ActivityUI, Preview):
                                          npcid, npc['keyId'], self.state.rng)
         else:
             battle = make_npc_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
+        battle.select_initial_player(self.state.active_pet)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
         battle.source_id = str(npcid)
         self.battle_tips = []
@@ -1516,7 +1596,7 @@ class NativeGame(ActivityUI, Preview):
             self.state.activities['play_seconds'] = (
                 float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
-            self.battle_ui.advance()
+            self.battle_ui.advance(seconds=elapsed)
         if getattr(self, 'chest_fx', None):
             self.chest_fx['age'] += 1
             if self.chest_fx['age'] >= 26:
@@ -1601,6 +1681,8 @@ class NativeGame(ActivityUI, Preview):
 
     def draw_guide(self, frame):
         target = getattr(self.guide, 'target', None)
+        if getattr(self.guide, 'click_mode', False):
+            return
         if not target or self.runtime.running or self.battle:
             return
         point = self.guide.point()
@@ -1687,6 +1769,7 @@ class NativeGame(ActivityUI, Preview):
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
             self.player_sprite = state.sprite_id
+            self.repair_starter_save_position()
             self.repair_legacy_player_visibility()
             self.story_motion = StoryMotion(self)
             self.story_motion.actions = state.presentation.get('story_motion_actions', [])
@@ -1701,6 +1784,39 @@ class NativeGame(ActivityUI, Preview):
         except (ValueError, KeyError, OSError) as error:
             messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
             return False
+
+    def repair_starter_save_position(self):
+        # Observed old save: the selected-starter plot in the 21x20 lab has
+        # x=1376 (tile 21, outside the map) and a stale hidden-player flag.
+        # None of these three original scripts hide/move the player. Limit
+        # migration to that exact story phase; prologue off-map motion is valid.
+        if (self.map_id != 5801 or self.state.main_task != 3 or self.state.main_state != 4
+                or not self.state.starter_id or self.runtime.file not in (
+                    '', 'pEvent5801002.json', 'pEvent5801003.json', 'pEvent5801004.json')
+                or getattr(self, 'screen_black', False)):
+            return
+        for step in self.runtime.sequence[:self.runtime.index+1]:
+            if step['type'] == 'spritevisible':
+                rows = step.get('parameters', {})
+                if any(p.get('spritetype') == 1 and not p.get('visible', 1)
+                       for p in (rows if isinstance(rows, list) else [rows])):
+                    return
+        before = [self.x, self.y, self.player_visible]
+        self.player_visible = True
+        world = self.map
+        if not (0 <= self.x < world.width*world.tw and 0 <= self.y < world.height*world.th):
+            mounts = Mounts(self.state)
+            occupied = {(int(a[2]//world.tw), int(a[3]//world.th)) for a in self.actors()}
+            candidates = [((tx+.5)*world.tw, (ty+.5)*world.th)
+                          for ty in range(world.height) for tx in range(world.width)
+                          if (tx, ty) not in occupied and
+                          not world.blocked((tx+.5)*world.tw, (ty+.5)*world.th, mounts)]
+            if candidates:
+                self.x, self.y = min(candidates, key=lambda p: (p[0]-self.x)**2+(p[1]-self.y)**2)
+                self.state.x, self.state.y = self.x, self.y
+        if before != [self.x, self.y, self.player_visible]:
+            self.state.audit.append({'repair': 'starter-save-outside-lab-or-hidden',
+                                     'before': before, 'after': [self.x, self.y, self.player_visible]})
 
     def repair_legacy_player_visibility(self):
         # Confirmed broken save: map 101 / pEvent101001, player flag false,
@@ -2698,19 +2814,8 @@ class NativeGame(ActivityUI, Preview):
         tk.Button(body, text='碎片合成', command=synthesize).pack(side='left', padx=6)
 
     def tasks_ui(self):
-        row = self.data.tables['MainTask'][str(self.state.main_task)]
         TaskProgress(self.state).update()
-        labels = {2: '未接取', 3: '进行中', 4: '可提交', 5: '已完成'}
-        lines = [f'主线：{row["name"]} · {labels.get(self.state.main_state, self.state.main_state)}', row['des'],
-                 f'进度 {self.state.task_counts.get(f"main:{self.state.main_task}", [])} / {row["counts"]}', '', '支线任务：']
-        for key, status in sorted(self.state.branch_states.items(), key=lambda pair: int(pair[0])):
-            if status not in (3, 4):
-                continue
-            branch = self.data.tables['BranchTask'][key]
-            lines.extend([f'{branch["name"]} · {labels[status]}', branch['des'],
-                          f'进度 {self.state.task_counts.get(f"branch:{key}", [])} / {branch["counts"]}', ''])
-        lines.extend([f'已完成主线：{len(self.state.completed_main)}', f'已完成支线：{len(self.state.completed_branch)}'])
-        self.listing('任务', '\n'.join(lines))
+        self.open_ui(Request('openui', 'task-menu', 1, {'parameters': {'uiid': 44}}))
 
     def about(self):
         text = ('原生开发版 0.2，尚未完成所有内容。\n\n'

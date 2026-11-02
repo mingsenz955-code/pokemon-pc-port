@@ -1,5 +1,112 @@
 # 1.20.4 规则核对记录
 
+## 0.2.46：PR #9 复审补修
+
+检查 PR #9 / a88bd5b 后补修以下可复现缺陷：
+
+- Battle._perform_round / _attempt_catch 每回合替换 events，BattleUI 却把旧列表长度当作全局读取位置。
+  第二回合与第一回合事件数相同时会整回合漏播。现在跟踪列表对象与读取位置，
+  新回合从头消费，同一批再次捕获不会重播。
+- 我方血条在 _draw_bars 使用 mine 键，但动画快照存入 player 键，导致数字缓动而条立即跳变。
+  现双方的数字和条读取相同的 side/uid 快照。
+- NativeGame.start_battle 原先忽略 GameState.active_pet。现在战斗开始前选定对应队列索引；
+  选中宠物倒下时使用第一只存活宠物，不重排或复制存档宠物，不消耗一次换宠回合。
+  这是当前宠物页的选中语义修正；原版排序细节尚待完整核定。
+- 战斗演出按宿主实际 elapsed 推进，保留小数帧并跨动作边界消费时间，避免绘制慢就变慢。
+  **26 tick / 中点受击仍是 PR #9 的临时动作节奏，不等同于已恢复原技能回调。**
+- 普通任务指引和点击寻路都避开可见 NPC/宝箱；下一路径格被移动 NPC 占据时重算，
+  同一 tick 跨多个路径点也重新检查占用，防止越过人物。
+- 支线状态和子任务计数变化会重新解析当前选中的主/支线；不会把支线重定向到另一条主线。
+  原表 submitNpcs 的逗号列表（主线 33/85 等）逐项解析为真实 NPC，优先当前地图/近处目标，
+  不再把整串 ID 当成一个 NPC 导致无法指引。
+
+新增 tools/check_pr9_review.py 的 10 项无窗口回归，覆盖连续三回合、多次捕获不重播、
+血条取值、真实宿主开场选宠/倒下回退、时间跨动作、动态避让、支线刷新、多提交 NPC 和重名 NPC/宝箱的确切交互对象。
+测试使用新建状态/临时目录，未写入真实用户存档，也未观察用户正在玩的窗口。
+原 ARM 新核读：initPlayerPet 0x2cc32c 从原 bag list 首位建立角色；attackAction 0x2d11bc
+选动画并发事件；attackedAction 0x2d0218 还有 Fade/Tint 组合，说明单一中点受击仍不足以复原。
+本次不声称所有战斗规则、Spine 演出、粒子/音频或全地图任务均一致。
+
+## 0.2.45：指引入口、基础伤害和战斗动画复核
+
+用户反馈指引无效且战斗整体不还原。本次确认并修复以下独立问题：
+
+- 主界面任务按钮此前打开纯文本旧页；现接原 TaskUI 主/支/每日三页。
+  主/支线目标按钮现在关闭任务页后启动实际寻路，到达 NPC 触发确切对象对话。
+  原先只停止并把“按空格”写入已隐藏的状态栏，用户看不到这一步。
+  check_scene_presentation 在研究所存档 fixture 上点击实际 MainUI 按钮，再调用 TaskUI
+  目标动作，经过 Guide 移动后验证触发原 pEvent5801006，而不是远程发奖励。
+- `checkPetUseSkill` 0x2c83f0 的 mainAttribute 0/1/2/3 对应力量/速度/防御/能量。
+  原实现把 1/2 映射颠倒，四个已恢复公式也未被战斗调用。现在按 0x2c84d2..0x2c85d0
+  的参数接 `Formula_PetAttackDamage`、`PetSpeedDamage`、`PetDefenceDamage`、`PetEnergyDamage`。
+  vtable 确认偏移 0x9c 是 getMaxEnergy，0x134/0x13c 是伤害修正 getter；本次默认修正值为 0。
+  移除另写的防御减半/三分之一近似，以及没有依据的 ±5% 随机浮动。
+  damageAddition 0x2c91bc 在克制百分比上加 50 表示暴击，再交给技能系数公式，
+  不再先对最终伤害乘 1.5。普通攻击使用 300056 表项，移除凭空恢复 10 点能量。
+  check_battle_damage 新增运行时 4×100 组 ARM 对照及系数顺序、映射、能量回归。
+- 画布由 1024×576 改为宿主和原 800×480 设计的等比 960×576；
+  BattleMainUI 的 minePetPos_Panel / enemyPetPos_Panel 提供角色原点，
+  与 `BattleUiLayer::getFightPetPos` 0x351318 读取节点的方式一致。
+  原图默认朝左，左侧我方翻转朝向右侧；原点元数据随缩放/翻转保留。
+- Spine 2.1 原动画接入骨骼旋转/位移/缩放、线性/stepped/Bezier、slot attachment/color、drawOrder。
+  使用 stand/attack/underattack 原时间轴，移除通用突进/抖动/漂浮代替骨架动画的做法。
+  动作组按事件顺序排队，演出中禁止再次点击跳过动作，HP 数字和条使用显示进度。
+  161 份不同骨架的三类动画采样审计无报错；check_spine_animation 验证插值、层级、
+  原点、画布尺寸和双方动作顺序；仍有 FFD/IK、原版命中时点、特效/音效等未完成。
+
+未解决的具体范围见 RESTORATION_REMAINING.md 的 0.2.45 清单；本轮不宣称完整复刻。
+
+## 0.2.44：研究所旧存档无法点击行走
+
+用户实际体验报告点击地面不走。只读复制当前存档复现：地图 5801 是 21×20 格，
+存档位置 (1376,1024) 的 x 格号是 21，已越界；同时 player_visible=false。
+原 A* 正确拒绝越界起点，之前的空白地图单元测试未覆盖该实际宿主状态。
+
+新增定向读档修复：仅在已选初始宠物、主线 3/状态 4、地图 5801、对应三选一脚本
+或空脚本的阶段恢复可见性；越界坐标恢复到最近可通行、无人物占据的格中心。
+不改变正常坐标，不跳过对话、不增加宠物，不对序章越界动画及明确隐藏指令套用修复。
+在载入的内存状态记录 audit；原存档通过原有保存/备份流程处理。
+
+check_scene_presentation 新增真实地图、MainUI 点击命中、NativeGame.tick 的联合回归，
+模拟这份存档结构并完成两句原始对话后验证移动，源 fixture 哈希不变。
+Windows computer-use 的 list_windows 连续超时，重置重连仍超时，尚未完成屏幕点击验收。
+宠物使者未完成草稿保存在 Git stash，未混入此修复版。
+
+## 0.2.43：NPC 提示、点击行走与支线分发
+
+本次同步基线 `ae68f07` / 0.2.42，旧本地坐骑草稿保留在独立归档分支，未覆盖新实现。
+
+原 `addMainTaskIcon` 0x2e71f4 使用 10+任务状态，`addBranchTaskIcon` 0x2e72a4
+使用 20+状态；目标标记为 19/29。直接使用 TaskIcon 的 8 张原图：橙黄色主线、蓝绿色支线，
+感叹号为可接任务、灰色问号为进行中、彩色问号为可提交；没有为普通闲聊创造未读标记。
+`showTaskIcon` 0x2e70e8 的上下 4 像素/0.4 秒循环已接入。主线目标优先于主线交接，
+再显示支线目标和交接；状态更改与读档换状态对象都会刷新。与 NPC 按脚底深度一起绘制，
+避免悬浮在前景建筑上；逐 NPC 原节点高度和全场景缩放仍需原机对照。
+
+`playerMoveToPosition` 0x2d92a2 选取点击格和目标 NPC，调用寻路（搜索上限 300）。
+本次用已有原规则 A* 接入地面点击、原 `dianji_path.png` 路径点和 `dianji/Animation1` 终点；
+HUD/剧情点击优先，方向键中断，新点击替换目标。到 NPC 相邻格中心后转向，按确切对象触发
+一次对话；移动 NPC 重规划、消失 NPC 取消、封闭 NPC 不伪造对话。地图内普通路径会经过原
+碰撞/坐骑/出口逻辑，同 ID 的宝箱与 NPC 用 sprite ID 区分。原版全场景目标碰撞和路径层级仍需验收。
+
+`PlotEventManager::process` 0x2f7958 在匹配剧情后运行 NPC 支线，再回退普通对话；
+`compareTriggerNpcId` 0x2f7282 对比本次发起对话的 NPC，并非战胜状态。接通 170 个 BranchTask
+表行的原支线脚本选择，其中 33 个脚本含 NPC 分支；上下文随剧情存档恢复。目标图标优先，
+同组按状态降序、任务 ID 升序（原比较器 0x2e35fc / 0x2e3672）。前置主线/支线条件要求全部匹配。
+
+任务类型 8 根据真实支线提交事件计数，重复提交不计数；类型 9 按图鉴历史获得种类计数，
+重复宠物和放生不改变种类数。依据 `BranchTaskItemBTaskSubmit::process` 0x2fc11c、
+`BranchTaskItemIllustratedCollect::setReachCountByStateData` 0x2fbac2 及 `getPetCountByThisStatus`
+0x329d9c。补充这两类任务的子任务/收录指引；不凭空指定宠物出现坐标。
+
+另据 `PlayerDataManager::initPlayer` 0x331538..0x3315ae，角色初始化先移除队伍/银行宠物，
+清空坐骑表和 IllustratedStatus 后才发放新预设。本次修正序章临时宠物的图鉴/坐骑残留，
+同时重置银行及队伍选择；只影响剧情再次执行初始化，不改写已有用户存档。
+
+新增无窗口测试：`check_branch_dispatch.py` 13 项、`check_task_icons.py` 5 项、
+`check_click_navigation.py` 12 项。场景可见性回归改用用户报告的旧斯塔镇存档结构作为确定性
+fixture，不再假定任意真实存档都必须显示玩家（序章可以合法隐藏）；不写入用户存档。
+
 当前不是完整复刻。原布局可读不等于对应玩法完成；Python 测试通过也不等于原版逐帧一致。
 
 ## 核对基准

@@ -49,21 +49,23 @@ assert submit_target.kind == 'exit' and submit_target.map_id == 5802, submit_tar
 game_map = data.load_map('101')
 point = resolver.area_point('10101')
 assert point and point[0] == 101
-path = walk_path(game_map, (352, 800), (point[1], point[2]),
+path = walk_path(game_map, (928, 1056), (point[1], point[2]),
                  lambda x, y: (x-point[1])**2+(y-point[2])**2 <= 40**2)
 assert path, 'no walkable route to area 10101'
 
 root = tk.Tk()
+root.withdraw()
 app = NativeGame(root, data)
 app.booting = False
 app.runtime.file = ''
+app.runtime.sequence, app.runtime.pending = [], None
 app.dialogue = None
 app.display_request = None
 app.pending_wait = None
 app.steps = []
 app.state.initialize(2)
 app.state.main_task, app.state.main_state = 1, 3
-app.load_map(101, 352, 800)
+app.load_map(101, 928, 1056)
 app.exit_time = 0
 app.guide.start()
 for _ in range(500):

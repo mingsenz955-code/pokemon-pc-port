@@ -12,7 +12,7 @@ import tkinter as tk
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-W, H = 1024, 576
+W, H = 960, 576
 FONT = 'C:/Windows/Fonts/msyh.ttc'
 
 
@@ -50,22 +50,37 @@ class BattleUI:
         self.shop_hit = None
         self.item_filter = None
         self.info = ''
-        # Lightweight battle presentation timeline.  Events are emitted by the
-        # battle state machine; the UI turns them into lunge/hit/damage
-        # feedback while the actual combat rules stay in battle.py.
+        # Replay action groups in order using authored Spine poses. The hit
+        # phase and duration are still provisional, not native effect callbacks.
         self.anim = None
+        self.anim_queue = []
         self.anim_frame = 0
         self.anim_idle = 0
-        self.display_hp = {}
+        self.display_hp = {(u.side, u.pet.uid): u.hp for u in battle.player+battle.enemy}
+        self.visual_hp = dict(self.display_hp)
         self._event_cursor = len(getattr(battle, 'events', []))
+        self._event_batch = battle.events
+        app.cocos_ui.render('BattleMainUI', (W, H), {})
+        self.pet_positions = {side: tuple(app.cocos_ui.rects[node][:2]) for side, node in (
+            ('player', 'minePetPos_Panel'), ('enemy', 'enemyPetPos_Panel'))}
 
     # -- animation -----------------------------------------------------------
-    def advance(self, steps=1):
+    def advance(self, steps=1, *, seconds=None):
+        # Keep the existing provisional action phases, but advance them in
+        # elapsed time rather than one unit per potentially slow render.
+        steps = max(0.0, float(steps) if seconds is None else float(seconds)*25)
         self.anim_idle += steps
-        if self.anim:
-            self.anim['age'] += steps
+        remaining = steps
+        while self.anim and remaining > 0:
+            amount = min(remaining, self.anim['duration']-self.anim['age'])
+            self.anim['age'] += amount
+            remaining -= amount
+            if self.anim['age'] >= self.anim['duration']/2:
+                for event in self.anim.get('damages', []):
+                    if event.get('uid'):
+                        self.visual_hp[(event['side'], event['uid'])] = event['hp']
             if self.anim['age'] >= self.anim['duration']:
-                self.anim = None
+                self.anim = self.anim_queue.pop(0) if self.anim_queue else None
             self.frame = None
             self._signature = None
         # Smoothly drain/fill the bars instead of snapping to the new value.
@@ -74,7 +89,7 @@ class BattleUI:
             if not unit:
                 continue
             key = (side, unit.pet.uid)
-            target = int(unit.hp)
+            target = int(self.visual_hp.get(key, unit.hp) if self.anim else unit.hp)
             current = self.display_hp.get(key)
             if current is None or current == target:
                 self.display_hp[key] = target
@@ -87,62 +102,64 @@ class BattleUI:
 
     def _capture_events(self):
         events = getattr(self.battle, 'events', [])
-        cursor = getattr(self, '_event_cursor', 0)
+        # Battle replaces the per-round list. Its length is not a global
+        # cursor: equal-length consecutive rounds must both be replayed.
+        cursor = getattr(self, '_event_cursor', 0) if events is getattr(self, '_event_batch', None) else 0
         fresh = events[cursor:]
+        self._event_batch = events
         self._event_cursor = len(events)
         if not fresh:
             return
-        source = next((event for event in reversed(fresh)
-                       if event.get('type') in ('attack', 'skill')), None)
-        damage = next((event for event in reversed(fresh)
-                       if event.get('type') == 'damage'), None)
-        if source or damage:
-            self.anim = {
-                'side': str((source or {}).get('side', 'player')),
-                'target': str((damage or {}).get('side', 'enemy')),
-                'kind': (source or {}).get('type', 'damage'),
-                'amount': int((damage or {}).get('amount', 0)),
-                'crit': bool((damage or {}).get('crit')),
-                'age': 0,
-                'duration': 26,
-            }
-            self._signature = None
+        current = None
+        for event in fresh:
+            kind = event.get('type')
+            if kind in ('attack', 'skill'):
+                current = {'side': event.get('side', 'player'), 'target': '', 'kind': kind,
+                           'source_uid': event.get('uid'), 'amount': 0, 'crit': False,
+                           'age': 0, 'duration': 26, 'damages': []}
+                self.anim_queue.append(current)
+            elif kind == 'damage':
+                if current is None:
+                    current = {'side': '', 'target': event['side'], 'kind': 'damage',
+                               'amount': 0, 'crit': False, 'age': 0, 'duration': 26, 'damages': []}
+                    self.anim_queue.append(current)
+                current['target'] = event['side']
+                current['target_uid'] = event.get('uid')
+                current['amount'] += int(event.get('amount', 0))
+                current['crit'] |= bool(event.get('crit'))
+                current['damages'].append(event)
+        if self.anim is None and self.anim_queue:
+            self.anim = self.anim_queue.pop(0)
+        self._signature = None
 
     def _animation_offsets(self):
-        if not self.anim:
-            return (0, 0), (0, 0), 0.0
-        age = self.anim['age']
-        duration = max(1, self.anim['duration'])
-        phase = age/duration
-        source = self.anim['side']
-        target = self.anim['target']
-        lunge = max(0.0, 1.0-abs(phase*2-0.6)/1.6)
-        if self.anim['kind'] in ('attack', 'skill'):
-            distance = 58 if self.anim['kind'] == 'attack' else 34
-            if source == 'player':
-                source_offset = (round(distance*lunge), round(-16*lunge))
-            else:
-                source_offset = (round(-distance*lunge), round(-16*lunge))
-        else:
-            source_offset = (0, 0)
-        hit_phase = max(0.0, 1.0-abs(phase*2-1.0))
-        shake = round(10*hit_phase*math.sin(age*1.9))
-        target_offset = (shake, 0)
-        flash = hit_phase if target != source or self.anim['kind'] == 'damage' else 0.0
-        return source_offset, target_offset, flash
+        # Pet motion comes from the authored Spine timelines.
+        return (0, 0), (0, 0), 0.0
+
+    def presentation_unit(self, enemy=False):
+        side = 'enemy' if enemy else 'player'
+        team = self.battle.enemy if enemy else self.battle.player
+        if self.anim:
+            uid = (self.anim.get('source_uid') if self.anim['side'] == side else
+                   self.anim.get('target_uid') if self.anim['target'] == side else None)
+            unit = next((u for u in team if u.pet.uid == uid), None)
+            if unit:
+                return unit
+        return self.battle.enemy_active if enemy else self.battle.player_active
 
     # -- HUD ----------------------------------------------------------------
     def _hud_layer(self, enemy):
         side = 'enemy' if enemy else 'mine'
-        active = self.battle.enemy_active if enemy else self.battle.player_active
+        active = self.presentation_unit(enemy)
         if not active:
             return None
         petrow = self.app.data.tables['Pet'][active.pet.species]
+        shown_hp = self.display_hp.get(('enemy' if enemy else 'player', active.pet.uid), active.hp)
         text = {
             f'{side}_name_Text': active.name,
             'lv_BitmapFontLabel': str(active.pet.level),
-            'hp_BitmapFontLabel': f'{active.hp}/{active.max_hp}',
-            f'{side}FightPercent_BitmapFontLabel': f'{active.hp*100//active.max_hp}%',
+            'hp_BitmapFontLabel': f'{shown_hp}/{active.max_hp}',
+            f'{side}FightPercent_BitmapFontLabel': f'{shown_hp*100//active.max_hp}%',
         }
         if not enemy:
             text['energy_BitmapFontLabel'] = f'{active.energy}/{active.max_energy}'
@@ -206,6 +223,7 @@ class BattleUI:
     # -- frame ---------------------------------------------------------------
     def render(self):
         signature = (self.screen, self.page, self.ball_page, self.notice, self.info,
+                     int(self.anim_idle*12/25),
                      self.item_filter, repr(self.selected), self.battle.result,
                      self.battle.player_index, self.battle.enemy_index,
                      tuple(self.battle.messages), repr(getattr(self.app, 'battle_tips', [])),
@@ -227,35 +245,33 @@ class BattleUI:
         if background is None:
             background = getattr(self.app, 'background', None)
         frame.alpha_composite(cover(background, (W, H)))
-        frame.alpha_composite(Image.new('RGBA', (W, H), (8, 10, 14, 60)))
         source_offset, target_offset, flash = self._animation_offsets()
         if self.anim:
             enemy_offset = source_offset if self.anim['side'] == 'enemy' else target_offset
             player_offset = source_offset if self.anim['side'] == 'player' else target_offset
         else:
-            bob = round(3*math.sin(self.anim_idle*.06))
-            enemy_offset, player_offset = (0, bob), (0, -bob)
-        self._draw_pet(frame, self.battle.enemy_active,
-                       (round(W*.74)+enemy_offset[0], round(H*.34)+enemy_offset[1]),
+            enemy_offset, player_offset = (0, 0), (0, 0)
+        self._draw_pet(frame, self.presentation_unit(True),
+                       tuple(round(v)+d for v, d in zip(self.pet_positions['enemy'], enemy_offset)),
                        235, True, flash if self.anim and self.anim['target'] == 'enemy' else 0)
-        self._draw_pet(frame, self.battle.player_active,
-                       (round(W*.26)+player_offset[0], round(H*.66)+player_offset[1]),
+        self._draw_pet(frame, self.presentation_unit(False),
+                       tuple(round(v)+d for v, d in zip(self.pet_positions['player'], player_offset)),
                        250, False, flash if self.anim and self.anim['target'] == 'player' else 0)
         for layer in (self._hud_layer(True), self._hud_layer(False)):
             if layer:
                 frame.alpha_composite(layer)
         draw = ImageDraw.Draw(frame, 'RGBA')
         self._draw_bars(draw)
-        self._draw_status(draw, self.battle.enemy_active, True)
-        self._draw_status(draw, self.battle.player_active, False)
+        self._draw_status(draw, self.presentation_unit(True), True)
+        self._draw_status(draw, self.presentation_unit(False), False)
         self._draw_team(draw)
         self._draw_damage(draw)
         self.hits = {}
         if self.shop_hit:
             self.hits['battleShop_Button'] = self.shop_hit
-        if self.battle.result:
+        if self.battle.result and not self.anim:
             self._draw_result(frame, draw)
-        elif self.screen == 'main':
+        elif self.anim or self.screen == 'main':
             pass  # Original: tap own pet for items, opponent for skills.
         elif self.screen == 'commands':
             self._draw_main_menu(frame)
@@ -287,25 +303,40 @@ class BattleUI:
     def _draw_pet(self, frame, unit, center, height, enemy=False, flash=0.0):
         if not unit:
             return
-        image = self.app.data.pet_image(unit.pet.species)
-        if image is None:
+        setup = self.app.data.pet_image(unit.pet.species)
+        if setup is None:
             return
-        ratio = height/max(1, image.height)
-        image = image.resize((max(1, round(image.width*ratio)), height), Image.Resampling.LANCZOS)
-        if enemy:
+        clip, age, loop = 'stand', self.anim_idle, True
+        side = 'enemy' if enemy else 'player'
+        if self.anim and self.anim['side'] == side:
+            clip, age, loop = 'attack', self.anim['age'], False
+        elif self.anim and self.anim['target'] == side and self.anim['age'] >= self.anim['duration']/2:
+            clip, age, loop = 'underattack', self.anim['age']-self.anim['duration']/2, False
+        image = self.app.data.pet_frame(unit.pet.species, clip, int(age*12/25), loop)
+        if image is None:
+            image = setup
+        ratio = height/max(1, setup.height)
+        origin = image.info.get('origin', (image.width/2, image.height))
+        origin = (origin[0]*ratio, origin[1]*ratio)
+        image = image.resize((max(1, round(image.width*ratio)), max(1, round(image.height*ratio))), Image.Resampling.LANCZOS)
+        if not enemy:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+            origin = (image.width-origin[0], origin[1])
         if flash:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
             image = Image.blend(image, overlay, min(.55, .55*flash))
-        frame.alpha_composite(image, (center[0]-image.width//2, center[1]-image.height//2))
+        frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
 
     def _draw_damage(self, draw):
         if not self.anim or self.anim['amount'] <= 0:
             return
-        phase = min(1.0, self.anim['age']/max(1, self.anim['duration']))
+        half = self.anim['duration']/2
+        if self.anim['age'] < half:
+            return
+        phase = min(1.0, (self.anim['age']-half)/max(1, half))
         side = self.anim['target']
-        x = round(W*.74) if side == 'enemy' else round(W*.26)
-        y = round(H*.34)-130 if side == 'enemy' else round(H*.66)-160
+        x = round(self.pet_positions[side][0])
+        y = round(self.pet_positions[side][1])-260
         y -= round(34*phase)
         text = f'-{self.anim["amount"]}'
         if self.anim['crit']:
@@ -317,10 +348,10 @@ class BattleUI:
         for side, rects in self._hud_rects.items():
             for key, rect in rects.items():
                 if key.endswith('/hp_LoadingBar'):
-                    active = self.battle.enemy_active if side == 'enemy' else self.battle.player_active
+                    active = self.presentation_unit(side == 'enemy')
                     if not active:
                         continue
-                    key_hp = (side, active.pet.uid)
+                    key_hp = ('enemy' if side == 'enemy' else 'player', active.pet.uid)
                     shown = self.display_hp.get(key_hp, active.hp)
                     color = (76, 200, 96, 255)
                     if active.hp/active.max_hp < .25:
@@ -329,7 +360,7 @@ class BattleUI:
                         color = (238, 190, 70, 255)
                     self._bar(draw, rect, shown/active.max_hp, color)
                 elif key.endswith('/energy_LoadingBar'):
-                    active = self.battle.player_active
+                    active = self.presentation_unit(False)
                     if active:
                         self._bar(draw, rect, active.energy/active.max_energy, (76, 150, 235, 255))
 
@@ -509,6 +540,8 @@ class BattleUI:
 
     # -- input ---------------------------------------------------------------
     def click(self, x, y):
+        if self.anim:
+            return None
         if self.info:
             self.info = ''
             return 'refresh'

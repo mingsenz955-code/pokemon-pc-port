@@ -38,9 +38,9 @@ try:
     assert changed > 100
     assert [unit.hp for unit in app.battle.enemy] != before_hp
     # The timeline must expire and stop forcing redraws.
-    ui.advance(40)
+    ui.advance(200)
     assert ui.anim is None
-    assert ui.render().size == (1024, 576)
+    assert ui.render().size == (960, 576)
 finally:
     root.destroy()
 
