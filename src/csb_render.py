@@ -6,7 +6,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 
 def nine_slice(image, size, cap):
@@ -92,7 +92,7 @@ class CocosUI:
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
                offset=(0, 0), pressed=None, positions=None, rich_text=(), alphas=None,
                native_resources=(), percentages=None, sizes=None, canvas_size=None,
-               auto_text=(), timeline_frame=None):
+               auto_text=(), timeline_frame=None, bright=None):
         layout = self.layout(name)
         root = layout['tree']
         design = canvas_size or root.get('size', [800, 480])
@@ -104,6 +104,7 @@ class CocosUI:
         text, visible, resources = text or {}, visible or {}, resources or {}
         pressed = pressed or {}
         positions = positions or {}
+        bright = bright or {}
         alphas = alphas or {}
         percentages = percentages or {}
         sizes = sizes or {}
@@ -173,6 +174,10 @@ class CocosUI:
                 except (KeyError, OSError) as error:
                     self.diagnostics.append([key, resource, str(error)])
             if image:
+                if not resolve(bright, True):
+                    opacity = image.getchannel('A')
+                    image = ImageOps.grayscale(image).convert('RGBA')
+                    image.putalpha(opacity)
                 if key in native_resources or qualified in native_resources:
                     # ImageView::loadTexture + ignoreContentAdaptWithSize(true)
                     # uses the loaded icon's size, not the editor heart sample.

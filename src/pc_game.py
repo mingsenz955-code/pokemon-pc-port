@@ -222,17 +222,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     def mounts_ui(self):
         if self.battle or self.runtime.running or self.ui_open:
             return
-        rows = [(0, '步行 / 下坐骑')]
-        for key, row in self.data.tables['Ride'].items():
-            owned = int(key) in [int(k) for k in self.state.rides]
-            rows.append((int(key), row['name'] + (' · 已获得' if owned else ' · 未获得')))
-        def select(key):
-            try:
-                Mounts(self.state).select(key, self.map.terrain_at(self.x, self.y),
-                                          int(self.map.info['mapType']))
-            except ValueError as error:
-                self.game_tip(str(error))
-        self.choose('坐骑', rows, select)
+        self.scene_ui.toggle('left')
 
     def player_image(self, face):
         row = Mounts(self.state).active()
@@ -1793,6 +1783,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'), .7)
         if getattr(self, 'task_page', None):
             frame.alpha_composite(self.task_page.render().resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS))
+        self.scene_ui.render_tip(frame)
         return frame
 
     def draw_guide(self, frame):
