@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.33（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.34（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -382,6 +382,7 @@ class NativeGame(ActivityUI, Preview):
         57: ('PetPropertyUI', '宠物属性'),
         58: ('LuckyDrawPetInfoUI', '抽宠结果'),
         59: ('GameAboutUI', '关于'),
+        60: ('SkillLearnConfirmUI', '技能学习确认'),
     }
 
     def open_ui(self, request):
@@ -521,6 +522,8 @@ class NativeGame(ActivityUI, Preview):
             self._lucky_pet_body(body, info)
         elif uiid == 59:
             self._about_body(body, info)
+        elif uiid == 60:
+            self._skill_learn_confirm_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -944,7 +947,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.33')
+        win.title('任务指引 · 原生 0.2.34')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1831,6 +1834,67 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['confirm_Button'] = confirm
         self.ui_actions['cancel_Button'] = back
         self.ui_actions['close_Button'] = back
+
+    def open_skill_learn_confirm(self, uid, key, scroll=None, replace=None, back=None):
+        self.open_ui(Request('openui', 'skill-learn-confirm', 1, {
+            'parameters': {'uiid': 60, 'uid': uid, 'key': str(key),
+                           'scroll': scroll, 'replace': replace, 'back': back}}))
+
+    def _skill_learn_confirm_body(self, body, info):
+        parameters = self.ui_parameters
+        uid = str(parameters.get('uid') or
+                  (self.state.pets[0].uid if self.state.pets else ''))
+        key = str(parameters.get('key') or next(iter(self.data.tables['Skill'])))
+        scroll = parameters.get('scroll')
+        replace = parameters.get('replace')
+        replace = int(replace) if replace is not None else None
+        back_uiid = parameters.get('back')
+        pet = next((candidate for candidate in self.state.pets
+                    if str(candidate.uid) == uid), None)
+        if pet is None:
+            info.set('这只宠物不在携带栏。')
+            return
+        table = 'Talent' if key in self.data.tables['Talent'] else 'Skill'
+        row = self.data.tables[table].get(key)
+        if not row:
+            info.set('原版技能表中没有这个技能。')
+            return
+        if scroll is not None:
+            cost = f'卷轴 ×1（{self.data.tables["Item"].get(str(scroll), {}).get("name", scroll)}）'
+        else:
+            money = self.data.tables['Money'].get(str(row.get('moneyId')), {})
+            cost = f'{row.get("moneyCount", 0)} {money.get("name", row.get("moneyId", ""))}'
+        name = self.data.tables['Pet'][pet.species]['name']
+        text = (f'{name} Lv.{pet.level} 学习 {row["name"]}，消耗 {cost}。'
+                + (f' 将替换第 {replace+1} 个技能槽。' if replace is not None else ''))
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('SkillLearnConfirmUI', (800, 480), {
+                'petName_Text': name, 'lv_BitmapFontLabel': str(pet.level),
+                'skillName_Text': str(row['name']),
+                'skillInfoTitle_Text': '技能学习确认',
+                'info_Text': text,
+                'cost_BitmapFontLabel': str(row.get('moneyCount', 1) if scroll is None else 1),
+                'energy_Text': str(row.get('energy', '')),
+                'energy_BitmapFontLabel': str(row.get('energy', ''))})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(text)
+        def back():
+            self.close_ui()
+            if back_uiid:
+                self.open_ui(Request('openui', 'skill-learn', 1, {
+                    'parameters': {'uiid': 6}}))
+        def confirm():
+            try:
+                self.state.learn_skill(pet.uid, key, scroll=scroll, replace=replace)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            back()
+        self.ui_actions['confirm_Button'] = confirm
+        self.ui_actions['close_Button'] = back
+        self.ui_window.bind('<Escape>', lambda _event: back())
 
     def _about_body(self, body, info):
         text = self.ui_parameters.get('text') or (

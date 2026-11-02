@@ -72,6 +72,8 @@
 
 | 关于 | `GameAboutUI`、`about_Text_*` | “关于”改为原版 `GameAboutUI`，填充版本/数据来源/未完成声明，显示同一份真实说明文本，关闭按钮和 ESC 退出。`tools/check_about_ui.py` 覆盖布局、文本和关闭 |
 
+| 技能学习确认 | `SkillLearnConfirmUI`、`petName_Text`、`skillName_Text`、`confirm_Button` | 技能学习不再直接扣费，先打开原版确认页，显示宠物、技能、消耗卷轴/货币和替换槽；确认后才调用真实 `learn_skill` 并回技能页，取消/Esc 回技能页。`tools/check_skill_learn_confirm_ui.py` 覆盖扣费前状态、确认学习和返回 |
+
 ## 测试和审计
 
 - `tools/check_regressions.py`：战斗切换、NPC 道具、奖励防重复、原子回滚等。
@@ -79,7 +81,7 @@
 - `tools/check_task_progress.py`：原剧情捕捉后提交任务 6 并进入任务 7。
 - `tools/check_attribute_intervals.py`：受控随机输入下执行原 ARM 区间函数。
 - `tools/check_activity_ui.py`：真实 Tk 窗口启动与卡牌按钮检查、截图。控件仍有临时移植布局。
-- `tools/check_ui_buttons.py`：55 个原版 UI 布局、146 个可见 Button 的真实命中区、pressed 纹理、41 个原版关闭按钮、
+- `tools/check_ui_buttons.py`：56 个原版 UI 布局、148 个可见 Button 的真实命中区、pressed 纹理、42 个原版关闭按钮、
   全部按钮均有动作或通用关闭分发、closeui no/yes 分支；不代表每个按钮背后的玩法都已完整。
 - `tools/check_fusion.py` / `tools/check_merge.py`：合体（PetHeTi）与融合（PetMerge）的属性/材料/货币/
   原子回滚及真实 Tk 按钮。

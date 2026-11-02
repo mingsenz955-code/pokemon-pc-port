@@ -173,14 +173,10 @@ class ActivityUI:
             if not box.curselection():
                 return
             key, scroll = choices[box.curselection()[0]]
-            try:
-                self.state.learn_skill(pets[chooser.current()].uid, key, scroll=scroll,
-                                      replace=replacement.current()-1 if replacement.current() else None)
-                refresh()
-                skill = self.data.tables['Skill'].get(key) or self.data.tables['Talent'][key]
-                info.set(f'已学会 {skill["name"]}。')
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
+            self.open_skill_learn_confirm(
+                pets[chooser.current()].uid, key, scroll=scroll,
+                replace=replacement.current()-1 if replacement.current() else None,
+                back=6)
         chooser.bind('<<ComboboxSelected>>', refresh)
         box.bind('<<ListboxSelect>>', select_skill)
         def open_replace():
