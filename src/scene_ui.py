@@ -66,7 +66,10 @@ class SceneUI:
             alphas[f'right_up_{i}_Button'] = round(255*right)
         visible = {'left_right_Panel': left > 0, 'right_left_Panel': right > 0,
                    'right_up_Panel': right > 0, 'up_left_Panel': up > 0,
-                   'task_Button': right == 0, 'community_Button': right == 0,
+                   'task_Button': right == 0, 'community_Button': False,
+                   # The four-arrow HUD hide/show button sits over the
+                   # illustrated-book icon when the right menu is expanded.
+                   'uiDisappear_Button': right == 0,
                    'timelimitGiftBag_Button': False, 'timelimitGiftBagTimeBg_Image': False,
                    # Single-player PC port: no online rank, gift-code exchange or
                    # Bluetooth battle entry points. Keep the original slots hidden
@@ -91,6 +94,8 @@ class SceneUI:
                 for child in node.get('children', []):
                     hide_buttons(child)
             hide_buttons(app.cocos_ui.layout('MainUI')['tree'])
+            # Keep the four-arrow toggle hidden while the right menu is open.
+            visible['uiDisappear_Button'] = right == 0
         layer = app.cocos_ui.render('MainUI', (app.WIDTH, app.HEIGHT),
                                     visible=visible, positions=positions, alphas=alphas)
         self.hits = {key: rect for key, rect in app.cocos_ui.hits.items()
@@ -123,8 +128,6 @@ class SceneUI:
                      'right_left_4_Button': app.achievements_ui,
                      'right_up_1_Button': lambda: app.open_ui(Request(
                          'openui', 'scene-system', 0, {'parameters': {'uiid': 65}})),
-                     'community_Button': lambda: app.open_ui(Request(
-                         'openui', 'scene-notice', 0, {'parameters': {'uiid': 64}})),
                      'ad_Button': app.recharge_ui}
         if key in callbacks:
             callbacks[key]()

@@ -43,6 +43,9 @@ with tempfile.TemporaryDirectory() as saves:
     for hidden in ('right_left_5_Button', 'right_left_6_Button',
                    'right_left_7_Button'):
         assert hidden not in app.scene_ui.hits, f'{hidden} still clickable'
+    assert 'community_Button' not in app.scene_ui.hits, 'community still visible'
+    assert 'uiDisappear_Button' not in app.scene_ui.hits, (
+        'four-arrow HUD button still covers the illustrated-book icon')
     bag_hit = app.scene_ui.hits.get('right_left_1_Button')
     assert bag_hit, 'expanded MainUI has no bag hit region'
     assert app.scene_ui.click((bag_hit[0]+bag_hit[2])/2, (bag_hit[1]+bag_hit[3])/2)
@@ -51,6 +54,16 @@ with tempfile.TemporaryDirectory() as saves:
     assert app.ui_base_layer is not None and app.ui_base_layer.size == (800, 480)
     assert '背包' in app.ui_window.title()
     app.close_transient_ui()
+
+    # Collapsing 功能 restores the original four-arrow HUD toggle.
+    app.scene_ui.action('mainRight_Button')
+    app.scene_ui.groups['right']['clock'] = time.monotonic() - 1
+    app.scene_ui.cached_key = None
+    app.scene_ui.render(frame)
+    assert app.scene_ui.value('right') == 0.0
+    assert 'uiDisappear_Button' in app.scene_ui.hits, (
+        'four-arrow HUD button did not return after collapsing 功能')
+    assert 'community_Button' not in app.scene_ui.hits
 
     # Up-side shop/bookmark menu must actually toggle open by clicking 指引 too.
     up_hit = app.scene_ui.hits['mainUp_Button']

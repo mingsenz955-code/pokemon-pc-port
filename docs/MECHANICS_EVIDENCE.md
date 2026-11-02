@@ -1,5 +1,17 @@
 # 1.20.4 规则核对记录
 
+## 0.2.55：社区入口移除与功能菜单遮挡修复
+
+- `community_Button` 永久隐藏并移除回调，社区/公告页不再从主界面进入。
+- `uiDisappear_Button` 是原版四箭头 HUD 显隐按钮，正常位置在底部中间；
+  右侧“功能”菜单展开后，它与图鉴图标重叠。现在 `visible` 条件绑定为
+  `right == 0`：展开“功能”时隐藏，收回后恢复；`self.hidden` 分支也
+  保持同一条件，避免 HUD 已隐藏时又被菜单重新画出来。
+- `check_main_bag_shop.py` 新增断言：展开后 `uiDisappear_Button`、
+  `community_Button` 均不在 `scene_ui.hits`；收起后四箭头重新出现。
+- 截图：`outputs/verification/main-menu-open-0255.png`（图鉴无遮挡）、
+  `main-menu-closed-0255.png`（四箭头恢复）。
+
 ## 0.2.54：单机化删减、原始初始宠物页与获得物品页
 
 按“单机游戏不需要排行榜/礼包兑换/蓝牙对战”的要求，主界面功能菜单
