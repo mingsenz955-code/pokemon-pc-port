@@ -1,3 +1,7 @@
+## 0.2.61 新增证据
+
+CureConfirmUILayer::confirmButtonRespond 0x365238 对应免费次数 700006×1 / 金币 700001×100；pEvent101009 / pEventTalk580504 对应教学和银行护士。MainTaskItemToArea::process 0x3002ac 只在匹配事件后触发 setReachCount 0x300f5e。PetController::executeAction 0x2d32c6/0x2d330c 对应 catchsuccess -> Animation1、catchfailed -> Animation7。具体修复与推断边界见 VERIFICATION_0.2.61.md。
+
 ## 0.2.60：截图复现与刷新链
 
 - ChooseFirstPetUI 的宿主悬停重绘原先走无动态参数的静态模板；已改 Page.feedback，只重画命中的按钮区域，保留立绘/属性。伙伴来自 InitPet 预设，预览不提前发放或消耗。

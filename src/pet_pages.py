@@ -55,12 +55,7 @@ class PetPages:
         point = next((r for k, r in page.rects.items() if k.endswith('/petPos_Node')), None)
         art = self.data.pet_image(pet.species)
         if art is not None and area and point:
-            art = art.copy()
-            art.thumbnail((145, 145), Image.Resampling.LANCZOS)
-            layer = Image.new('RGBA', page.layer.size)
-            layer.alpha_composite(art, (round(point[0]-art.width/2), round(point[1]-art.height)))
-            x, y, r, b = map(round, area)
-            page.layer.alpha_composite(layer.crop((x, y, r, b)), (x, y))
+            page.animated_pets.append((pet.species, point, area, 145))
         for suffix, attributes in [('property_ListView_1', [1, 3, 5]), ('property_ListView_2', [2, 4])]:
             area = next((r for k, r in page.rects.items() if k.endswith('/'+suffix)), None)
             if not area:
