@@ -27,6 +27,26 @@ class BranchDispatchChecks(unittest.TestCase):
         self.state.branch_states = {k: 5 for k in DATA.tables['BranchTask']}
         self.state.branch_states[str(key)] = status
 
+    def test_prologue_team_does_not_leak_into_main_hero_collection(self):
+        state = GameState(DATA.tables, 72)
+        self.assertEqual(3, len(state.pets))
+        self.assertTrue(state.encyclopedia)
+        state.bank.append(state.pets.pop())
+        state.rides = [1]
+        state.ride = 1
+        state.active_pet = 2
+        state.initialize(1)
+        self.assertEqual('尼尔', state.player_name)
+        self.assertEqual([], state.pets)
+        self.assertEqual([], state.bank)
+        self.assertEqual([], state.encyclopedia)
+        self.assertEqual([], state.rides)
+        self.assertEqual(0, state.ride)
+        self.assertEqual(0, state.active_pet)
+        state.initialize(2)
+        self.assertEqual(set(p.species for p in state.pets), set(state.encyclopedia))
+        self.assertEqual(3, len(state.pets))
+
     def test_npc_selector_compares_conversation_not_fight_or_state(self):
         self.runtime.start('pEventBTask1001.json', npc_id=40608)
         self.assertTrue(self.runtime.branch_matches({'npcid': 40608, 'state': 0}))

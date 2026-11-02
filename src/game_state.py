@@ -194,6 +194,13 @@ class GameState:
 
     def initialize(self, key):
         row = self.tables['Init'][str(key)]
+        # initPlayer 0x331538..0x3315ae removes bag/bank pets and clears
+        # owned rides and IllustratedStatus before granting the new preset.
+        # The prologue's temporary team must not unlock the main hero's pets.
+        self.bank = []
+        self.active_pet = 0
+        self.encyclopedia = []
+        self.rides, self.ride = [], 0
         self.initialization = int(key)
         self.starter_id = 0
         self.player_name = '尼尔' if int(key) == 1 else '皮尔'

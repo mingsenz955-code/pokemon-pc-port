@@ -27,7 +27,11 @@ HUD/剧情点击优先，方向键中断，新点击替换目标。到 NPC 相�
 `BranchTaskItemIllustratedCollect::setReachCountByStateData` 0x2fbac2 及 `getPetCountByThisStatus`
 0x329d9c。补充这两类任务的子任务/收录指引；不凭空指定宠物出现坐标。
 
-新增无窗口测试：`check_branch_dispatch.py` 12 项、`check_task_icons.py` 5 项、
+另据 `PlayerDataManager::initPlayer` 0x331538..0x3315ae，角色初始化先移除队伍/银行宠物，
+清空坐骑表和 IllustratedStatus 后才发放新预设。本次修正序章临时宠物的图鉴/坐骑残留，
+同时重置银行及队伍选择；只影响剧情再次执行初始化，不改写已有用户存档。
+
+新增无窗口测试：`check_branch_dispatch.py` 13 项、`check_task_icons.py` 5 项、
 `check_click_navigation.py` 12 项。场景可见性回归改用用户报告的旧斯塔镇存档结构作为确定性
 fixture，不再假定任意真实存档都必须显示玩家（序章可以合法隐藏）；不写入用户存档。
 
