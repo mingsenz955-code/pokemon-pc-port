@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.35（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.36（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -384,6 +384,7 @@ class NativeGame(ActivityUI, Preview):
         59: ('GameAboutUI', '关于'),
         60: ('SkillLearnConfirmUI', '技能学习确认'),
         61: ('EvolutionConditionUI', '进化条件'),
+        62: ('HatchCheckUI', '孵化检查'),
     }
 
     def open_ui(self, request):
@@ -527,6 +528,8 @@ class NativeGame(ActivityUI, Preview):
             self._skill_learn_confirm_body(body, info)
         elif uiid == 61:
             self._evolution_body(body, info)
+        elif uiid == 62:
+            self._hatch_check_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -950,7 +953,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.35')
+        win.title('任务指引 · 原生 0.2.36')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1837,6 +1840,86 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['confirm_Button'] = confirm
         self.ui_actions['cancel_Button'] = back
         self.ui_actions['close_Button'] = back
+
+    def open_hatch_check(self, index):
+        self.open_ui(Request('openui', 'hatch-check', 1, {
+            'parameters': {'uiid': 62, 'index': int(index)}}))
+
+    def _hatch_check_body(self, body, info):
+        from activities import Activities
+        from game_state import numbers
+        index = int(self.ui_parameters.get('index', 0) or 0)
+        activity = Activities(self.state)
+        egg = self.state.activities.get('eggs', {}).get(str(index))
+        tables = self.data.tables
+        if not egg:
+            info.set('这个孵化位是空的。')
+            self.ui_actions['takeBackEgg_Button'] = lambda: info.set('这个孵化位是空的。')
+            self.ui_actions['hatch_Button'] = lambda: info.set('这个孵化位是空的。')
+            self.ui_actions['moneyHatch_Button'] = lambda: info.set('这个孵化位是空的。')
+            self.ui_actions['close_Button'] = self._close_hatch_check
+            return
+        row = tables['HatchItem'][egg['item']]
+        item_name = tables['Item'].get(str(egg['item']), {}).get('name', str(egg['item']))
+        lines = [f'{index+1} 号孵化位 · {item_name}']
+        if egg.get('pet'):
+            target = tables['Pet'].get(str(egg['pet']['species']), {})
+            lines.append(f'已孵化：{target.get("name", egg["pet"]["species"])}，等待领取')
+        else:
+            lines.append(f'孵化经验 {egg["exp"]} / {row["exp"]}')
+            item_ids = [str(v) for v in numbers(row.get('itemIds', ''))]
+            item_counts = [int(v) for v in numbers(row.get('itemCounts', ''))]
+            for item_id, count in zip(item_ids, item_counts):
+                have = self.state.count(item_id)
+                lines.append(f'{tables["Item"].get(item_id, {}).get("name", item_id)} {have} / {count}')
+            money = tables['Money'].get(str(row.get('moneyId')), {})
+            lines.append(f'金币孵化 {row.get("moneyCount", 0)} {money.get("name", "")}')
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('HatchCheckUI', (800, 480), {
+                'cost_BitmapFontLabel': str(row.get('moneyCount', 0))})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        rect = self.ui_hits.get('condition_ListView') or self.ui_rects.get('condition_ListView')
+        if rect:
+            frame.place(x=rect[0], y=rect[1], width=max(160, rect[2]-rect[0]),
+                        height=max(90, rect[3]-rect[1]))
+            frame.lift()
+        else:
+            frame.pack(fill='both', expand=True)
+        box = tk.Listbox(frame, font=('Microsoft YaHei UI', 9), exportselection=False,
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        box.pack(fill='both', expand=True)
+        for line in lines:
+            box.insert('end', line)
+        info.set(' · '.join(lines))
+        def back():
+            self.close_ui()
+            self.open_ui(Request('openui', 'hatch-room', 1, {
+                'parameters': {'uiid': 5}}))
+        def take():
+            try:
+                activity.take_egg(index)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            back()
+        def hatch(use_money=False):
+            try:
+                activity.hatch(index, use_money=use_money)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            back()
+        self.ui_actions['takeBackEgg_Button'] = take
+        self.ui_actions['hatch_Button'] = lambda: hatch(False)
+        self.ui_actions['moneyHatch_Button'] = lambda: hatch(True)
+        self.ui_actions['close_Button'] = back
+        self.ui_window.bind('<Escape>', lambda _event: back())
+
+    def _close_hatch_check(self):
+        self.close_ui()
 
     def open_evolution(self, uid, back=47):
         self.open_ui(Request('openui', 'evolution-condition', 1, {

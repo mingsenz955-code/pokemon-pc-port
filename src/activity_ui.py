@@ -125,7 +125,13 @@ class ActivityUI:
         self.ui_actions['takeBack_Button'] = lambda: act('take')
         self.ui_actions['hatch_Button'] = lambda: act('normal')
         self.ui_actions['moneyHatch_Button'] = lambda: act('money')
-        self.ui_actions['check_Button'] = lambda: act('take')
+        def check():
+            if not slots.curselection():
+                info.set('请先选择孵化位。')
+                return
+            self.open_hatch_check(slots.curselection()[0])
+        self.ui_actions['check_Button'] = check
+        slots.bind('<Double-Button-1>', lambda _event: check())
         refresh()
 
     def _skill_body(self, body, info):

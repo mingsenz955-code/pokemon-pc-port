@@ -1,12 +1,12 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.35%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.36%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.35 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.36 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
 
@@ -90,6 +90,8 @@ NPC 谈话和 obsType 破障五类条件的真实进度；这些条件可以原�
 确认后才扣费学习。
 0.2.35 宠物进化接入原版 `EvolutionConditionUI`：先显示目标、等级和材料条件，
 确认后才真实进化。
+0.2.36 孵化“检查”接入原版 `HatchCheckUI`：显示经验/材料/金币，取回、材料孵化、
+金币孵化都在原版页执行。
 **这些改动仍不代表完整复刻**：宠物使者付费试用/发货、试炼塔、礼包发货、成就剩余
 攻略时限/神秘商店、排行榜领奖、后期主支线、技能状态细节和原版 Spine 特效/音频等仍有大量工作。
 
@@ -101,8 +103,8 @@ NPC 谈话和 obsType 破障五类条件的真实进度；这些条件可以原�
 
 ### 启动及战斗操作
 
-本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.35/口袋妖怪-PC移植开发版0.2.35.exe`，
-完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.35.zip`](publish/release/pokemon-pc-0.2.35.zip)。
+本地打包产物为 `outputs/口袋妖怪-PC移植开发版0.2.36/口袋妖怪-PC移植开发版0.2.36.exe`，
+完整 ZIP 已归档到 [`publish/release/pokemon-pc-0.2.36.zip`](publish/release/pokemon-pc-0.2.36.zip)。
 双击 EXE；保留旁边的 `_internal` 和 `data` 文件夹。WASD/方向键移动，空格/E 对话，F5 保存、F9 读取。
 战斗时点击我方宠物打开补给/背包/换宠，点击对方宠物打开技能/普通攻击/捕捉。
 说明按钮打开技能或道具原表说明，单击关闭。训练师战斗不显示逃跑和捕捉。
@@ -321,6 +323,9 @@ py -3.12 -m venv .venv
 
 # 原版进化条件
 .\.venv\Scripts\python.exe tools\check_evolution_ui.py
+
+# 原版孵化检查
+.\.venv\Scripts\python.exe tools\check_hatch_check_ui.py
 
 # 树/岩障碍：obsType 解析、坐骑能力、真实移除、conditionType=6 任务、试乘 wait 继续
 .\.venv\Scripts\python.exe tools\check_obstacles.py
