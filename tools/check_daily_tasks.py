@@ -55,7 +55,7 @@ for action, task_id, count in checks:
     assert daily.counter(task_id, day) == count
     assert daily.counter(task_id, day) <= daily.required(task_id)
 assert daily.normal_completed(day) == 7
-assert daily.progress('1', day) == 7 and daily.ready('1', day)
+assert daily.progress('1', day) == 0 and not daily.ready('1', day)
 assert daily.record('catch', 1, day)['count'] == 1
 assert daily.record('unknown', 1, day) is None
 
@@ -80,6 +80,7 @@ for task_id in [str(i) for i in range(2, 9)]:
         raise AssertionError('duplicate daily claim accepted')
     except ValueError:
         pass
+    assert daily.progress('1', day) == int(task_id)-1
 assert daily.ready('1', day) and daily.claim('1', day)['task_id'] == '1'
 for item_id, count in expected['1'].items():
     assert state.count(item_id) == count
@@ -90,6 +91,8 @@ assert all(row['progress'] == 0 and not row['claimed'] for row in status)
 assert state.count('240015') == 5
 assert daily.record('catch', 1, '2026-01-02')['count'] == 1
 assert daily.status('2026-01-02')[2]['progress'] == 1
+assert daily.status('2026-01-01')[2]['progress'] == 1
+assert daily.refresh('2026-01-01')['date'] == '2026-01-02'
 
 # Saves persist the daily activity dictionary, including claimed ids.
 with tempfile.TemporaryDirectory() as folder:
@@ -114,6 +117,31 @@ assert DailyTasks(state2).ready('8')
 state2.inventory['220009'] = 1
 Activities(state2).spin_roulette()
 assert DailyTasks(state2).counter('5') == 1
+
+# A failed reward delivery rolls back both the partial inventory write and claim.
+from unittest.mock import patch
+failed_state = GameState(tables, seed=10)
+failed_daily = DailyTasks(failed_state)
+failed_daily.record('fight', 3, day)
+before_money = failed_state.count('700001')
+before_activity = json.dumps(failed_state.activities, sort_keys=True)
+grant = failed_state.grant
+def partial_failure(item_id, count):
+    grant(item_id, count)
+    raise ValueError('injected reward delivery failure')
+with patch.object(failed_state, 'grant', side_effect=partial_failure):
+    try:
+        failed_daily.claim('2', day)
+        raise AssertionError('failed reward delivery unexpectedly succeeded')
+    except ValueError:
+        pass
+assert failed_state.count('700001') == before_money
+assert json.dumps(failed_state.activities, sort_keys=True) == before_activity
+assert not failed_daily.claimed('2', day)
+
+if '--logic-only' in sys.argv:
+    print('daily task logic checks passed; host and UI checks not run')
+    sys.exit(0)
 
 # Talk hook: a real original-format talk step is counted once when displayed.
 state3 = GameState(tables, seed=9)
@@ -148,6 +176,8 @@ for action in ('catch', 'fight', 'talk', 'purchase', 'roulette',
                'cards_win', 'running_win'):
     DailyTasks(state2).record(action, DailyTasks(state2).required(
         DailyTasks.ACTIONS[action]))
+for task_id in DailyTasks.NORMAL_IDS:
+    DailyTasks(state2).claim(task_id)
 root = tk.Tk()
 try:
     app = NativeGame(root, data)

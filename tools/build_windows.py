@@ -7,7 +7,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
-parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.36')
+parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.37')
 parser.add_argument('--dist-dir', type=Path, default=root/'outputs')
 args = parser.parse_args()
 name = args.name
@@ -32,7 +32,8 @@ if data.exists() and data.resolve() != (root/'original-1.20.4').resolve():
         raise ValueError('Refusing to replace a data directory outside the build package')
     shutil.rmtree(data)
 shutil.copytree(root/'original-1.20.4', data, dirs_exist_ok=True)
-for filename in ['README.md', 'docs/DEEPSEEK_HANDOVER.md', 'docs/MECHANICS_EVIDENCE.md']:
+for filename in ['README.md', 'docs/DEEPSEEK_HANDOVER.md', 'docs/MECHANICS_EVIDENCE.md',
+                 'docs/RESTORATION_REMAINING.md']:
     source = root/filename
     if source.exists():
         shutil.copy2(source, output/('使用说明.md' if filename == 'README.md' else source.name))

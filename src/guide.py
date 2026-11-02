@@ -6,7 +6,9 @@ The original task tables encode five spatial objective shapes:
 * conditionType 2: choose one of ``targetNpcs``
 * conditionType 3: catch a pet; the third value is the map id (``-1`` wildcard)
 * conditionType 4: talk to an NPC id such as ``580101``
-* conditionType 5: visit a map id
+* conditionType 5: fight (battle type, result, NPC battle id, pet id)
+* conditionType 6: break an obstacle type
+* conditionType 7: enter a map id
 
 The resolver below is deliberately data-only.  It never invents coordinates: when
 an object is missing the guide reports that instead of walking to a guessed spot.
@@ -85,7 +87,9 @@ class GuideResolver:
                 if obj['group'] != 'spriteLayer' or 'toExit' in obj.get('props', {}):
                     continue
                 name = str(obj.get('name', ''))
-                if not name or obj.get('props', {}).get('state') == '0':
+                # A hidden TMX actor can be revealed by the plot later. State 0
+                # is its initial visibility, not evidence that it has no location.
+                if not name:
                     continue
                 x = float(obj.get('x', 0))+float(obj.get('width', 64))/2
                 y = float(obj.get('y', 0))
@@ -101,24 +105,24 @@ class GuideResolver:
         return locations[0][0], locations[0][1], locations[0][2], locations[0]
 
     def catch_point(self, pet_kind, pet_id, map_id):
-        if map_id and str(map_id) in self.tables['VillageMap']:
-            target = int(map_id)
-        else:
-            target = 0
+        requested = int(map_id) if map_id > 0 else None
+        target = None
         for mid, row in self.tables['VillageMap'].items():
+            if requested is not None and int(mid) != requested:
+                continue
             enemies = [v for v in str(row.get('enemyIds', '')).split(',') if v and v != '0']
             if not enemies:
                 continue
-            if pet_id != -1 and str(pet_id) not in enemies:
+            # enemyIds references VillageEnemy, not Pet. Both constraints must
+            # match the same encounter, rather than two different pets.
+            pets = [self.tables['Pet'].get(str(self.tables['VillageEnemy'].get(e, {}).get('petId')), {})
+                    for e in enemies]
+            if not any(pet and (pet_id == -1 or str(pet.get('keyId')) == str(pet_id))
+                       and (pet_kind == -1 or str(pet.get('kind')) == str(pet_kind))
+                       for pet in pets):
                 continue
-            if pet_kind != -1:
-                # The original first field is the pet kind; keep only matching rows.
-                if not any(str(self.tables['Pet'].get(e, {}).get('kind')) == str(pet_kind) for e in enemies):
-                    continue
-            if target == 0:
-                target = int(mid)
-            if int(mid) == target:
-                break
+            target = int(mid)
+            break
         if not target:
             return None
         game_map = self.data.load_map(str(target))
@@ -162,9 +166,9 @@ class GuideResolver:
                     continue
                 point = self.npc_point(npc_id)
                 if point:
-                    return GuideTarget('npc', f'{name}：选择初始宠物', point[0], point[1], point[2],
+                    return GuideTarget('npc', f'{name}：收集任务目标', point[0], point[1], point[2],
                                        category, key, name, description,
-                                       f'找 NPC {npc_id} 选择宠物', radius=90)
+                                       f'前往任务配置的 NPC {npc_id}', radius=90)
         if condition_type == 3 and len(conditions) >= 3:
             point = self.catch_point(conditions[0], conditions[1], conditions[2])
             if point:
@@ -179,21 +183,24 @@ class GuideResolver:
                                    category, key, name, description,
                                    f'与 NPC {npc_id} 对话', radius=90)
         if condition_type == 5 and conditions:
+            for npc_id in integers(row.get('targetNpcs', '0')):
+                point = self.npc_point(npc_id)
+                if point:
+                    return GuideTarget('npc', f'{name}：挑战 NPC {npc_id}', *point[:3],
+                                       category, key, name, description,
+                                       f'与 NPC {npc_id} 战斗；胜负由实际战斗结算', radius=90)
+            return None
+        if condition_type == 6 and conditions:
+            return GuideTarget('obstacle', f'{name}：破除障碍', task_kind=category,
+                               task_id=key, task_name=name, description=description,
+                               detail='使用对应坐骑破除任务要求的障碍；任务表未指定固定地图。')
+        if condition_type == 7 and conditions:
             mid = int(conditions[0])
             if str(mid) in self.tables['VillageMap']:
                 game_map = self.data.load_map(str(mid))
                 return GuideTarget('map', f'{name}：前往 {game_map.info["name"]}', mid,
                                    game_map.width*32, game_map.height*32, category, key, name,
                                    description, f'进入地图 {mid}', radius=90)
-        if condition_type == 6 and conditions:
-            return GuideTarget('level', f'{name}：等级 {conditions[0]}', task_kind=category,
-                               task_id=key, task_name=name, description=description,
-                               detail=f'把宠物练到 {conditions[0]} 级')
-        if condition_type == 7 and conditions:
-            item = self.tables['Item'].get(str(conditions[0]), {})
-            return GuideTarget('item', f'{name}：道具 {item.get("name", conditions[0])}',
-                               task_kind=category, task_id=key, task_name=name,
-                               description=description, detail=f'获得 {item.get("name", conditions[0])}')
         return None
 
     def targets(self):
