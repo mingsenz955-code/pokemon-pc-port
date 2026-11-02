@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.34（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.35（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -383,6 +383,7 @@ class NativeGame(ActivityUI, Preview):
         58: ('LuckyDrawPetInfoUI', '抽宠结果'),
         59: ('GameAboutUI', '关于'),
         60: ('SkillLearnConfirmUI', '技能学习确认'),
+        61: ('EvolutionConditionUI', '进化条件'),
     }
 
     def open_ui(self, request):
@@ -524,6 +525,8 @@ class NativeGame(ActivityUI, Preview):
             self._about_body(body, info)
         elif uiid == 60:
             self._skill_learn_confirm_body(body, info)
+        elif uiid == 61:
+            self._evolution_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -947,7 +950,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.34')
+        win.title('任务指引 · 原生 0.2.35')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1835,6 +1838,77 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['cancel_Button'] = back
         self.ui_actions['close_Button'] = back
 
+    def open_evolution(self, uid, back=47):
+        self.open_ui(Request('openui', 'evolution-condition', 1, {
+            'parameters': {'uiid': 61, 'uid': uid, 'back': back}}))
+
+    def _evolution_body(self, body, info):
+        from game_state import numbers
+        parameters = self.ui_parameters
+        uid = str(parameters.get('uid') or
+                  (self.state.pets[0].uid if self.state.pets else ''))
+        back_uiid = int(parameters.get('back', 47) or 47)
+        pet = next((candidate for candidate in self.state.pets
+                    if str(candidate.uid) == uid), None)
+        if pet is None:
+            info.set('这只宠物不在携带栏。')
+            return
+        tables = self.data.tables
+        pet_name = tables['Pet'][pet.species]['name']
+        evolution = tables['Evolution'].get(str(pet.species))
+        target = tables['Pet'].get(str(evolution['petId'])) if evolution else None
+        if not evolution or not target:
+            info.set(f'{pet_name} 没有可用的原版进化路线。')
+            self.ui_actions['evolution_Button'] = lambda: info.set('没有可用的原版进化路线。')
+            self.ui_actions['close_Button'] = self.close_ui
+            return
+        need_level = int(evolution.get('level', 1) or 1)
+        item_ids = [str(v) for v in numbers(evolution.get('itemIds', ''))]
+        item_counts = [int(v) for v in numbers(evolution.get('itemCounts', ''))]
+        lines = [f'等级 {pet.level} / {need_level}',
+                 f'进化为 {target["name"]}']
+        for item_id, count in zip(item_ids, item_counts):
+            row = tables['Item'].get(item_id, {})
+            have = self.state.count(item_id)
+            lines.append(f'{row.get("name", item_id)} {have} / {count}')
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('EvolutionConditionUI', (800, 480), {
+                'petName_Text': f'{pet_name} → {target["name"]}',
+                'cost_BitmapFontLabel': str(len(item_ids))})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
+        rect = self.ui_hits.get('condition_ListView') or self.ui_rects.get('condition_ListView')
+        if rect:
+            frame.place(x=rect[0], y=rect[1], width=max(150, rect[2]-rect[0]),
+                        height=max(90, rect[3]-rect[1]))
+            frame.lift()
+        else:
+            frame.pack(fill='both', expand=True)
+        box = tk.Listbox(frame, font=('Microsoft YaHei UI', 9), exportselection=False,
+                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
+        box.pack(fill='both', expand=True)
+        for line in lines:
+            box.insert('end', line)
+        info.set(f'{pet_name} → {target["name"]} · ' + ' · '.join(lines))
+        def back():
+            self.close_ui()
+            if back_uiid == 57 and pet in self.state.pets:
+                self.open_pet_property(pet.uid)
+            else:
+                self.pets_ui()
+        def confirm():
+            try:
+                self.state.evolve(pet.uid)
+            except (ValueError, KeyError) as error:
+                info.set(str(error))
+                return
+            back()
+        self.ui_actions['evolution_Button'] = confirm
+        self.ui_actions['close_Button'] = back
+        self.ui_window.bind('<Escape>', lambda _event: back())
+
     def open_skill_learn_confirm(self, uid, key, scroll=None, replace=None, back=None):
         self.open_ui(Request('openui', 'skill-learn-confirm', 1, {
             'parameters': {'uiid': 60, 'uid': uid, 'key': str(key),
@@ -2032,13 +2106,7 @@ class NativeGame(ActivityUI, Preview):
             page[0] = value
             refresh()
         def evolution():
-            try:
-                self.state.evolve(pet.uid)
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            self.close_ui()
-            self.open_pet_property(pet.uid)
+            self.open_evolution(pet.uid, back=57)
         box.bind('<<ListboxSelect>>', show)
         self.ui_actions['skillTag_Button'] = lambda: tag('skill')
         self.ui_actions['talentTag_Button'] = lambda: tag('talent')
@@ -2212,13 +2280,7 @@ class NativeGame(ActivityUI, Preview):
             if not pets:
                 return
             pet = pets[selected[0]]
-            try:
-                state.evolve(pet.uid)
-                confirm_free[0] = None
-                rebuild()
-                info.set('进化成功。')
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
+            self.open_evolution(pet.uid)
 
         def free():
             if not pets:
