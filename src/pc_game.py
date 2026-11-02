@@ -92,7 +92,7 @@ class NativeGame(ActivityUI, Preview):
         self.booting = False
         self.npc_motion = NpcMotion(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.44（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.45（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1029,7 +1029,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.44')
+        win.title('任务指引 · 原生 0.2.45')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2813,19 +2813,8 @@ class NativeGame(ActivityUI, Preview):
         tk.Button(body, text='碎片合成', command=synthesize).pack(side='left', padx=6)
 
     def tasks_ui(self):
-        row = self.data.tables['MainTask'][str(self.state.main_task)]
         TaskProgress(self.state).update()
-        labels = {2: '未接取', 3: '进行中', 4: '可提交', 5: '已完成'}
-        lines = [f'主线：{row["name"]} · {labels.get(self.state.main_state, self.state.main_state)}', row['des'],
-                 f'进度 {self.state.task_counts.get(f"main:{self.state.main_task}", [])} / {row["counts"]}', '', '支线任务：']
-        for key, status in sorted(self.state.branch_states.items(), key=lambda pair: int(pair[0])):
-            if status not in (3, 4):
-                continue
-            branch = self.data.tables['BranchTask'][key]
-            lines.extend([f'{branch["name"]} · {labels[status]}', branch['des'],
-                          f'进度 {self.state.task_counts.get(f"branch:{key}", [])} / {branch["counts"]}', ''])
-        lines.extend([f'已完成主线：{len(self.state.completed_main)}', f'已完成支线：{len(self.state.completed_branch)}'])
-        self.listing('任务', '\n'.join(lines))
+        self.open_ui(Request('openui', 'task-menu', 1, {'parameters': {'uiid': 44}}))
 
     def about(self):
         text = ('原生开发版 0.2，尚未完成所有内容。\n\n'

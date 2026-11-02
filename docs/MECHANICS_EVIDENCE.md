@@ -1,5 +1,34 @@
 # 1.20.4 规则核对记录
 
+## 0.2.45：指引入口、基础伤害和战斗动画复核
+
+用户反馈指引无效且战斗整体不还原。本次确认并修复以下独立问题：
+
+- 主界面任务按钮此前打开纯文本旧页；现接原 TaskUI 主/支/每日三页。
+  主/支线目标按钮现在关闭任务页后启动实际寻路，到达 NPC 触发确切对象对话。
+  原先只停止并把“按空格”写入已隐藏的状态栏，用户看不到这一步。
+  check_scene_presentation 在研究所存档 fixture 上点击实际 MainUI 按钮，再调用 TaskUI
+  目标动作，经过 Guide 移动后验证触发原 pEvent5801006，而不是远程发奖励。
+- `checkPetUseSkill` 0x2c83f0 的 mainAttribute 0/1/2/3 对应力量/速度/防御/能量。
+  原实现把 1/2 映射颠倒，四个已恢复公式也未被战斗调用。现在按 0x2c84d2..0x2c85d0
+  的参数接 `Formula_PetAttackDamage`、`PetSpeedDamage`、`PetDefenceDamage`、`PetEnergyDamage`。
+  vtable 确认偏移 0x9c 是 getMaxEnergy，0x134/0x13c 是伤害修正 getter；本次默认修正值为 0。
+  移除另写的防御减半/三分之一近似，以及没有依据的 ±5% 随机浮动。
+  damageAddition 0x2c91bc 在克制百分比上加 50 表示暴击，再交给技能系数公式，
+  不再先对最终伤害乘 1.5。普通攻击使用 300056 表项，移除凭空恢复 10 点能量。
+  check_battle_damage 新增运行时 4×100 组 ARM 对照及系数顺序、映射、能量回归。
+- 画布由 1024×576 改为宿主和原 800×480 设计的等比 960×576；
+  BattleMainUI 的 minePetPos_Panel / enemyPetPos_Panel 提供角色原点，
+  与 `BattleUiLayer::getFightPetPos` 0x351318 读取节点的方式一致。
+  原图默认朝左，左侧我方翻转朝向右侧；原点元数据随缩放/翻转保留。
+- Spine 2.1 原动画接入骨骼旋转/位移/缩放、线性/stepped/Bezier、slot attachment/color、drawOrder。
+  使用 stand/attack/underattack 原时间轴，移除通用突进/抖动/漂浮代替骨架动画的做法。
+  动作组按事件顺序排队，演出中禁止再次点击跳过动作，HP 数字和条使用显示进度。
+  161 份不同骨架的三类动画采样审计无报错；check_spine_animation 验证插值、层级、
+  原点、画布尺寸和双方动作顺序；仍有 FFD/IK、原版命中时点、特效/音效等未完成。
+
+未解决的具体范围见 RESTORATION_REMAINING.md 的 0.2.45 清单；本轮不宣称完整复刻。
+
 ## 0.2.44：研究所旧存档无法点击行走
 
 用户实际体验报告点击地面不走。只读复制当前存档复现：地图 5801 是 21×20 格，

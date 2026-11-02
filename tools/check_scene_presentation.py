@@ -72,6 +72,19 @@ class SceneChecks(unittest.TestCase):
                 self.assertAlmostEqual(goal[0], app.x)
                 self.assertAlmostEqual(goal[1], app.y)
                 self.assertEqual(1, len(app.state.pets))
+                rect = app.scene_ui.hits['task_Button']
+                app.on_click(SimpleNamespace(x=(rect[0]+rect[2])/2, y=(rect[1]+rect[3])/2))
+                self.assertEqual('TaskUI', app.ui_render_args['name'])
+                app.ui_actions['receive_Button']()
+                self.assertFalse(app.ui_open)
+                self.assertTrue(app.guide.active)
+                for _ in range(160):
+                    app.guide.step(.04)
+                    if not app.guide.active:
+                        break
+                self.assertFalse(app.guide.active)
+                self.assertEqual('pEvent5801006.json', app.runtime.file)
+                self.assertEqual('toplace', app.runtime.pending.kind)
                 self.assertEqual(original_hash, hashlib.sha256(source.read_bytes()).hexdigest())
             finally:
                 for job in root.tk.call('after', 'info'):

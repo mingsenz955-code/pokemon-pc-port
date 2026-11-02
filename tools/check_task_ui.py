@@ -23,6 +23,7 @@ try:
     app = NativeGame(root, data)
     app.runtime.sequence, app.runtime.file, app.runtime.pending = [], '', None
     app.state = state
+    app.guide.rebind(state)
     app.open_ui(Request('openui', 'task-ui-check', 1,
                         {'parameters': {'uiid': 44}}))
     assert app.ui_open
@@ -32,7 +33,8 @@ try:
     before = state.count('700001')
     app.ui_actions['receive_Button']()
     assert state.count('700001') == before
-    assert '不会伪造' in app.ui_info.get()
+    assert app.ui_open  # Collection task 129 has no configured spatial target.
+    assert '没有可前往' in app.ui_info.get()
 
     app.ui_actions['tag_2_Button']()
     assert '石匠德罗的委托' in app.ui_info.get()
@@ -41,6 +43,11 @@ try:
     before = state.count('700001')
     app.ui_actions['receive_Button']()
     assert state.count('700001') == before
+    assert not app.ui_open
+    assert app.guide.active
+    assert app.guide.target.task_id == '4101'
+    app.guide.stop()
+    app.open_ui(Request('openui', 'task-ui-check', 1, {'parameters': {'uiid': 44, 'page': 'branch'}}))
 
     app.ui_actions['tag_3_Button']()
     assert '全能训练' in app.ui_info.get()

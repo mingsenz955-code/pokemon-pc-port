@@ -6,10 +6,9 @@ What is taken directly from the original package:
     compared against the ARM binary (see tools/check_original_formulas.py);
   * the capture chance skeleton disassembled in
     research/battle-stat-disassembly.txt (base rate + level/HP term + charm).
-What is still inferred and therefore marked in the audit:
-  * the exact defence mitigation after the verified skill formula;
-  * a handful of state special cases whose target selection is not encoded in
-    tables (self vs opponent is decided from the original skill description).
+Runtime base damage now dispatches to the four recovered formula branches.
+Full buff/talent damage revisions, special skills and state target selection
+still require comparison with the original controller; see the evidence ledger.
 """
 from __future__ import annotations
 
@@ -19,7 +18,8 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from game_formulas import (escape_rate, offer_exp, shared_exp, skill_damage)
+from game_formulas import (escape_rate, offer_exp, shared_exp, skill_damage,
+                           attack_damage, defence_damage, speed_damage, energy_damage)
 from game_state import numbers
 
 # state key -> (display name, kind).  Keys are the original Skill.state values.
@@ -61,7 +61,7 @@ DEBUFF_KINDS = {'poison', 'def_down', 'speed_down', 'sleep', 'sleep', 'petrify',
 DOT_KINDS = {'poison', 'drain', 'leech', 'nightmare'}
 
 # The original tables encode skill coefficients as decimal strings.
-ATTRIBUTE_INDEX = {'0': 2, '1': 3, '2': 4, '3': 1}
+ATTRIBUTE_INDEX = {'0': 2, '1': 4, '2': 3, '3': 1}
 
 
 def _pairs(raw):
@@ -579,13 +579,11 @@ class Battle:
         self.events.append({'type': 'switch', 'side': unit.side, 'name': new.name})
 
     def _attack(self, unit, target):
-        attr = unit.pet and self.tables['Pet'][unit.pet.species].get('restraint', '0')
-        raw = skill_damage(unit.effective(2), 0, 100)
-        damage = self._mitigate(raw, target, 'power')
-        unit.energy = min(unit.max_energy, unit.energy+10)
-        self._deal(unit, target, damage, 'power', crit=False)
         self.messages.append(f'{unit.name} 的普通攻击！')
-        self.events.append({'type': 'attack', 'side': unit.side, 'name': unit.name})
+        self.events.append({'type': 'attack', 'side': unit.side, 'name': unit.name, 'uid': unit.pet.uid})
+        row = self.tables.get('Skill', {}).get('300056', {'attack': 0, 'attackCoe': 1})
+        self._deal(unit, target, self._base_damage(unit, target, 'power'), 'power',
+                   crit_chance=self._crit_chance(unit, target, row), skill=row)
 
     def _use_skill(self, unit, target, skill):
         cost = unit.cost(skill)
@@ -599,6 +597,7 @@ class Battle:
         unit.last_skill = str(skill['keyId'])
         self.messages.append(f'{unit.name} 使用了 {skill["name"]}！')
         self.events.append({'type': 'skill', 'side': unit.side, 'name': unit.name,
+                            'uid': unit.pet.uid,
                             'skill': skill['name'], 'skill_id': skill['keyId']})
         attack_count = max(1, int(skill.get('attackCount', 1) or 1))
         coe = float(skill.get('attackCoe', 0) or 0)
@@ -610,17 +609,15 @@ class Battle:
                     continue
             if coe > 0:
                 attr = ATTRIBUTE_INDEX.get(str(skill.get('mainAttribute', '0')), 2)
-                raw = skill_damage(unit.effective(attr), int(skill.get('attack', 0) or 0),
-                                   int(round(coe*100)))
                 attribute = {'2': 'power', '3': 'defence', '4': 'speed', '1': 'energy'}[str(attr)]
-                damage = self._mitigate(raw, target, attribute)
+                damage = self._base_damage(unit, target, attribute)
                 # 300052: doubles when the opponent is below half HP.
                 if '17' in str(skill.get('state', '')) + str(skill.get('state2', '')) and target.hp/target.max_hp < .5:
                     damage *= 2
                 if unit.has('all_in') and unit.has('poison', 'drain'):
                     damage *= 2
                 self._deal(unit, target, damage, attribute,
-                           crit_chance=self._crit_chance(unit, target, skill))
+                           crit_chance=self._crit_chance(unit, target, skill), skill=skill)
                 hit = True
         self._apply_states(unit, target, skill)
         if not hit and coe <= 0:
@@ -642,17 +639,21 @@ class Battle:
         base += int(float(skill.get('critRevise', 0) or 0))
         return max(0, min(100, base))
 
-    def _deal(self, unit, target, damage, attribute, crit=False, crit_chance=None):
+    def _deal(self, unit, target, damage, attribute, crit=False, crit_chance=None, skill=None):
         crit = crit if crit_chance is None else self.rng.randrange(100) < crit_chance
-        if crit:
-            damage = int(damage*1.5)
-        damage = max(1, int(damage*(0.95+self.rng.random()*.1)))
-        # Element restraint column, using the original 60/100/140 table.
+        # damageAddition 0x2c91bc adds 50 to the restraint percentage on a
+        # critical hit, BEFORE Formula_PetSkillAttackDamage. No +/-5% jitter.
+        percent = 100
         attacker_restraint = str(self.tables['Pet'][unit.pet.species].get('restraint', '0'))
         defender_restraint = int(self.tables['Pet'][target.pet.species].get('restraint', '0') or 0)
         contrast = self.tables['Contrast'].get(attacker_restraint)
         if contrast and 0 < defender_restraint <= len(numbers(contrast['mutual'])):
-            damage = int(damage*numbers(contrast['mutual'])[defender_restraint-1]/100)
+            percent = numbers(contrast['mutual'])[defender_restraint-1]
+        damage = int(damage*(percent+(50 if crit else 0))/100)
+        if skill is not None:
+            damage = skill_damage(damage, int(skill.get('attack', 0) or 0),
+                                  round(float(skill.get('attackCoe', 0) or 0)*100))
+        damage = self._reduce_talent_damage(damage, target)
         if unit.has('leech') and damage > 0:
             for buff in unit.buffs:
                 if buff.kind == 'leech':
@@ -661,6 +662,7 @@ class Battle:
         was_alive = target.alive
         taken = target.take_damage(damage, source=unit, attribute=attribute)
         self.events.append({'type': 'damage', 'side': target.side, 'name': target.name,
+                            'uid': target.pet.uid,
                             'amount': taken, 'crit': crit, 'attribute': attribute,
                             'hp': target.hp, 'max_hp': target.max_hp})
         if taken == 0:
@@ -677,15 +679,20 @@ class Battle:
             if was_alive and unit.side == 'player':
                 self.events.append({'type': 'oneshot', 'side': 'player', 'name': target.name})
 
-    def _mitigate(self, raw, target, attribute):
-        if attribute in ('power', 'defence', 'speed'):
-            defence = target.effective(3)
-        else:
-            defence = target.effective(1)
-        divisor = 2 if attribute in ('power', 'defence') else 3
-        damage = raw - defence//divisor
-        # Damage-reduction talents (state 43/mode 3) are the only reduction the
-        # recovered data encodes explicitly; defence itself is already applied.
+    def _base_damage(self, unit, target, attribute):
+        # checkPetUseSkill 0x2c84d2..0x2c85d0; default damage revisions are
+        # zero. Buff/talent damage revisions still require a separate audit.
+        if attribute == 'power':
+            return attack_damage(unit.effective(2), target.effective(3), 0, 0)
+        if attribute == 'speed':
+            return speed_damage(unit.effective(4), target.effective(4), target.effective(3), 0, 0)
+        if attribute == 'defence':
+            return defence_damage(unit.effective(3), target.max_energy, target.effective(3), 0, 0)
+        if attribute == 'energy':
+            return energy_damage(unit.max_energy, target.max_energy, 0, 0)
+        raise ValueError(f'Unknown original damage attribute {attribute}')
+
+    def _reduce_talent_damage(self, damage, target):
         for key in target.pet.talents:
             talent = self.tables['Talent'].get(str(key))
             if not talent:

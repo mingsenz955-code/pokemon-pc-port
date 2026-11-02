@@ -599,12 +599,11 @@ class Guide:
                 dx, dy = target.x-self.app.x, target.y-self.app.y
                 self.app.face = ('standleft' if dx < 0 else 'standright') if abs(dx) > abs(dy) else (
                     'standup' if dy < 0 else 'standdown')
-                self.stop(f'已到达 {target.label}，按空格对话。')
-                if self.click_mode:
-                    if target.sprite_id:
-                        self.app.interact(target.npc_id, target.sprite_id)
-                    else:
-                        self.app.interact(target.npc_id)
+                self.stop(f'已到达 {target.label}，正在对话。')
+                if target.sprite_id:
+                    self.app.interact(target.npc_id, target.sprite_id)
+                else:
+                    self.app.interact(target.npc_id)
                 return True
         elif target.kind == 'point':
             if abs(self.app.x-target.x) <= target.radius and abs(self.app.y-target.y) <= target.radius:
