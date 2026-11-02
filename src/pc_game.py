@@ -28,6 +28,7 @@ from achievements import Achievements
 from task_progress import TaskProgress
 from mounts import Mounts
 from guide import Guide
+from story_motion import StoryMotion, FACES
 
 
 class NativeGame(ActivityUI, Preview):
@@ -78,10 +79,11 @@ class NativeGame(ActivityUI, Preview):
         self.running_session = None
         self.running_result = None
         self.running_race_token = None
+        self.story_motion = StoryMotion(self)
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.38（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.39（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -278,7 +280,19 @@ class NativeGame(ActivityUI, Preview):
             return 'closed'
         if str(oid) == 'fx:treasure':
             return 'opened'
-        return super().actor_animation(oid, sid)
+        kind, identifier = (7, str(oid)[5:]) if str(oid).startswith('temp:') else (2, oid)
+        obj = next((o for o in self.map.objects if o.get('gid') and str(o.get('name')) == str(oid)), {})
+        fallback = FACES.get(int(obj.get('props', {}).get('face', 2)), 'standdown')
+        return self.story_motion.animation(kind, identifier, fallback)
+
+    def scene_sprite(self, sid, animation):
+        age = max((a['age'] for a in self.story_motion.actions), default=0)
+        frame = int(age*60) if animation.startswith('walk') else 0
+        return self.data.village_sprite(sid, animation, frame)
+
+    def player_image(self, face):
+        animation = self.story_motion.animation(1, 0, face)
+        return self.scene_sprite(self.player_sprite, animation)
 
     def _draw_chest_fx(self, frame):
         fx = getattr(self, 'chest_fx', None)
@@ -947,7 +961,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.38')
+        win.title('任务指引 · 原生 0.2.39')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1101,28 +1115,16 @@ class NativeGame(ActivityUI, Preview):
         kind, parameter = request.kind, request.data.get('parameters', {})
         rows = parameter if isinstance(parameter, list) else [parameter]
         if kind == 'toplace':
-            for p in rows:
-                if 'x' not in p or 'y' not in p:
-                    continue
-                x, y = float(p['x'])*64+32, (self.map.height-float(p['y']))*64
-                key = f'{self.map_id}:{p.get("spritetype", 2)}:{p.get("spriteid", 0)}'
-                if p.get('spritetype') == 1:
-                    self.x, self.y = x, y
-                elif p.get('spritetype') == 7:
-                    row = self.state.temp_npcs.get(str(p['spriteid']))
-                    if row:
-                        row['x'], row['y'] = x, y
-                else:
-                    self.state.positions[key] = [x, y]
+            self.story_motion.begin(rows)
         elif kind in ['face', 'toface']:
-            faces = {1: 'standup', 2: 'standdown', 3: 'standleft', 4: 'standright'}
             for p in rows:
-                if p.get('spritetype') == 1 and p.get('face') in faces:
-                    self.face = faces[p['face']]
+                self.story_motion.set_face(int(p.get('spritetype', 2)), int(p.get('spriteid', 0)),
+                                           int(p.get('face', 0)))
         elif kind == 'tempnpc':
             for p in rows:
                 self.state.temp_npcs[str(p['npcid'])] = dict(p, map=self.map_id,
-                    x=float(p.get('x', 0))*64+32, y=(self.map.height-float(p.get('y', 0)))*64)
+                    x=(float(p.get('x', 0))+.5)*self.map.tw,
+                    y=(float(p.get('y', 0))+.5)*self.map.th)
         elif kind == 'spritevisible':
             for p in rows:
                 if p.get('spritetype') == 1:
@@ -1336,6 +1338,8 @@ class NativeGame(ActivityUI, Preview):
     def drive(self):
         if getattr(self, 'camera_action', None):
             return
+        if getattr(getattr(self, 'story_motion', None), 'actions', []):
+            return
         if self.display_request or self.runtime_error:
             return
         if self.battle and not self.runtime.running:
@@ -1415,7 +1419,7 @@ class NativeGame(ActivityUI, Preview):
                     self.runtime.resume()
                     continue
                 self.apply_visual(request)
-                if self.camera_action:
+                if self.camera_action or getattr(getattr(self, 'story_motion', None), 'actions', []):
                     return
                 self.runtime.resume()
                 self.player_sprite = self.state.sprite_id
@@ -1436,6 +1440,11 @@ class NativeGame(ActivityUI, Preview):
         self._play_clock = now
         if not self.booting:
             self.advance_camera(elapsed)
+            if not self.runtime_error:
+                try:
+                    self.story_motion.advance(elapsed)
+                except (PendingMechanic, ValueError, KeyError) as error:
+                    self.runtime_error = f'{self.runtime.file}：{error}'
             self.state.activities['play_seconds'] = (
                 float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
@@ -1452,7 +1461,7 @@ class NativeGame(ActivityUI, Preview):
         if not self.booting:
             TaskProgress(self.state).update()
             self.drive()
-            self.steps = [1] if self.runtime.running or self.runtime_error else []
+            self.steps = [1] if self.runtime.running or self.runtime_error or self.ui_open else []
             self.guide.step()
         super().tick()
         if self.booting:
@@ -1576,6 +1585,8 @@ class NativeGame(ActivityUI, Preview):
             'face': self.face, 'player_visible': self.player_visible,
             'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
             'camera_action': self.camera_action,
+            'story_motion_actions': self.story_motion.actions if getattr(self, 'story_motion', None) else [],
+            'story_motion_faces': self.story_motion.faces if getattr(self, 'story_motion', None) else {},
             'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
             'encounter_distance': self.encounter_distance,
             'encounter_threshold': self.encounter_threshold,
@@ -1614,6 +1625,9 @@ class NativeGame(ActivityUI, Preview):
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
             self.player_sprite = state.sprite_id
+            self.story_motion = StoryMotion(self)
+            self.story_motion.actions = state.presentation.get('story_motion_actions', [])
+            self.story_motion.faces = state.presentation.get('story_motion_faces', {})
             self._play_clock = time.monotonic()
             self.drive()
         except (ValueError, KeyError, OSError) as error:

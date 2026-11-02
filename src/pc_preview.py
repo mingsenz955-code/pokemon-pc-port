@@ -253,6 +253,9 @@ class Preview:
     def player_image(self, face):
         return self.data.village_sprite(getattr(self, 'player_sprite', '10001'), face)
 
+    def scene_sprite(self, sid, animation):
+        return self.data.village_sprite(sid, animation)
+
     def make_frame(self):
         camx, camy = self.camera_origin()
         frame = Image.new('RGBA', (self.WIDTH, self.HEIGHT), '#1d2927')
@@ -265,7 +268,7 @@ class Preview:
             sx, sy = x*self.SCALE-camx, y*self.SCALE-camy
             if not (-150 < sx < self.WIDTH+150 and -150 < sy < self.HEIGHT+150):
                 continue
-            sprite = self.player_image(face) if sid is None else self.data.village_sprite(sid, face)
+            sprite = self.player_image(face) if sid is None else self.scene_sprite(sid, face)
             if sprite is None:
                 continue
             size = (max(1, round(sprite.width*self.SCALE)), max(1, round(sprite.height*self.SCALE)))

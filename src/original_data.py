@@ -51,16 +51,22 @@ class OriginalData:
     def event(self, name):
         return json.loads((self.root/'events'/name).read_text(encoding='utf-8'))
 
-    def village_sprite(self, sid, animation='standdown'):
+    def village_sprite(self, sid, animation='standdown', frame=0):
         row = self.tables['VillageSprite'].get(str(sid))
         if not row:
             return None
         filename = row['fileName']
         if row['fileType'] == '4':
-            if animation == 'standright':
-                result = self.armature(filename, 'standleft')
+            clip = animation.replace('right', 'left')
+            _, source = self.armature_source(filename)
+            moves = (source.get('animation_data') or [{}])[0].get('mov_data', []) if source else []
+            movement = next((m for m in moves if m['name'] == clip), {})
+            if movement.get('lp') and movement.get('dr', 0) > 0:
+                frame %= movement['dr']
+            if animation.endswith('right'):
+                result = self.armature(filename, animation.replace('right', 'left'), frame)
                 return result.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if result else None
-            return self.armature(filename, animation)
+            return self.armature(filename, animation, frame)
         if row['fileType'] == '3':
             from spine_renderer import render_setup
             path = self.assets/'Sprite/Spine'/(filename+'.json')
@@ -94,17 +100,24 @@ class OriginalData:
         return image
 
     @lru_cache(maxsize=64)
-    def armature(self, name, animation='standdown', frame=0):
-        """Software preview of Cocos Studio bones, including original texture pivots."""
+    def armature_source(self, name):
         folder = self.assets/'Sprite/CcsAni'
         export = folder/f'{name}.ExportJson'
         if not export.exists():
             matches = list(self.assets.rglob(f'{name}.ExportJson'))
             if not matches:
-                return None
+                return None, None
             export = matches[0]
         folder = export.parent
         data = json.loads(export.read_text(encoding='utf-8'))
+        return folder, data
+
+    @lru_cache(maxsize=256)
+    def armature(self, name, animation='standdown', frame=0):
+        """Software preview of Cocos Studio bones, including original texture pivots."""
+        folder, data = self.armature_source(name)
+        if data is None:
+            return None
         frames = {}
         for plist in folder.glob(f'{name}[0-9]*.plist'):
             pd = plistlib.loads(plist.read_bytes())
@@ -127,6 +140,8 @@ class OriginalData:
             return None
         moves = (data.get('animation_data') or [{}])[0].get('mov_data', []) or []
         move = next((m for m in moves if m['name'] == animation), moves[0] if moves else {})
+        if move.get('lp') and move.get('dr', 0) > 0:
+            frame %= move['dr']
         active = {}
         for bone in move.get('mov_bone_data', []) or []:
             fd = bone.get('frame_data', []) or []
