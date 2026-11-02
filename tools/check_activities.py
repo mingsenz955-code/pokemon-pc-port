@@ -141,7 +141,7 @@ class EconomicChecks(unittest.TestCase):
         self.assertEqual((110, 70), (result.hp, result.energy))
         result = recovery(TABLES['PetItem']['230008'], 0, 0, 201, 101)
         self.assertEqual((60, 30), (result.hp, result.energy))
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, '复活石'):
             recovery(TABLES['PetItem']['230001'], 0, 0, 201, 101)
 
     def test_training_caps_and_failure_without_consumption(self):

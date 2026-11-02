@@ -21,7 +21,7 @@ def recovery(row, hp, energy, max_hp, max_energy):
     if kind not in (1, 2, 3):
         raise ValueError(f'PetItem type {kind} is not a recovery effect')
     if hp <= 0 and kind != 3:
-        raise ValueError('濒死的宠物需要复活道具。')
+        raise ValueError('宠物已死亡，请使用复活石。')
     if hp > 0 and kind == 3:
         raise ValueError('这只宠物不需要复活。')
     parameters = [int(value) for value in str(row['parameters']).split(',')]
