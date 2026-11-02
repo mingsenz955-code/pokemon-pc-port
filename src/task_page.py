@@ -59,9 +59,10 @@ class TaskPage:
         key, row, status, counts = self.rows[self.selected]
         if status != 4:
             return
-        DailyTasks(self.app.state).claim(key)
+        result = DailyTasks(self.app.state).claim(key)
         self.sync()
         self.frame = None
+        self.app.show_reward('每日任务奖励', result['rewards'])
 
     def info(self):
         if not self.rows:

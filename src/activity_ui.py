@@ -6,6 +6,7 @@ from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 from activities import Activities
+from event_runtime import Request
 from achievements import Achievements
 from arena import ArenaProgress
 from budokan import BudokanProgress
@@ -1541,6 +1542,11 @@ class ActivityUI:
         refresh()
 
     def lottery_ui(self, force=False):
+        if not force and (self.battle or self.runtime.running or self.ui_open):
+            return
+        self.open_ui(Request('openui', 'lottery', 1, {'parameters': {'uiid': 68}}))
+
+    def _legacy_lottery_ui(self, force=False):
         if not force and (self.battle or self.runtime.running or self.ui_open):
             self.event_issue = '请先结束当前对话、界面或战斗。'
             return

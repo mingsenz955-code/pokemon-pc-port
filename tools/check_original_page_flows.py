@@ -39,6 +39,8 @@ class PageFlows(unittest.TestCase):
         self.app.load_map(101, 1248, 1504)
 
     def tearDown(self):
+        if self.app.ui_window and self.app.ui_window.winfo_exists():
+            self.app.ui_window.destroy()
         for job in self.root.tk.call('after', 'info'):
             self.root.after_cancel(job)
         self.root.destroy()
@@ -125,8 +127,11 @@ class PageFlows(unittest.TestCase):
         key = next(k for k in app.ui_buttons if k.startswith('login_0/') and k.endswith('/get_Button'))
         self.click(key)
         self.assertEqual(before+int(row['rewardCount']), app.state.count(row['rewardKid']))
+        self.assertTrue(app.reward_visible)
+        app.ui_actions['confirm_Button']()
         self.click(key)
         self.assertEqual(before+int(row['rewardCount']), app.state.count(row['rewardKid']))
+        app.ui_actions['confirm_Button']()
         spec = next(s for s in app.original_page.specs if s[4] == 'login_0/')
         self.assertTrue(spec[2]['visible']['received_Image'])
         app.ui_base_layer.save(OUTPUT/'login.png')

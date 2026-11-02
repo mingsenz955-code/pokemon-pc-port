@@ -27,17 +27,19 @@ try:
     app.pets_ui()
     assert app.ui_open and app.ui_render_args['name'] == 'PetListUI'
     for key in ('joinBattle_Button', 'evolution_Button', 'useItem_Button', 'free_Button',
-                'skillTag_Button', 'talentTag_Button'):
+                'skill_Button', 'trainValue_Button'):
         assert key in app.ui_actions, key
-    app.ui_actions['skillTag_Button']()
-    app.ui_actions['talentTag_Button']()
+    app.ui_actions['trainValue_Button']()
+    app.ui_actions['trainValue_Button']()
     app.ui_actions['joinBattle_Button']()
     assert state.active_pet == 0
     # One free click only arms confirmation; it must not delete the active pet.
     before = len(state.pets)
     app.ui_actions['free_Button']()
     assert len(state.pets) == before
-    assert '不能放生' in app.ui_info.get() or '再次点击' in app.ui_info.get()
+    app.ui_actions['confirm_Button']()
+    assert '不能放生' in app.ui_info.get()
+    app.ui_actions['close_Button']()
     app.ui_actions['close_Button']()
     assert not app.ui_open
     print('PetListUI checks passed')

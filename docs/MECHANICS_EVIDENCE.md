@@ -1,3 +1,20 @@
+## 0.2.58：PR #13 三项复审修复
+
+- 传送：沿用已核对的 `VillageAreaMapUiLayer::handleSelectMapUISelectedEvent` 0x3c56fc 的 `<map>01` 目标语义。通过原 TMX 中无 gid 的出口对象及现有 exit_spawn 计算落点，排除同名 NPC；验证地面碰撞与其他出口触发区。配置异常时只选择最近可行走格；无安全格则在扣道具前拒绝。不将地图几何中心当作原版落点。
+- 抽宠：`Activities.draw_pets` 的免费期限校验未改变；页面不再捕获打开时的资格。在按下回调内使用同一当前秒数决定 free 并传给核心。普通抽宠免费到期后不扣徽章，下一次未到期限仍扣原 Store 配置费用；页面每秒刷新剩余时间。
+- 奖励：进入奖励页前保存活动页的滚轮处理函数，确认/关闭先恢复，再调用原返回回调。适用于原页重新绘制和仅 publish 两种返回方式，防止旧奖励页的 wheel 再次打开奖励。
+
+新增5项隔离回归：遍历所有传送道具目的地的原出口/碰撞、真实消费与落点、无落点不扣费、页面打开期间免费到期及随后付费、登录领奖返回后滚动不会重新弹奖。导航回归隔离后续剧情触发，不声称完整剧情通关。
+
+## 0.2.57：背包交互、宠物详情和奖励星光
+
+- PetDataManager::init 0x326466 把 maxFriendly 初始化为 6；usePetItem 0x32aed4 的类型5调用 addCloseness、类型6调用 levelUp(vector)。levelUp(int) 0x328212 按表中 maxLevel 限制等级。宠物属性页编号由 species key 减100000，不使用宿主 UUID。
+- PlayerDataManager::useFunctionItem_battleIn 0x330314 从 FunctionItem.parameters 读取状态、步数和持续时间，调用 addPlayerState 0x3302b8；后者先删除状态1/2，再添加新状态。因此香水互相替换，不叠加。
+- FunctionItem 220004/5/6 的 Item.useType=3，仅战斗使用；未改成背包直接捕捉。技能卷轴按 SkillItem.skillId 发起原确认页，再真实消费一次。
+- GetItemUIItemUI/Particle_1 使用 UI/lizi/lizi_2.plist，原纹理是 gzip+base64；按原寿命/速度/颜色/尺寸/重力参数采样并加色混合。并未恢复原引擎随机序列。
+- 连充布局应为 ContinuousTopUpUI，奖励卡使用 ContinuousTopUpItemUI；桌面单机无支付服务，不授予伪充值记录。抽宠 function8 在 pEvent5905001.json 开放。
+- check_inventory_interactions.py 覆盖全 PetItem、全 SkillItem、全 Item 图标和描述裁剪、真实页面点击、登录防重复、星光参数、香水替换、三种捕捉球和卷轴确认返回。其他宿主回归见发布说明。
+
 ## 0.2.56：原始页面、累计登录与普通技能特效
 
 本次重新读取 original-core.so 的 ARM/Thumb 指令以及 APK 原 CSB / ExportJson，未采用截图当页面背景。

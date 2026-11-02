@@ -141,7 +141,9 @@ class SceneUI:
             try:
                 mounts.select(ride, app.map.terrain_at(app.x, app.y), int(app.map.info['mapType']))
             except ValueError as error:
-                messagebox.showinfo('坐骑', str(error), parent=app.root)
+                row = app.data.tables['Ride'].get(str(ride), {})
+                text = row.get('des', str(error)) if ride not in app.state.rides else str(error)
+                app.open_ui(Request('openui', 'ride-tip', 1, {'parameters': {'uiid': 51, 'text': text}}))
             return
         if key.startswith('up_left_'):
             try:

@@ -24,6 +24,7 @@ class OriginalPages(unittest.TestCase):
         state.main_task, state.main_state = 129, 3
         state.task_counts['main:129'] = [42]
         app = SimpleNamespace(data=DATA, state=state, closed=[], ui_info=None)
+        app.show_reward = lambda title, rewards: None
         app.close_ui = lambda result: app.closed.append(result)
         return TaskPage(app)
 

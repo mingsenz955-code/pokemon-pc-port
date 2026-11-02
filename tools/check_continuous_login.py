@@ -95,6 +95,8 @@ try:
     assert app.state.count('220006') == 1
     assert app.state.activities['continuous_login']['day'] == 1
     assert '领取成功' in app.ui_info.get()
+    assert app.reward_visible
+    app.ui_actions['confirm_Button']()
     app.ui_actions['close_Button']()
     assert not app.ui_open
 finally:

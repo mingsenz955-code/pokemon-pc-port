@@ -99,6 +99,7 @@ class CocosUI:
             design = [800, 480]
         frame = Image.new('RGBA', (round(design[0]), round(design[1])))
         self.hits, self.buttons, self.button_text, self.rects, self.diagnostics = {}, {}, {}, {}, []
+        self.particles = []
         text, visible, resources = text or {}, visible or {}, resources or {}
         pressed = pressed or {}
         positions = positions or {}
@@ -154,6 +155,8 @@ class CocosUI:
             origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
             alpha *= resolve(alphas, animation.get('Alpha', node.get('alpha', 255)))/255
             image = None
+            if node['class'] == 'Particle' and node.get('resource', {}).get('path'):
+                self.particles.append((node['resource']['path'], (x, frame.height-y), (sx, sy), alpha))
             resource = resolve(resources, node.get('resource', {}).get('path', ''))
             classname = node['class']
             # Original Cocos Button nodes carry a separate pressed texture.
@@ -277,6 +280,8 @@ class CocosUI:
         visit(root, (offset[0]*design[0]/size[0], offset[1]*design[1]/size[1]))
         scale_x, scale_y = size[0]/design[0], size[1]/design[1]
         if (scale_x, scale_y) != (1, 1):
+            self.particles = [(p, (x*scale_x, y*scale_y), (sx*scale_x, sy*scale_y), a)
+                              for p, (x, y), (sx, sy), a in self.particles]
             for target in (self.hits, self.buttons, self.rects):
                 for key, rect in list(target.items()):
                     target[key] = [rect[0]*scale_x, rect[1]*scale_y,

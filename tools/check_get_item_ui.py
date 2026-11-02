@@ -27,9 +27,9 @@ with tempfile.TemporaryDirectory() as saves:
         assert app.ui_open and app.ui_window is not None
         assert app.ui_base_layer is not None and app.ui_base_layer.size == (800, 480)
         assert 'item_ListView' in app.ui_rects
-        assert 'get_item_0' in app.ui_hits and 'get_item_1' in app.ui_hits
-        assert '获得物品' in app.ui_info.get()
-        assert '滚轮翻页（1/2）' in app.ui_info.get()
+        assert sum(s[0] == 'GetItemUIItemUI' for s in app.original_page.specs) >= 2
+        assert app.reward_visible
+        assert any(p[0].endswith('lizi_2.plist') for p in app.original_page.particles)
         # The original cards replace the old dark host Listbox entirely.
         def find_listbox(widget):
             for child in widget.winfo_children():
