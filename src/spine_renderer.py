@@ -259,6 +259,7 @@ def render_pose(path_string, animation='', frame=0, loop=True, limit=550):
             paint_triangle(output, texture, [points[i] for i in ids], [uv[i] for i in ids])
     output.info['origin'] = (-left*scale+2, top*scale+2)
     output.info['pixels_per_unit'] = scale
+    output.info['bone_points'] = {name: (m[4]*scale, -m[5]*scale) for name, m in by_name.items()}
     return output
 
 

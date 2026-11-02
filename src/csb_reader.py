@@ -138,6 +138,8 @@ def node(tree):
             result['cap_insets'] = options.struct(9, '<ffff', [0, 0, 0, 0])
             result['scale9_size'] = options.struct(10, '<ff', [0, 0])
             result['scale9'] = bool(options.scalar(11, '<?'))
+            if classname == 'ListView':
+                result['item_margin'] = options.scalar(15)
         elif classname == 'ProjectNode':
             result['project'] = options.text(1)
     result['children'] = [node(child) for child in tree.tables(1)]
@@ -151,4 +153,22 @@ def read_csb(path):
     tree = root.table(3)
     if tree is None:
         raise ValueError(f'No Cocos node tree in {path.name}')
-    return {'source': path.name, 'version': root.text(0), 'tree': node(tree)}
+    result = {'source': path.name, 'version': root.text(0), 'tree': node(tree)}
+    action = root.table(4)
+    if action:
+        tracks = []
+        for track in action.tables(2):
+            frames = []
+            prop = track.text(0)
+            for wrapper in track.tables(2):
+                slot = {'Position': 0, 'Scale': 1, 'Alpha': 5, 'VisibleForFrame': 6}.get(prop)
+                frame = wrapper.table(slot) if slot is not None else None
+                if not frame:
+                    continue
+                value = (frame.struct(2, '<ff', [0, 0]) if slot in (0, 1) else
+                         frame.scalar(2, '<?', True) if slot == 6 else frame.scalar(2))
+                frames.append({'frame': frame.scalar(0), 'tween': bool(frame.scalar(1, '<?', True)), 'value': value})
+            if frames:
+                tracks.append({'property': prop, 'tag': track.scalar(1), 'frames': frames})
+        result['action'] = {'duration': action.scalar(0), 'tracks': tracks}
+    return result

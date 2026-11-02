@@ -38,6 +38,10 @@ class BattleUI:
     def __init__(self, app, battle):
         self.app = app
         self.battle = battle
+        from battle_effects import BattleEffects, EffectAudio
+        self.effects = BattleEffects(app.data)
+        self.effect_audio = EffectAudio(app.data)
+        self.pet_bones = {}
         self.screen = 'main'
         self.hits = {}
         self.frame = None
@@ -72,10 +76,16 @@ class BattleUI:
         self.anim_idle += steps
         remaining = steps
         while self.anim and remaining > 0:
+            before = self.anim['age']
             amount = min(remaining, self.anim['duration']-self.anim['age'])
             self.anim['age'] += amount
             remaining -= amount
-            if self.anim['age'] >= self.anim['duration']/2:
+            plan = self.anim.get('effect')
+            if plan and hasattr(self.app, 'root'):
+                for when, name in plan['events']:
+                    if before <= when < self.anim['age'] and name == 'sound':
+                        self.effect_audio.play(plan['sound'])
+            if self.anim['age'] >= self.anim.get('hit_at', self.anim['duration']/2):
                 for event in self.anim.get('damages', []):
                     if event.get('uid'):
                         self.visual_hp[(event['side'], event['uid'])] = event['hp']
@@ -117,6 +127,11 @@ class BattleUI:
                 current = {'side': event.get('side', 'player'), 'target': '', 'kind': kind,
                            'source_uid': event.get('uid'), 'amount': 0, 'crit': False,
                            'age': 0, 'duration': 26, 'damages': []}
+                plan = self.effects.plan(event.get('skill_id', '300056'), current['side'])
+                if plan:
+                    current['effect'] = plan
+                    current['duration'] = plan['duration']
+                    current['hit_at'] = plan['hit'] if plan['hit'] is not None else plan['duration']
                 self.anim_queue.append(current)
             elif kind == 'damage':
                 if current is None:
@@ -224,6 +239,7 @@ class BattleUI:
     def render(self):
         signature = (self.screen, self.page, self.ball_page, self.notice, self.info,
                      int(self.anim_idle*12/25),
+                     int(self.anim['age']*60/25) if self.anim else -1,
                      self.item_filter, repr(self.selected), self.battle.result,
                      self.battle.player_index, self.battle.enemy_index,
                      tuple(self.battle.messages), repr(getattr(self.app, 'battle_tips', [])),
@@ -257,14 +273,17 @@ class BattleUI:
         self._draw_pet(frame, self.presentation_unit(False),
                        tuple(round(v)+d for v, d in zip(self.pet_positions['player'], player_offset)),
                        250, False, flash if self.anim and self.anim['target'] == 'player' else 0)
-        for layer in (self._hud_layer(True), self._hud_layer(False)):
+        self.effects.draw(frame, self)
+        hide_hud = bool(self.anim and self.anim.get('effect', {}).get('hide_ui'))
+        for layer in (() if hide_hud else (self._hud_layer(True), self._hud_layer(False))):
             if layer:
                 frame.alpha_composite(layer)
         draw = ImageDraw.Draw(frame, 'RGBA')
-        self._draw_bars(draw)
-        self._draw_status(draw, self.presentation_unit(True), True)
-        self._draw_status(draw, self.presentation_unit(False), False)
-        self._draw_team(draw)
+        if not hide_hud:
+            self._draw_bars(draw)
+            self._draw_status(draw, self.presentation_unit(True), True)
+            self._draw_status(draw, self.presentation_unit(False), False)
+            self._draw_team(draw)
         self._draw_damage(draw)
         self.hits = {}
         if self.shop_hit:
@@ -310,12 +329,15 @@ class BattleUI:
         side = 'enemy' if enemy else 'player'
         if self.anim and self.anim['side'] == side:
             clip, age, loop = 'attack', self.anim['age'], False
-        elif self.anim and self.anim['target'] == side and self.anim['age'] >= self.anim['duration']/2:
-            clip, age, loop = 'underattack', self.anim['age']-self.anim['duration']/2, False
+        elif self.anim and self.anim['target'] == side and self.anim['age'] >= self.anim.get('hit_at', self.anim['duration']/2):
+            clip, age, loop = 'underattack', self.anim['age']-self.anim.get('hit_at', self.anim['duration']/2), False
         image = self.app.data.pet_frame(unit.pet.species, clip, int(age*12/25), loop)
         if image is None:
             image = setup
         ratio = height/max(1, setup.height)
+        self.pet_bones[side] = {key: (center[0]+point[0]*ratio*(-1 if not enemy else 1),
+                                      center[1]+point[1]*ratio)
+                                for key, point in image.info.get('bone_points', {}).items()}
         origin = image.info.get('origin', (image.width/2, image.height))
         origin = (origin[0]*ratio, origin[1]*ratio)
         image = image.resize((max(1, round(image.width*ratio)), max(1, round(image.height*ratio))), Image.Resampling.LANCZOS)
@@ -330,7 +352,7 @@ class BattleUI:
     def _draw_damage(self, draw):
         if not self.anim or self.anim['amount'] <= 0:
             return
-        half = self.anim['duration']/2
+        half = self.anim.get('hit_at', self.anim['duration']/2)
         if self.anim['age'] < half:
             return
         phase = min(1.0, (self.anim['age']-half)/max(1, half))

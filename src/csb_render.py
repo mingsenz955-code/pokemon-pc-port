@@ -1,5 +1,6 @@
 """Software rendering of recovered Cocos layout images and text; no screenshot backgrounds."""
 import json
+import math
 import os
 import re
 from functools import lru_cache
@@ -88,10 +89,12 @@ class CocosUI:
         return result
 
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
-               offset=(0, 0), pressed=None, positions=None, rich_text=(), alphas=None):
+               offset=(0, 0), pressed=None, positions=None, rich_text=(), alphas=None,
+               native_resources=(), percentages=None, sizes=None, canvas_size=None,
+               auto_text=(), timeline_frame=None):
         layout = self.layout(name)
         root = layout['tree']
-        design = root.get('size', [800, 480])
+        design = canvas_size or root.get('size', [800, 480])
         if min(design) <= 0:
             design = [800, 480]
         frame = Image.new('RGBA', (round(design[0]), round(design[1])))
@@ -100,6 +103,24 @@ class CocosUI:
         pressed = pressed or {}
         positions = positions or {}
         alphas = alphas or {}
+        percentages = percentages or {}
+        sizes = sizes or {}
+        animated = {}
+        if timeline_frame is not None:
+            for track in layout.get('action', {}).get('tracks', []):
+                frames = track['frames']
+                if timeline_frame < frames[0]['frame']:
+                    continue
+                prior = frames[0]
+                value = prior['value']
+                for following in frames[1:]:
+                    if timeline_frame < following['frame']:
+                        if prior['tween'] and isinstance(value, list):
+                            amount = (timeline_frame-prior['frame'])/max(1, following['frame']-prior['frame'])
+                            value = [a+(b-a)*amount for a, b in zip(prior['value'], following['value'])]
+                        break
+                    prior, value = following, following['value']
+                animated.setdefault(track['tag'], {})[track['property']] = value
 
         def visit(node, parent=(0, 0), scale=(1, 1), alpha=1, depth=0, prefix=''):
             if depth > 50:
@@ -117,16 +138,21 @@ class CocosUI:
                         return value
                 return default
 
-            if not resolve(visible, node.get('visible', True)):
+            animation = animated.get(node.get('action_tag'), {})
+            if not resolve(visible, animation.get('VisibleForFrame', node.get('visible', True))):
                 return
-            local = resolve(positions, node.get('position', [0, 0]))
-            node_scale = node.get('scale', [1, 1])
+            local = resolve(positions, animation.get('Position', node.get('position', [0, 0])))
+            node_scale = animation.get('Scale', node.get('scale', [1, 1]))
             sx, sy = scale[0]*node_scale[0], scale[1]*node_scale[1]
-            width, height = node.get('size', [0, 0])
+            width, height = resolve(sizes, node.get('size', [0, 0]))
+            if (key in auto_text or qualified in auto_text) and node['class'] == 'Text':
+                value = str(resolve(text, node.get('text', '')))
+                ft = self.font(node.get('font_resource', {}).get('path', ''), node.get('font_size', 22))
+                width, height = max(1, math.ceil(ft.getlength(value))+2), ft.size+4
             anchor = node.get('anchor', [0, 0])
             x, y = parent[0]+local[0]*scale[0], parent[1]+local[1]*scale[1]
             origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
-            alpha *= resolve(alphas, node.get('alpha', 255))/255
+            alpha *= resolve(alphas, animation.get('Alpha', node.get('alpha', 255)))/255
             image = None
             resource = resolve(resources, node.get('resource', {}).get('path', ''))
             classname = node['class']
@@ -143,6 +169,12 @@ class CocosUI:
                 except (KeyError, OSError) as error:
                     self.diagnostics.append([key, resource, str(error)])
             if image:
+                if key in native_resources or qualified in native_resources:
+                    # ImageView::loadTexture + ignoreContentAdaptWithSize(true)
+                    # uses the loaded icon's size, not the editor heart sample.
+                    width, height = image.size
+                width, height = resolve(sizes, (width, height))
+                origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
                 if width <= 0 or height <= 0:
                     width, height = image.size
                 target = max(1, round(width*abs(sx))), max(1, round(height*abs(sy)))
@@ -157,6 +189,10 @@ class CocosUI:
                     image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
                 if alpha < 1:
                     image.putalpha(image.getchannel('A').point(lambda v: round(v*alpha)))
+                if classname == 'LoadingBar' and (key in percentages or qualified in percentages):
+                    fill = max(0, min(1, float(resolve(percentages, 1))))
+                    image = image.copy()
+                    image.paste((0, 0, 0, 0), (round(image.width*fill), 0, image.width, image.height))
                 frame.alpha_composite(image, (round(origin[0]), round(frame.height-origin[1]-height*abs(sy))))
             elif (classname in ['Panel', 'ListView', 'ScrollView'] and node.get('background_type') == 1
                   and node.get('background_alpha', 255) > 0):
@@ -175,6 +211,11 @@ class CocosUI:
                         glyphs = None
                 else:
                     glyphs = None
+                if glyphs is not None:
+                    # TextBMFont::setString updates content size. Anchors must
+                    # follow the real glyph run, not the editor sample digits.
+                    width, height = glyphs.size
+                    origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
                 if glyphs is None:
                     font = self.font(node.get('font_resource', {}).get('path', ''), node.get('font_size', 22))
                     value = re.sub(r'#[0-9]', '', value)

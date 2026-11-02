@@ -1,3 +1,17 @@
+## 2026-11-02 / 0.2.56 接续基线
+
+主目录 main 后续变更在 codex/restore-original-pages-effects 分支交付。不要回退到 0.2.55 的 mainUp_Button 地点菜单；用户已确认点击指引必须自动走向当前任务点。
+
+本版把原卡片组合、点击/裁剪/悬停放到 src/original_pages.py，地区图在 src/area_map.py，普通技能特效在 src/battle_effects.py。原代码依据见 docs/MECHANICS_EVIDENCE.md 顶部，未完成项见 docs/RESTORATION_REMAINING.md。不要把原 ARM 推断或局部测试写成全部复刻完成。
+
+优先回归：tools/check_original_page_flows.py、check_home_guidance.py、check_shop_goods_ui.py、check_continuous_login.py、check_battle_clicks.py、check_spine_animation.py。测试必须用临时 POCKET_NATIVE_SAVE_DIR，禁止改写玩家真实 slot1.json。部分 Canvas 点击测试需要映射窗口，现有脚本用 alpha=0 隐藏；不要随意 withdraw 该脚本窗口导致 event_generate 不投递。
+
+重要修正：登录奖励按原 checkLoginInRewardCanReceived / loginRewardReceived 累计，断登不清零；普通技能以原 Armature fi/evt 命中与音效帧推进，不再按26个宿主tick一刀切。特殊弹道、粒子、全部多段、全部图鉴状态、地图云雾/传送规则和后期剧情继续待做。
+
+桌面只用固定“口袋妖怪”入口，build_windows.py 全部完成后才切换版本。当前运行中的旧游戏应由玩家保存后自行关闭重开，禁止强杀或替换玩家存档。
+
+---
+
 # 给 DeepSeek 的接续提示词（可整段复制）
 
 你要接续一个已开始的游戏移植项目，请先读取本文件以及项目源码，不要重新从零画一个类似的宝可梦游戏。

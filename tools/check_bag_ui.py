@@ -26,13 +26,13 @@ try:
     assert app.ui_open
     assert app.ui_render_args['name'] == 'BagUI'
     assert app.ui_base_layer.size == (800, 480)
-    assert 'bag_row_0' in app.ui_actions
     assert 'item_ListView' in app.ui_rects
     assert 'use_Button' in app.ui_actions
     assert 'heCheng_Button' in app.ui_actions
     for index in range(1, 6):
         assert f'tag_{index}_Button' in app.ui_actions
     app.ui_actions['tag_5_Button']()
+    assert 'bag_row_0' in app.ui_actions
     app.ui_actions['bag_synthesize']()
     assert state.count('280010') == 0
     assert any(pet.species == '100112' for pet in state.pets+state.bank)

@@ -30,18 +30,18 @@ try:
     assert 'shop_goods_0' in app.ui_actions
     assert 'goods_ListView' in app.ui_rects
     assert hasattr(app, 'shop_scroll')
+    first_keys = set(app.ui_actions)
     app.shop_scroll(1)
-    assert 'shop_goods_8' in app.ui_actions
-    assert 'shop_goods_10' in app.ui_actions
-    assert '第 2/3 页' in app.ui_info.get()
+    assert 'shop_goods_0' not in app.ui_actions
+    assert set(app.ui_actions) != first_keys
     app.shop_scroll(-1)
     assert 'shop_goods_0' in app.ui_actions
-    app.open_goods_detail(1, 'Shop', key, row)
-    assert app.ui_render_args['name'] == 'ShopGoodsUI'
-    assert 'buy_Button' in app.ui_actions
-    rect = app.ui_buttons['buy_Button']
-    assert app.ui_hit_at((rect[0]+rect[2])/2, (rect[1]+rect[3])/2)[0] == 'buy_Button'
-    app.ui_actions['buy_Button']()
+    app.ui_actions['shop_goods_0']()
+    assert app.ui_render_args['name'] == 'ShopUI'
+    buy_key = next(k for k in app.ui_buttons if k.startswith('shop_goods_0/') and k.endswith('/buy_Button'))
+    rect = app.ui_buttons[buy_key]
+    assert app.ui_hit_at((rect[0]+rect[2])/2, (rect[1]+rect[3])/2)[0] == buy_key
+    app.ui_action_for(buy_key)()
     assert app.ui_render_args['name'] == 'BuyConfirmUI'
     assert state.shop_purchases.get(f'Shop:{key}', 0) == 0
     app.ui_actions['right_Button']()

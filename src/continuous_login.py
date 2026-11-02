@@ -1,10 +1,11 @@
-"""Original ContinuousLogin seven-day reward table and consecutive-day rules.
+"""Original ContinuousLogin seven-day cumulative reward table.
 
 The 1.20.4 table has seven rows.  PlayerDataManager stores
 continuousLoginDays and loginTime; ContinuousLoginUILayer::getButtonRespond
-grants the current row and raises LoginRewardReceivedEvent.  The host models a
-missed calendar day as a reset to day one, claims atomically, and never grants
-the same day twice.
+grants the current row and raises LoginRewardReceivedEvent.
+checkLoginInRewardCanReceived 0x32a618 requires a positive calendar-day
+difference; it does not reset on a gap. loginRewardReceived 0x330fcc advances
+the cumulative reward counter. Claim atomically, at most once per day.
 """
 from __future__ import annotations
 
@@ -32,23 +33,23 @@ class ContinuousLogin:
         entry = self._entry()
         last = entry.get('last', '')
         claimed_today = bool(last == today)
-        reset = False
-        if last and not claimed_today:
+        eligible = not last
+        if last:
             try:
                 gap = (datetime.date.fromisoformat(today)
                        - datetime.date.fromisoformat(last)).days
             except ValueError:
                 gap = 0
-            if gap > 1:
-                reset = True
-        day = 0 if reset else entry['day']
+            eligible = gap > 0
+        day = entry['day']
         next_day = min(7, day+1) if day < 7 else 7
         return {
             'day': day,
             'next_day': next_day,
             'claimed_today': claimed_today,
             'complete': day >= 7,
-            'reset': reset,
+            'reset': False,  # Compatibility with older host callers.
+            'can_claim': eligible and day < 7,
             'today': today,
         }
 
@@ -59,6 +60,8 @@ class ContinuousLogin:
             raise ValueError('今天已经领取过连续登录奖励了。')
         if status['complete']:
             raise ValueError('连续登录七天奖励已经全部领取。')
+        if not status['can_claim']:
+            raise ValueError('尚未到下一个可领取奖励的日期。')
         entry = self._entry()
         day = status['day'] + 1
         row = self.state.tables['ContinuousLogin'].get(str(day))

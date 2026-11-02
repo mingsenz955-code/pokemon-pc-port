@@ -1,3 +1,24 @@
+## 0.2.56：原始页面、累计登录与普通技能特效
+
+本次重新读取 original-core.so 的 ARM/Thumb 指令以及 APK 原 CSB / ExportJson，未采用截图当页面背景。
+
+| 原版依据 | 观察及实现 |
+| --- | --- |
+| ShopUILayer::getItemLayout 0x3b533c；itemListViewInit 0x3b56e8 | 加载 ShopGoodsUI.csb 的 root_Panel 并 pushBackCustomItem，选项与购买按钮分开；恢复 153×233 横排商品卡，而非 GoodsItemNode 的 4×2 替代界面。 |
+| CSParseBinary.fbs / ListViewOptions.itemMargin；原 ShopUI/ContinuousLoginUI.csb | 实际 itemMargin=10。解析并应用间距，按 viewport 裁剪画面和点击；图标 loadTexture 后使用真实纹理尺寸，不沿用编辑器 21×22 心形尺寸。 |
+| BagUILayer::refreshInfoText 0x34ac24；showPetSelectUILayer 0x34a860 | 说明来自当前真实 Item，使用道具先打开 PetSelectUI；保留未实现效果拒绝消耗。孵化选择使用原 BagUI 蛋列表。 |
+| IllustratedUILayer::itemScrollViewInit 0x36e29c | 原 IllustratedItemUI 是 115×113；代码以 5 分列，并区别图鉴状态。恢复五列和未发现卡，不把所有名字和资料直接揭示。已见但未捕获的完整状态跟踪仍待实现。 |
+| IllustratedPetInfoUILayer::showPropertyPanel 0x36cd38；showinfoPanel 0x36ce28；showInfo 0x36d0f0 | 详情的查看/介绍按钮切换描述和发现地点/进化材料，不是关闭页，也不是宿主属性/技能列表；恢复原字段名称及真实 Evolution 条件。 |
+| AchievementUILayer::getShowAchievementItem 0x347730；setItemData 0x348064；refreshItemState 0x3477ec | MainAchievement.achievementList 决定当前档；恢复一组一张当前成就、星级、原奖励节点与可领/已领/待领图。部分进度条件仍未接入，不假造可领。展开/收缩的完整原时间线仍待实现。 |
+| ContinuousLoginUILayer::itemListViewInit 0x3622fc；popUpActionCallBack 0x3615a4 | 使用 152.88×239.4 原奖励卡；回调播放 CSB 时间线，标题起始 scale=.01，22 帧后为 1。新增原 Scale/Position/Alpha/VisibleForFrame 时间线读取，本页当前显示终态；不是完整弹出动画验收。 |
+| PlayerDataManager::checkLoginInRewardCanReceived 0x32a618；loginRewardReceived 0x330fcc | 奖励未领满且日期差为正即可领取；累计计数加一，未见隔日重置分支。移除旧主机实现的断登清零规则，保持最多一天一次和原表奖励。采用本机日期，非服务器时间校准。 |
+| VillageAreaMapUiLayer::initAreaMapUi 0x3c6acc；VillageAreaMapSprite::initWithMapId 0x3c6074 | 原 WorldMap.fileName 的 mapLayer/exitLayer 定义区域图；使用 areaMapBottom%d.png 的 10 像素九宫格、地图名及出口纹理。室内沿 parentMapId 找外部地图。 |
+| VillageAreaMapSprite::showTaskIcon 0x3c5a28；WorldMapUILayer::showPlayerHeadIcon 0x3c8a88 | 使用 taskIcon%d.png（scale .8）和 areaMapPlayerHead.png；WorldMap1UI/2UI 从原图层渲染。地区滚动、两页切换和点击地区可用；头像上下浮动、云雾解锁和全部传送限制未验收。 |
+| BattleController::showSkillEffectNormal 0x2c74a4；effectScale 0x2c2db4 | 读取 Skill.skillEffectTypeId→SkillEffect 的 path1/path2；仅 effectType=0 接入原 Armature。Animation1 的 fi/evt 决定 attack/sound，bodyPos=1 用 p_center，否则 p_shadow；效果缩放按表布尔值及 Pet.effectScale。 |
+| Skill/putonggongji.ExportJson、feiye.ExportJson | 原普通攻击 dr=26，飞叶 dr=101；两者 attack 事件 fi=5，sound fi=4。使用 Armature 60Hz 时间单位并保留原动画变化，不再统一 26 个宿主 tick 或中点显示命中。特殊 effectType 1..5 的移动动作仍未实现。 |
+
+验证：隔离存档、隐藏测试窗的实际按钮/流程检查；输出页面来自本地离屏渲染，未观察用户正在玩的窗口。测试覆盖购买实际扣费、指定宠物回复、选择第二种蛋、奖励防重复、跨日断登累计、日期回拨、原卡片几何/裁剪、动态页面悬停保持、两张世界地图与地区拖动、读档随机数不变，以及真实普通攻击命中帧与技能帧图差异。原全部技能、动画、地图解锁和全剧情通关不在本次已验收范围。
+
 # 1.20.4 规则核对记录
 
 ## 0.2.55：社区入口移除与功能菜单遮挡修复

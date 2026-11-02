@@ -49,7 +49,8 @@ class ReviewChecks(unittest.TestCase):
         ui._capture_events()
         ui.advance(seconds=.01)
         self.assertAlmostEqual(.25, ui.anim['age'])
-        ui.advance(seconds=1.23)
+        duration = ui.anim['duration']
+        ui.advance(seconds=(duration+5-.25)/25)
         self.assertEqual('enemy', ui.anim['side'])
         self.assertAlmostEqual(5, ui.anim['age'])
         ui.advance(seconds=1)
