@@ -34,7 +34,7 @@ class TreasureHunt:
         return self.state.tables.get('Treasure', {})
 
     def entries(self):
-        return self.state.activities.setdefault('treasure_maps', [])
+        return self.state.activities.get('treasure_maps', [])
 
     def active(self):
         return next((e for e in self.entries() if not e.get('opened')), None)
@@ -94,7 +94,7 @@ class TreasureHunt:
                 'revealed': False,
                 'opened': False,
             }
-            self.entries().append(entry)
+            self.state.activities.setdefault('treasure_maps', []).append(entry)
         return entry
 
     def use_magnifier(self, pos_id=None, *, map_id, viewport, box=(-32, -32, 64, 64)):

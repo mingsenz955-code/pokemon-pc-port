@@ -1,5 +1,7 @@
 """Treasure map purchase, magnifier reveal, map chest and UI contract."""
 import json
+import os
+import atexit
 import sys
 import tempfile
 import tkinter as tk
@@ -79,6 +81,16 @@ with tempfile.TemporaryDirectory() as folder:
     assert restored['map_id'] == saved['map_id']
 
 # --- real Tk host UI ---------------------------------------------------------
+saves = tempfile.TemporaryDirectory()
+prior_save_dir = os.environ.get('POCKET_NATIVE_SAVE_DIR')
+os.environ['POCKET_NATIVE_SAVE_DIR'] = saves.name
+def cleanup_saves():
+    if prior_save_dir is None:
+        os.environ.pop('POCKET_NATIVE_SAVE_DIR', None)
+    else:
+        os.environ['POCKET_NATIVE_SAVE_DIR'] = prior_save_dir
+    saves.cleanup()
+atexit.register(cleanup_saves)
 root = tk.Tk()
 root.withdraw()
 try:
@@ -90,9 +102,9 @@ try:
     app.state.inventory['220007'] = 0
     app.open_ui(Request('openui', 'treasure-test', 1,
                         {'parameters': {'uiid': 24, 'par1': 1}}))
-    assert app.ui_actions.get('use_Button')
-    app.ui_actions['use_Button']()
-    assert app.ui_open and '没有藏宝图' in app.ui_info.get()
+    assert app.ui_actions.get('buy_Button')
+    assert app.original_page.specs[0][0] == 'TreasureBuyConfirmUI'
+    assert app.state.count('700002') == 20
     app.close_ui()
 
     app.open_ui(Request('openui', 'treasure-buy', 1,

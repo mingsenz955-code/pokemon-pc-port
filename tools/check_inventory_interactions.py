@@ -168,7 +168,7 @@ class InventoryChecks(unittest.TestCase):
         self.assertTrue(a.pet_description['text'])
         a.ui_base_layer.save(OUT/'pet-detail.png')
 
-    def test_lottery_and_topup_use_original_pages(self):
+    def test_lottery_and_gold_store_use_original_pages(self):
         a = self.app
         self.open(68)
         self.assertEqual('LuckyDrawUI', a.original_page.specs[0][0])
@@ -177,8 +177,8 @@ class InventoryChecks(unittest.TestCase):
         self.click(next(k for k in a.ui_buttons if k.endswith('/draw_1_Button')))
         self.assertEqual(before+1, len(a.state.pets)+len(a.state.bank))
         self.open(63)
-        self.assertEqual('ContinuousTopUpUI', a.original_page.specs[0][0])
-        self.assertTrue(any(s[0] == 'ContinuousTopUpItemUI' for s in a.original_page.specs))
+        self.assertEqual('ShopUI', a.original_page.specs[0][0])
+        self.assertTrue(any(s[0] == 'ShopGoodsUI' for s in a.original_page.specs))
         a.ui_base_layer.save(OUT/'topup.png')
 
     def test_all_three_balls_can_be_selected_confirmed_and_consumed(self):
