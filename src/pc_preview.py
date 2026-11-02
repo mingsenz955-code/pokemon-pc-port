@@ -80,7 +80,7 @@ class Preview:
     def load_map(self, mid, x=None, y=None):
         self.map = self.data.load_map(mid)
         self.map_id = int(mid)
-        self.background = self.map.render(self.SCALE)
+        self.background = self.map.render(self.SCALE, include_objects=not getattr(self, 'DYNAMIC_SCENERY', False))
         self.actor_positions, self.hidden = {}, set()
         self.x = x if x is not None else self.map.width*32
         self.y = y if y is not None else self.map.height*32
@@ -261,18 +261,22 @@ class Preview:
         frame = Image.new('RGBA', (self.WIDTH, self.HEIGHT), '#1d2927')
         crop = self.background.crop((int(camx), int(camy), int(camx)+self.WIDTH, int(camy)+self.HEIGHT))
         frame.alpha_composite(crop)
-        entities = [(sid, x, y, self.actor_animation(oid, sid)) for oid, sid, x, y in self.actors()]
+        entities = [(sid, x, y, self.actor_animation(oid, sid), None) for oid, sid, x, y in self.actors()]
+        if getattr(self, 'DYNAMIC_SCENERY', False):
+            entities.extend((None, x, y, '', image) for x, y, image in self.map.scenery())
         if getattr(self, 'player_visible', True):
-            entities.append((None, self.x, self.y, self.face))
-        for sid, x, y, face in sorted(entities, key=lambda a: a[2]):
+            entities.append((None, self.x, self.y, self.face, None))
+        for sid, x, y, face, scenery_image in sorted(entities, key=lambda a: a[2]):
             sx, sy = x*self.SCALE-camx, y*self.SCALE-camy
-            if not (-150 < sx < self.WIDTH+150 and -150 < sy < self.HEIGHT+150):
-                continue
-            sprite = self.player_image(face) if sid is None else self.scene_sprite(sid, face)
+            sprite = scenery_image if scenery_image is not None else (
+                self.player_image(face) if sid is None else self.scene_sprite(sid, face))
             if sprite is None:
                 continue
             size = (max(1, round(sprite.width*self.SCALE)), max(1, round(sprite.height*self.SCALE)))
             anchor = sprite.info.get('origin', (sprite.width/2, sprite.height))
+            left, top = sx-anchor[0]*self.SCALE, sy-anchor[1]*self.SCALE
+            if left >= self.WIDTH or top >= self.HEIGHT or left+size[0] <= 0 or top+size[1] <= 0:
+                continue
             sprite = sprite.resize(size, Image.Resampling.LANCZOS)
             frame.alpha_composite(sprite, (round(sx-anchor[0]*self.SCALE), round(sy-anchor[1]*self.SCALE)))
         draw = ImageDraw.Draw(frame)

@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 import math
+import time
 
 from mounts import Mounts
 
@@ -40,6 +41,7 @@ class GuideTarget:
     detail: str = ''
     area: str = ''
     radius: float = 60
+    npc_id: str = ''
 
     def __bool__(self):
         return bool(self.map_id or self.kind in {'level', 'item', 'pet'})
@@ -143,7 +145,7 @@ class GuideResolver:
                 if point:
                     return GuideTarget('npc', f'提交任务：{name}', point[0], point[1], point[2],
                                        category, key, name, description,
-                                       f'找 NPC {submitted} 提交任务', radius=90)
+                                       f'找 NPC {submitted} 提交任务', radius=90, npc_id=submitted)
             submitted_exit = str(row.get('submitExits', '0'))
             if submitted_exit and submitted_exit != '0':
                 mid = exit_destination_map(self.tables, self.data, submitted_exit)
@@ -168,7 +170,7 @@ class GuideResolver:
                 if point:
                     return GuideTarget('npc', f'{name}：收集任务目标', point[0], point[1], point[2],
                                        category, key, name, description,
-                                       f'前往任务配置的 NPC {npc_id}', radius=90)
+                                       f'前往任务配置的 NPC {npc_id}', radius=90, npc_id=npc_id)
         if condition_type == 3 and len(conditions) >= 3:
             point = self.catch_point(conditions[0], conditions[1], conditions[2])
             if point:
@@ -181,14 +183,14 @@ class GuideResolver:
             if point:
                 return GuideTarget('npc', f'{name}：找 NPC {npc_id}', point[0], point[1], point[2],
                                    category, key, name, description,
-                                   f'与 NPC {npc_id} 对话', radius=90)
+                                   f'与 NPC {npc_id} 对话', radius=90, npc_id=npc_id)
         if condition_type == 5 and conditions:
             for npc_id in integers(row.get('targetNpcs', '0')):
                 point = self.npc_point(npc_id)
                 if point:
                     return GuideTarget('npc', f'{name}：挑战 NPC {npc_id}', *point[:3],
                                        category, key, name, description,
-                                       f'与 NPC {npc_id} 战斗；胜负由实际战斗结算', radius=90)
+                                       f'与 NPC {npc_id} 战斗；胜负由实际战斗结算', radius=90, npc_id=str(npc_id))
             return None
         if condition_type == 6 and conditions:
             return GuideTarget('obstacle', f'{name}：破除障碍', task_kind=category,
@@ -407,6 +409,8 @@ class Guide:
         self._last_map = None
         self._visited_exit = None
         self._stuck = 0
+        self._last_time = time.monotonic()
+        self._task_stamp = (self.app.state.main_task, self.app.state.main_state)
         self.message = f'正在前往 {self.target.label}'
         return True
 
@@ -463,6 +467,14 @@ class Guide:
     def _target_waypoints(self):
         target = self.target
         def reached(px, py):
+            if target.kind == 'npc':
+                return self._npc_reached(px, py)
+            if target.kind == 'area':
+                obj = next((o for o in self.app.map.objects if o['group'] == 'eventLayer'
+                            and str(o.get('name')) == target.area), None)
+                if obj:
+                    return (float(obj['x']) <= px < float(obj['x'])+float(obj.get('width', 64))
+                            and float(obj['y']) <= py < float(obj['y'])+float(obj.get('height', 64)))
             return (px-target.x)**2 + (py-target.y)**2 <= target.radius**2
         path = walk_path(self.app.map, (self.app.x, self.app.y), (target.x, target.y), reached,
                          mounts=Mounts(self.app.state))
@@ -473,10 +485,22 @@ class Guide:
             self.stop()
         return path
 
+    def _npc_reached(self, x, y):
+        target = self.target
+        world = self.app.map
+        dx = abs(int(x//world.tw)-int(target.x//world.tw))
+        dy = abs(int(y//world.th)-int(target.y//world.th))
+        centered = (abs(x-(int(x//world.tw)+.5)*world.tw) <= 2
+                    and abs(y-(int(y//world.th)+.5)*world.th) <= 2)
+        return dx+dy == 1 and centered
+
     def _arrived(self):
         target = self.target
         if target.kind == 'npc':
-            if (self.app.x-target.x)**2 + (self.app.y-target.y)**2 <= 150**2:
+            if self._npc_reached(self.app.x, self.app.y):
+                dx, dy = target.x-self.app.x, target.y-self.app.y
+                self.app.face = ('standleft' if dx < 0 else 'standright') if abs(dx) > abs(dy) else (
+                    'standup' if dy < 0 else 'standdown')
                 self.stop(f'已到达 {target.label}，按空格对话。')
                 return True
         elif target.kind == 'area':
@@ -493,14 +517,29 @@ class Guide:
                 return True
         return False
 
-    def step(self):
+    def step(self, seconds=None):
         if not self.active or not self.target:
             return
         app = self.app
+        now = time.monotonic()
+        seconds = min(.1, max(0, seconds if seconds is not None else 1/60))
+        self._last_time = now
         if (app.battle or app.runtime.running or app.dialogue is not None or app.display_request
                 or getattr(app, 'pending_wait', None) or getattr(app, 'ui_open', False)):
             self.waypoints = []
             return
+        stamp = (app.state.main_task, app.state.main_state)
+        if self.target.task_kind == 'main' and stamp != getattr(self, '_task_stamp', None):
+            self.start(self.resolver.target())
+            if not self.active:
+                return
+        if self.target.kind == 'npc' and self.target.map_id == app.map_id and self.target.npc_id:
+            actor = next((a for a in app.actors() if str(a[0]) == self.target.npc_id), None)
+            if actor:
+                if (int(actor[2]//app.map.tw), int(actor[3]//app.map.th)) != (
+                        int(self.target.x//app.map.tw), int(self.target.y//app.map.th)):
+                    self.waypoints = []
+                self.target.x, self.target.y = actor[2], actor[3]
         if self._last_map != app.map_id:
             self._last_map = app.map_id
             self.waypoints = []
@@ -526,20 +565,25 @@ class Guide:
                 return
         # Walk to the next tile centre; app.move_to applies the original mount
         # terrain rules, so the guide cannot tunnel through blocked tiles.
-        wx, wy = self.waypoints[0]
-        dx, dy = wx-app.x, wy-app.y
-        if abs(dx) < 4 and abs(dy) < 4:
-            self.waypoints.pop(0)
-            self._stuck = 0
-            return
         before = (app.x, app.y)
-        speed = app.movement_speed()/60.0
-        if abs(dx) >= abs(dy):
-            nx = app.x + max(-speed, min(speed, dx))
-            app.move_to(nx, app.y)
-        else:
-            ny = app.y + max(-speed, min(speed, dy))
-            app.move_to(app.x, ny)
+        distance = app.movement_speed()*seconds
+        while self.waypoints and distance > 0:
+            wx, wy = self.waypoints[0]
+            dx, dy = wx-app.x, wy-app.y
+            if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+                self.waypoints.pop(0)
+                continue
+            step = min(distance, abs(dx) if abs(dx) >= abs(dy) else abs(dy))
+            previous = (app.x, app.y)
+            if abs(dx) >= abs(dy):
+                app.move_to(app.x+math.copysign(step, dx), app.y)
+            else:
+                app.move_to(app.x, app.y+math.copysign(step, dy))
+            if previous == (app.x, app.y):
+                break
+            distance -= step
+            if abs(wx-app.x) < 1e-6 and abs(wy-app.y) < 1e-6:
+                self.waypoints.pop(0)
         if abs(app.x-before[0]) < .01 and abs(app.y-before[1]) < .01:
             self._stuck += 1
             if self._stuck > 120:

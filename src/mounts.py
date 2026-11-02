@@ -33,6 +33,10 @@ class Mounts:
         return (terrain == 0 or self.accepts(self.active(), terrain, map_type)
                 or self.automatic(terrain, map_type) is not None)
 
+    def can_fly(self, map_type):
+        row = self.active()
+        return row is not None and int(row['kind']) == 1 and map_type not in numbers(row['mapTypeDisable'])
+
     def enter(self, terrain, map_type):
         """Apply rideProcess only after the position has actually been accepted."""
         if not self.can_enter(terrain, map_type):

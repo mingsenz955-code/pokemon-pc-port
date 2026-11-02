@@ -35,6 +35,7 @@ from npc_motion import NpcMotion
 
 class NativeGame(ActivityUI, Preview):
     WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
+    DYNAMIC_SCENERY = True
     def __init__(self, root, data):
         self.state = GameState(data.tables)
         self.cocos_ui = CocosUI(data)
@@ -91,7 +92,7 @@ class NativeGame(ActivityUI, Preview):
         self.booting = False
         self.npc_motion = NpcMotion(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.41（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.42（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -147,7 +148,7 @@ class NativeGame(ActivityUI, Preview):
             if self.map.remove_obstacle(tx, ty) is not None:
                 changed = True
         if changed:
-            self.background = self.map.render(self.SCALE)
+            self.background = self.map.render(self.SCALE, include_objects=False)
 
     def break_obstacle(self, obs_type, tx, ty):
         """Break/cut an obsType sprite only when the current ride has the ability."""
@@ -157,7 +158,7 @@ class NativeGame(ActivityUI, Preview):
         if self.map.remove_obstacle(tx, ty) is None:
             return False
         self.state.removed_obstacles.append([int(self.map_id), int(tx), int(ty), int(obs_type)])
-        self.background = self.map.render(self.SCALE)
+        self.background = self.map.render(self.SCALE, include_objects=False)
         self.obstacle_fx = {'x': int(tx)*self.map.tw+self.map.tw/2,
                             'y': int(ty)*self.map.th+self.map.th/2,
                             'type': int(obs_type), 'age': 0}
@@ -994,7 +995,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.41')
+        win.title('任务指引 · 原生 0.2.42')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1529,7 +1530,7 @@ class NativeGame(ActivityUI, Preview):
             TaskProgress(self.state).update()
             self.drive()
             self.steps = [1] if self.runtime.running or self.runtime_error or self.ui_open else []
-            self.guide.step()
+            self.guide.step(elapsed)
         super().tick()
         if self.booting:
             return
@@ -1641,6 +1642,7 @@ class NativeGame(ActivityUI, Preview):
         self.state.presentation = {
             'face': self.face, 'player_visible': self.player_visible,
             'player_visibility_map': self.map_id,
+            'sprite_collision_version': 1,
             'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
             'camera_action': self.camera_action,
             'story_motion_actions': self.story_motion.actions if getattr(self, 'story_motion', None) else [],
@@ -1692,6 +1694,7 @@ class NativeGame(ActivityUI, Preview):
             self.npc_motion = NpcMotion(self)
             self.npc_motion.reset()
             self.npc_motion.restore(state.presentation.get('npc_motion'))
+            self.repair_legacy_sprite_collision()
             self._play_clock = time.monotonic()
             self.drive()
             return True
@@ -1716,6 +1719,32 @@ class NativeGame(ActivityUI, Preview):
         self.player_visible = True
         self.state.audit.append({'repair': 'legacy-hidden-player-in-101-arrival',
                                  'map': self.map_id, 'event': self.runtime.file})
+
+    def repair_legacy_sprite_collision(self):
+        if (self.state.presentation.get('sprite_collision_version') or self.runtime.running
+                or not hasattr(self.map, 'sprite_blocked')):
+            return
+        mounts = Mounts(self.state)
+        if not self.map.sprite_blocked(self.x, self.y, mounts):
+            return
+        origin = [self.x, self.y]
+        tx, ty = int(self.x//self.map.tw), int(self.y//self.map.th)
+        from collections import deque
+        queue, visited = deque([(tx, ty)]), {(tx, ty)}
+        while queue:
+            x, y = queue.popleft()
+            px, py = (x+.5)*self.map.tw, (y+.5)*self.map.th
+            if not self.map.blocked(px, py, mounts):
+                self.x, self.y = px, py
+                self.state.x, self.state.y = px, py
+                self.state.audit.append({'repair': 'legacy-player-inside-sprite-mask',
+                                         'map': self.map_id, 'before': origin, 'after': [px, py]})
+                return
+            for neighbor in ((x, y+1), (x-1, y), (x+1, y), (x, y-1)):
+                if (neighbor not in visited and 0 <= neighbor[0] < self.map.width
+                        and 0 <= neighbor[1] < self.map.height):
+                    visited.add(neighbor)
+                    queue.append(neighbor)
 
     def close_transient_ui(self):
         # Loading must not acknowledge an old event through close_ui().
