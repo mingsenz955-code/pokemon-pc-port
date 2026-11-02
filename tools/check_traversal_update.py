@@ -51,6 +51,7 @@ class TraversalChecks(unittest.TestCase):
         app.map = SimpleNamespace(scenery=lambda: [(256, 256, building)])
         app.actors = lambda: []
         app.actor_animation = lambda *args: 'standdown'
+        app.render_world_overlay = lambda *args: None
         app.player_image = lambda face: Image.new('RGBA', (10, 10), 'blue')
         app.camera_origin = lambda: (156, 100)
         frame = Preview.make_frame(app)

@@ -256,17 +256,24 @@ class Preview:
     def scene_sprite(self, sid, animation):
         return self.data.village_sprite(sid, animation)
 
+    def render_actor_overlay(self, frame, oid, sid, sx, sy, sprite, anchor):
+        pass
+
+    def render_world_overlay(self, frame, camx, camy):
+        pass
+
     def make_frame(self):
         camx, camy = self.camera_origin()
         frame = Image.new('RGBA', (self.WIDTH, self.HEIGHT), '#1d2927')
         crop = self.background.crop((int(camx), int(camy), int(camx)+self.WIDTH, int(camy)+self.HEIGHT))
         frame.alpha_composite(crop)
-        entities = [(sid, x, y, self.actor_animation(oid, sid), None) for oid, sid, x, y in self.actors()]
+        self.render_world_overlay(frame, camx, camy)
+        entities = [(sid, x, y, self.actor_animation(oid, sid), None, oid) for oid, sid, x, y in self.actors()]
         if getattr(self, 'DYNAMIC_SCENERY', False):
-            entities.extend((None, x, y, '', image) for x, y, image in self.map.scenery())
+            entities.extend((None, x, y, '', image, None) for x, y, image in self.map.scenery())
         if getattr(self, 'player_visible', True):
-            entities.append((None, self.x, self.y, self.face, None))
-        for sid, x, y, face, scenery_image in sorted(entities, key=lambda a: a[2]):
+            entities.append((None, self.x, self.y, self.face, None, None))
+        for sid, x, y, face, scenery_image, oid in sorted(entities, key=lambda a: a[2]):
             sx, sy = x*self.SCALE-camx, y*self.SCALE-camy
             sprite = scenery_image if scenery_image is not None else (
                 self.player_image(face) if sid is None else self.scene_sprite(sid, face))
@@ -279,6 +286,8 @@ class Preview:
                 continue
             sprite = sprite.resize(size, Image.Resampling.LANCZOS)
             frame.alpha_composite(sprite, (round(sx-anchor[0]*self.SCALE), round(sy-anchor[1]*self.SCALE)))
+            if oid is not None:
+                self.render_actor_overlay(frame, oid, sid, sx, sy, sprite, anchor)
         draw = ImageDraw.Draw(frame)
         font_path = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'
         font = ImageFont.truetype(str(font_path), 18)

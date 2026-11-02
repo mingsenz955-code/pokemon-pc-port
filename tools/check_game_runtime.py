@@ -66,11 +66,9 @@ runtime.start('pEvent101002.json')
 state.starter_id = 1
 assert runtime.branch_matches({'initid': 1, 'id': 7})
 assert not runtime.branch_matches({'initid': 2, 'id': 11})
-try:
-    runtime.branch_matches({'npcid': 10101, 'state': 1, 'id': 2})
-    raise AssertionError('Unverified NPC-state branch silently passed')
-except PendingMechanic:
-    pass
+assert not runtime.branch_matches({'npcid': 10101, 'state': 1, 'id': 2})
+runtime.trigger_npc_id = 10101
+assert runtime.branch_matches({'npcid': 10101, 'state': 0, 'id': 2})
 runtime.pending = None
 runtime.file = ''
 runtime.start('pEvent1002001.json')
@@ -92,7 +90,7 @@ report = {'original_trigger_rows': len(runtime.triggers),
           'mid_dialogue_save_and_rng_round_trip': 'passed',
           'cost_aggregation_no_partial_deduction': 'passed',
           'task_rewards_cannot_repeat': 'passed',
-          'unverified_npc_state_branch_stops': 'passed',
+          'npc_branch_uses_conversation_context': 'passed',
           'battle_without_outcome_cannot_continue': 'passed',
           'native_host_full_gameplay': 'not assessed by this script; see check_task_progress.py and build/_host_debug.py for bounded host scenarios'}
 (ROOT/'outputs/verification/game-runtime-checks.json').write_text(json.dumps(report, indent=2), encoding='utf-8')

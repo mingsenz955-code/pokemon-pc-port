@@ -1,5 +1,36 @@
 # 1.20.4 规则核对记录
 
+## 0.2.43：NPC 提示、点击行走与支线分发
+
+本次同步基线 `ae68f07` / 0.2.42，旧本地坐骑草稿保留在独立归档分支，未覆盖新实现。
+
+原 `addMainTaskIcon` 0x2e71f4 使用 10+任务状态，`addBranchTaskIcon` 0x2e72a4
+使用 20+状态；目标标记为 19/29。直接使用 TaskIcon 的 8 张原图：橙黄色主线、蓝绿色支线，
+感叹号为可接任务、灰色问号为进行中、彩色问号为可提交；没有为普通闲聊创造未读标记。
+`showTaskIcon` 0x2e70e8 的上下 4 像素/0.4 秒循环已接入。主线目标优先于主线交接，
+再显示支线目标和交接；状态更改与读档换状态对象都会刷新。与 NPC 按脚底深度一起绘制，
+避免悬浮在前景建筑上；逐 NPC 原节点高度和全场景缩放仍需原机对照。
+
+`playerMoveToPosition` 0x2d92a2 选取点击格和目标 NPC，调用寻路（搜索上限 300）。
+本次用已有原规则 A* 接入地面点击、原 `dianji_path.png` 路径点和 `dianji/Animation1` 终点；
+HUD/剧情点击优先，方向键中断，新点击替换目标。到 NPC 相邻格中心后转向，按确切对象触发
+一次对话；移动 NPC 重规划、消失 NPC 取消、封闭 NPC 不伪造对话。地图内普通路径会经过原
+碰撞/坐骑/出口逻辑，同 ID 的宝箱与 NPC 用 sprite ID 区分。原版全场景目标碰撞和路径层级仍需验收。
+
+`PlotEventManager::process` 0x2f7958 在匹配剧情后运行 NPC 支线，再回退普通对话；
+`compareTriggerNpcId` 0x2f7282 对比本次发起对话的 NPC，并非战胜状态。接通 170 个 BranchTask
+表行的原支线脚本选择，其中 33 个脚本含 NPC 分支；上下文随剧情存档恢复。目标图标优先，
+同组按状态降序、任务 ID 升序（原比较器 0x2e35fc / 0x2e3672）。前置主线/支线条件要求全部匹配。
+
+任务类型 8 根据真实支线提交事件计数，重复提交不计数；类型 9 按图鉴历史获得种类计数，
+重复宠物和放生不改变种类数。依据 `BranchTaskItemBTaskSubmit::process` 0x2fc11c、
+`BranchTaskItemIllustratedCollect::setReachCountByStateData` 0x2fbac2 及 `getPetCountByThisStatus`
+0x329d9c。补充这两类任务的子任务/收录指引；不凭空指定宠物出现坐标。
+
+新增无窗口测试：`check_branch_dispatch.py` 12 项、`check_task_icons.py` 5 项、
+`check_click_navigation.py` 12 项。场景可见性回归改用用户报告的旧斯塔镇存档结构作为确定性
+fixture，不再假定任意真实存档都必须显示玩家（序章可以合法隐藏）；不写入用户存档。
+
 当前不是完整复刻。原布局可读不等于对应玩法完成；Python 测试通过也不等于原版逐帧一致。
 
 ## 核对基准

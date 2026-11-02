@@ -66,10 +66,24 @@ class SceneChecks(unittest.TestCase):
         app.repair_legacy_player_visibility()
         self.assertFalse(app.player_visible)
 
-    def test_cloned_current_save_renders_player_without_developer_bars(self):
-        source = Path(os.environ['LOCALAPPDATA'])/'PocketNativePC/slot1.json'
-        if not source.exists():
-            self.skipTest('no current user save available for read-only cloning')
+    def test_cloned_legacy_visibility_fixture_renders_player_without_developer_bars(self):
+        # This regression is the reported Stata-town save, not an assumption
+        # that every current user save must show the player (the prologue can
+        # legitimately hide them). Never depend on or mutate a real save.
+        from event_runtime import EventRuntime
+        original = tempfile.TemporaryDirectory()
+        self.addCleanup(original.cleanup)
+        source = Path(original.name)/'slot1.json'
+        state = GameState(DATA.tables, seed=40)
+        state.initialize(1)
+        state.map_id, state.x, state.y = 101, 928, 1056
+        state.main_task, state.main_state = 1, 4
+        state.presentation = {'player_visible': False, 'screen_black': False}
+        runtime = EventRuntime(DATA, state)
+        runtime.start('pEvent101001.json')
+        runtime.index = 5
+        runtime.next()
+        state.save(source)
         raw = source.read_bytes()
         snapshot = json.loads(raw)
         with tempfile.TemporaryDirectory() as directory:

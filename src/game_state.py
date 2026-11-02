@@ -511,6 +511,8 @@ class GameState:
         completed.append(task_id)
         if branch:
             self.branch_states[str(task_id)] = 5
+            from task_progress import TaskProgress
+            TaskProgress(self).update('branch_submit', task_id)
         else:
             next_task = int(row.get('nextTaskId', 0))
             self.main_task = next_task or task_id

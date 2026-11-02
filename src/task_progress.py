@@ -1,7 +1,7 @@
-"""Original task condition counters (types 1–7), independent of presentation.
+"""Original task condition counters (types 1–9), independent of presentation.
 
 ARM references: MainTaskItem*::process, setReachCount, acceptTask and
-PlayerDataManager::getDropItemCount. Higher branch types remain pending.
+PlayerDataManager::getDropItemCount/getPetCountByThisStatus.
 """
 
 
@@ -10,8 +10,9 @@ def integers(value):
 
 
 class TaskProgress:
-    WIDTHS = {1: 1, 2: 4, 3: 3, 4: 1, 5: 4, 6: 1, 7: 1}
-    EVENTS = {'area': 1, 'catch': 3, 'talk': 4, 'fight': 5, 'obstacle': 6, 'map': 7}
+    WIDTHS = {1: 1, 2: 4, 3: 3, 4: 1, 5: 4, 6: 1, 7: 1, 8: 1, 9: 1}
+    EVENTS = {'area': 1, 'catch': 3, 'talk': 4, 'fight': 5, 'obstacle': 6, 'map': 7,
+              'branch_submit': 8}
 
     def __init__(self, state):
         self.state = state
@@ -57,6 +58,12 @@ class TaskProgress:
                 condition = conditions[index*width:(index+1)*width]
                 if condition_type == 2:
                     counts[index] = self.collection_count(condition)
+                elif condition_type == 9:
+                    # Original status 2 means ever obtained, not pets presently
+                    # carried. Duplicate species and released pets do not change it.
+                    if condition[0] != 2:
+                        raise ValueError(f'Unsupported illustrated status {condition[0]}')
+                    counts[index] = len(set(state.encyclopedia))
                 elif status == 3 and self.EVENTS.get(kind) == condition_type:
                     if len(parameters) == width and all(expected == -1 or expected == actual
                                                        for expected, actual in zip(condition, parameters)):
