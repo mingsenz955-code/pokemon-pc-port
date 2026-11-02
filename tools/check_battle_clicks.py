@@ -19,6 +19,7 @@ class BattleClickChecks(unittest.TestCase):
         cls.previous_save = os.environ.get('POCKET_NATIVE_SAVE_DIR')
         os.environ['POCKET_NATIVE_SAVE_DIR'] = cls.saves.name
         cls.root = tk.Tk()
+        cls.root.attributes('-alpha', 0)  # Mapped for Canvas events, invisible to the user.
         cls.errors = []
         cls.root.report_callback_exception = lambda *error: cls.errors.append(error)
         cls.app = NativeGame(cls.root, OriginalData(ROOT/'original-1.20.4'))
@@ -96,7 +97,7 @@ class BattleClickChecks(unittest.TestCase):
         self.click('enemyMenuPos_Panel', targets=True)
         self.assertIsNot(frame, self.ui.render())
 
-    def test_single_item_is_clickable_and_confirmation_consumes_once(self):
+    def test_single_item_is_clickable_and_immediately_consumes_once(self):
         item = next(key for key, effect in self.app.data.tables['PetItem'].items()
                     if int(effect['type']) == 1 and str(effect['parameters']).startswith('1,')
                     and int(self.app.data.tables['Item'][key]['useType']) in (1, 2))
@@ -104,8 +105,7 @@ class BattleClickChecks(unittest.TestCase):
         self.app.battle.player_active.hp = 1
         self.ui.screen, self.ui.item_filter = 'items', 1
         self.click('itemMenu_1_Button')
-        self.assertEqual(self.ui.screen, 'confirm')
-        self.click('confirm_yes')
+        self.assertEqual(self.ui.screen, 'main')
         self.assertEqual(self.app.state.count(item), 1)
 
     def test_switch_click_changes_active_pet(self):

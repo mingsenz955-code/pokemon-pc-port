@@ -26,35 +26,28 @@ try:
     app.guide.rebind(state)
     app.open_ui(Request('openui', 'task-ui-check', 1,
                         {'parameters': {'uiid': 44}}))
-    assert app.ui_open
-    assert '收集木料' in app.ui_info.get()
-    assert '42/300' in app.ui_info.get()
-    assert '金币×1000' in app.ui_info.get()
+    assert app.ui_open and app.ui_window is None
+    page = app.task_page
+    image = page.render()
+    assert image.size == (800, 480)
+    assert 'receive_Button' not in page.hits
+    assert '42/300' in page.info()
     before = state.count('700001')
     app.ui_actions['receive_Button']()
-    assert state.count('700001') == before
-    assert app.ui_open  # Collection task 129 has no configured spatial target.
-    assert '没有可前往' in app.ui_info.get()
-
+    assert state.count('700001') == before and app.ui_open
+    assert not app.guide.active
     app.ui_actions['tag_2_Button']()
-    assert '石匠德罗的委托' in app.ui_info.get()
-    assert '30/30' in app.ui_info.get()
-    assert '可提交' in app.ui_info.get()
-    before = state.count('700001')
-    app.ui_actions['receive_Button']()
-    assert state.count('700001') == before
-    assert not app.ui_open
-    assert app.guide.active
-    assert app.guide.target.task_id == '4101'
-    app.guide.stop()
-    app.open_ui(Request('openui', 'task-ui-check', 1, {'parameters': {'uiid': 44, 'page': 'branch'}}))
-
+    assert '石匠德罗的委托' in page.info()
+    assert '30/30' in page.info()
+    page.render()
+    assert 'receive_Button' not in page.hits
     app.ui_actions['tag_3_Button']()
-    assert '全能训练' in app.ui_info.get()
+    page.render()
+    assert any(row[1]['name'] == '全能训练' for row in page.rows)
     app.ui_actions['tag_1_Button']()
-    assert '收集木料' in app.ui_info.get()
+    assert '收集木料' in page.info()
     app.ui_actions['close_Button']()
-    assert not app.ui_open
+    assert not app.ui_open and app.task_page is None
 finally:
     for job in root.tk.call('after', 'info'):
         root.after_cancel(job)

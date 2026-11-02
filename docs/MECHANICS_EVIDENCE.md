@@ -1,5 +1,44 @@
 # 1.20.4 规则核对记录
 
+## 0.2.47：按原机制重建任务页、场景指引和换宠页
+
+用户最新要求以原版机制和页面为准，取代 0.2.42–0.2.46 中把任务页“领取”改为自动寻路的做法。
+
+- TaskUILayer::receiveButtonRespond 0x3bda74 只处理每日任务提交；refreshSubmitButtonState
+  0x3be5c8 在主/支线隐藏按钮，daily 状态 4 可用，状态 5 隐藏。已按此恢复。
+- 使用原 TaskUI 的 800×480 坐标及 286×319 列表视窗、286×44 TaskItemUI 行、
+  RewardItemUI 图标/数量/背景。任务页改为原游戏 Canvas 内的覆盖层；删除原 _daily_body
+  的 Tk Listbox、详情栏、额外按钮和附加高度。主/支/每日页签、选择、列表与奖励区
+  独立滚动/拖动、关闭、实际每日领取接到原节点命中区。描述采用 RichTextEx 风格的动态文本高度；
+  完整彩色文字标签、原 ListView 惯性和全部富文本语义尚未逐项核定。
+- 直接从原 CSB 读取 TextOptions 的 h/vAlignment，字段依据官方 cocos2d-x 3.3
+  CSParseBinary_generated.h；此前 JSON 丢失这些字段。字体从 ink 顶端排入原字框，减少基线裁字。
+  透明 Panel/ListView 的 background_alpha=0 现在不擦除后面的原版底图；半透明底色按 RGBA 合成。
+  这项修复作用于共用渲染器，不等于其他页面的自制控件已全部替换。
+  来源：https://github.com/cocos2d/cocos2d-x/blob/cocos2d-x-3.3/cocos/editor-support/cocostudio/CSParseBinary_generated.h
+- MainUILayer::upButtonRespond 0x3775d4 展开/收起上方菜单，bank/shop 等回调 0x377f24..
+  从按钮 tag 读取本地图出口并折叠菜单；getShopList 0x2dae24 只列本地图连接的设施。
+  现恢复为商店/银行/材料/卷轴/道馆，shopType 依次 1/4/3/2/5；未配置的设施不显示。
+  不再把按钮序号当 shopType，也不再跨图猜最近的同类设施。
+- VillageMapControler::createMainTaskGuideIcon 0x2dfecc 明确限制 main key <=17；
+  getTargetSprite 虚函数给出原地图对象/目标地图，跨图选择下一出口。
+  mainTaskGuideIconUpdate 0x2e1274 以最大坐标差选四向，使用原 guideIcon.png，
+  距玩家 2 格、0.5 秒向外移 17 再 0.5 秒返回。已移除自制黄色屏边线/“目标”圈。
+  原收集任务进行中没有空间箭头；完成后指向提交 NPC。不向后期任务添加原版不存在的箭头。
+  G 自动前往仍是保留的 PC 便捷键，不能冒充原版任务页的按钮功能。
+- BattleScene::showPetUILayer 0x341980 调用 PetSelectUILayer，现使用 PetSelectUI /
+  PetSelectItemUI 的原行、生命/能量/等级/种类/亲密度、选中框和关闭按钮；
+  六只宠物列表可滚动，强制换宠不提供关闭入口。种类图标直接取 PetKindEnum.iconTexture。
+- BattleUiLayer::itemMenuItemRespond 0x353734 的已有道具分支发 sendUseItemEvent；
+  现点击已有道具/球直接执行，删除额外自制确认步骤以及预测概率提示的常规入口。
+  去掉自制技能/道具菜单底部说明。缺货购买、更多道具目标、完整结算/捕捉/倒下演出仍待移植。
+
+验证：18 份相关检查脚本通过，其中 tools/check_original_pages.py 10 项；
+175 份原布局经新版渲染器生成均无异常/资源诊断。这只证明可读取和绘制，
+不能证明 175 页交互或运行时数据已复原。原任务/战斗 Canvas 点击检查及已有回归通过；
+不操作或观察用户的真实游戏窗口，测试存档隔离。页面资产与指令对照属于局部依据，
+仍需完整原版逐场景/逐页对照，不能把此记录当作所有页面已相同的证明。
+
 ## 0.2.46：PR #9 复审补修
 
 检查 PR #9 / a88bd5b 后补修以下可复现缺陷：

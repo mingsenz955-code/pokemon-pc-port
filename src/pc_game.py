@@ -55,6 +55,7 @@ class NativeGame(ActivityUI, Preview):
         self.pending_wait = None
         self.ui_window = None
         self.ui_open = False
+        self.task_page = None
         self.main_ui_visible = True
         self.teach_nodes = []
         self.encounter_distance = 0.0
@@ -92,7 +93,10 @@ class NativeGame(ActivityUI, Preview):
         self.booting = False
         self.npc_motion = NpcMotion(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.46（全系统还原进行中）')
+        self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
+        self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
+        self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.47（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -451,6 +455,22 @@ class NativeGame(ActivityUI, Preview):
         parameters = request.data.get('parameters', {})
         self.ui_parameters = parameters
         uiid = int(parameters.get('uiid', 0) or 0)
+        if uiid == 44:
+            from task_page import TaskPage
+            if self.ui_window and self.ui_window.winfo_exists():
+                self.ui_window.destroy()
+            self.ui_window, self.ui_open = None, True
+            self.ui_hits, self.ui_rects, self.ui_buttons, self.ui_button_text = {}, {}, {}, {}
+            self.ui_base_layer, self.ui_render_args = None, None
+            self.keys.clear()
+            self.task_page = TaskPage(self, parameters.get('page', 'main'))
+            self.ui_info = tk.StringVar(value=self.task_page.info())
+            self.ui_actions = {'receive_Button': self.task_page.receive,
+                'close_Button': lambda: self.close_ui('no')}
+            for i, page in enumerate(('main', 'branch', 'daily'), 1):
+                self.ui_actions[f'tag_{i}_Button'] = lambda p=page: self.task_page.select_page(p)
+            return
+        self.task_page = None
         if uiid == 7:
             self.starter_window(int(parameters.get('par1', 1)))
             return
@@ -552,8 +572,6 @@ class NativeGame(ActivityUI, Preview):
             self._running_result_body(body, info)
         elif uiid == 43:
             self._running_medal_body(body, info)
-        elif uiid == 44:
-            self._daily_body(body, info)
         elif uiid == 45:
             self._achievement_body(body, info)
         elif uiid == 46:
@@ -955,6 +973,7 @@ class NativeGame(ActivityUI, Preview):
         win.protocol('WM_DELETE_WINDOW', lambda: finish(False))
 
     def close_ui(self, result=None):
+        self.task_page = None
         choice = result if result in ('yes', 'no') else (self.ui_close_result or 'no')
         if self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.destroy()
@@ -978,6 +997,10 @@ class NativeGame(ActivityUI, Preview):
         self.drive()
 
     def key_down(self, event):
+        if getattr(self, 'task_page', None):
+            if event.keysym.lower() == 'escape':
+                self.close_ui('no')
+            return
         if self.battle:
             return
         key = event.keysym.lower()
@@ -1008,28 +1031,21 @@ class NativeGame(ActivityUI, Preview):
                 self.keys.clear()
                 self.guide.start(target)
 
-    def guide_shop(self, shop_type):
-        candidates = []
-        for key, row in self.data.tables['VillageMap'].items():
-            if int(row.get('shopType', 0)) != int(shop_type):
-                continue
-            route = self.guide.graph.route(self.map_id, int(key))
-            if route:
-                candidates.append((len(route), int(key)))
-        if not candidates:
-            raise ValueError('原版出口表没有可用的商店指引路线。')
-        _, target = min(candidates)
-        world = self.data.load_map(target)
+    def guide_shop(self, index):
+        kind = self.scene_ui.SHOP_TYPES[int(index)-1]
+        obj = self.scene_ui.shop_exits().get(kind)
+        if obj is None:
+            raise ValueError('当前地图没有这个设施的出口。')
         self.keys.clear()
-        self.guide.start(GuideTarget('map', world.info['name'], target,
-            world.width*world.tw/2, world.height*world.th/2))
+        self.guide.start_click(float(obj['x'])+float(obj.get('width', 64))/2,
+                               float(obj['y'])+float(obj.get('height', 64))/2)
 
     def guide_ui(self):
         if self.battle:
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.46')
+        win.title('任务指引 · 原生 0.2.47')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1233,6 +1249,9 @@ class NativeGame(ActivityUI, Preview):
             raise PendingMechanic(f'原画面指令 {kind} 未实现')
 
     def on_click(self, event):
+        if getattr(self, 'task_page', None):
+            self.task_page_event('press', event)
+            return
         if self.battle and self.battle_ui:
             action = self.battle_ui.click(event.x, event.y)
             if action == 'finish':
@@ -1247,6 +1266,16 @@ class NativeGame(ActivityUI, Preview):
         if self.ui_open or self.runtime_error:
             return
         self.click_walk(event.x, event.y)
+
+    def on_canvas_wheel(self, event):
+        if self.task_page:
+            self.task_page.wheel(event.delta/120, event.x*800/self.WIDTH, event.y*480/self.HEIGHT)
+        elif self.battle_ui:
+            self.battle_ui.wheel(event.delta/120)
+
+    def task_page_event(self, kind, event):
+        if getattr(self, 'task_page', None):
+            getattr(self.task_page, kind)(event.x*800/self.WIDTH, event.y*480/self.HEIGHT)
 
     def click_walk(self, screen_x, screen_y):
         camx, camy = self.camera_origin()
@@ -1664,7 +1693,6 @@ class NativeGame(ActivityUI, Preview):
             if portrait:
                 image = self.data.image('res/UI/HeadIcon/'+portrait).copy()
                 size = (round(image.width*self.WIDTH/800), round(image.height*self.HEIGHT/480))
-                from PIL import Image
                 image = image.resize(size, Image.Resampling.LANCZOS)
                 frame.alpha_composite(image, (0 if is_player else self.WIDTH-image.width, self.HEIGHT-image.height))
             side = 'left' if is_player else 'right'
@@ -1675,44 +1703,16 @@ class NativeGame(ActivityUI, Preview):
         else:
             self.draw_guide(frame)
         if time.monotonic() < getattr(self, 'flash_until', 0):
-            from PIL import Image
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'), .7)
+        if getattr(self, 'task_page', None):
+            frame.alpha_composite(self.task_page.render().resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS))
         return frame
 
     def draw_guide(self, frame):
-        target = getattr(self.guide, 'target', None)
-        if getattr(self.guide, 'click_mode', False):
-            return
-        if not target or self.runtime.running or self.battle:
-            return
-        point = self.guide.point()
-        if not point:
-            return
-        camx, camy = self.camera_origin()
-        sx, sy = point[0]*self.SCALE-camx, point[1]*self.SCALE-camy
-        draw = ImageDraw.Draw(frame)
-        try:
-            font = ImageFont.truetype(str(Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'), 15)
-        except OSError:
-            font = ImageFont.load_default()
-        label = '目标' if self.map_id == target.map_id else '出口'
-        if 30 < sx < self.WIDTH-30 and 30 < sy < self.HEIGHT-30:
-            draw.ellipse((sx-14, sy-14, sx+14, sy+14), outline='#ffe36e', width=4)
-            draw.ellipse((sx-4, sy-4, sx+4, sy+4), fill='#ffe36e')
-            draw.rounded_rectangle((sx+18, sy-24, sx+18+len(label)*16+12, sy-2),
-                                   radius=5, fill=(35, 40, 32, 210))
-            draw.text((sx+24, sy-23), label, font=font, fill='#ffe36e')
-        else:
-            cx, cy = self.WIDTH/2, self.HEIGHT/2
-            angle = math.atan2(sy-cy, sx-cx)
-            radius = min(self.WIDTH, self.HEIGHT)*.38
-            ax, ay = cx+math.cos(angle)*radius, cy+math.sin(angle)*radius
-            draw.line((cx, cy, ax, ay), fill='#ffe36e', width=4)
-            wing = 16
-            left = (ax-math.cos(angle-.55)*wing, ay-math.sin(angle-.55)*wing)
-            right = (ax-math.cos(angle+.55)*wing, ay-math.sin(angle+.55)*wing)
-            draw.polygon((ax, ay, left, right), fill='#ffe36e')
-            draw.text((ax-18, ay+14), label, font=font, fill='#ffe36e')
+        from task_guide import TaskGuide
+        if not hasattr(self, 'task_guide'):
+            self.task_guide = TaskGuide(self)
+        self.task_guide.draw(frame)
 
     def save(self):
         if self.booting:
@@ -1863,6 +1863,7 @@ class NativeGame(ActivityUI, Preview):
                     queue.append(neighbor)
 
     def close_transient_ui(self):
+        self.task_page = None
         # Loading must not acknowledge an old event through close_ui().
         if self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.destroy()

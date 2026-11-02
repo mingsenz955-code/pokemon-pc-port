@@ -433,7 +433,6 @@ class BattleUI:
                     if entry.get('cooldown'):
                         self._label(draw, ((rect[0]+rect[2])//2, (rect[1]+rect[3])//2),
                                     f'冷却{entry["cooldown"]}', 14, anchor='mm')
-        self._label(draw, (30, H-118), '点击右侧技能；点击空白处返回', 15)
 
     def _battle_items(self, balls=False):
         rows = []
@@ -446,7 +445,7 @@ class BattleUI:
             is_ball = str(item_id) in self.battle.catch_items
             if is_ball != balls:
                 continue
-            if not balls and int(row.get('useType', 0) or 0) not in (1, 2, 3):
+            if not balls and int(row.get('useType', 0) or 0) not in (1, 3):
                 continue
             effect = self.app.data.tables.get('PetItem', {}).get(str(item_id))
             if not balls:
@@ -477,32 +476,46 @@ class BattleUI:
                                                 offset=(W*168/800, H*180/480))
         self._paste(frame, layer, origin, hits)
         draw = ImageDraw.Draw(frame, 'RGBA')
-        if balls:
-            self._label(draw, (30, H-118), '选择精灵球；点击空白处返回', 15)
-        else:
-            self._label(draw, (30, H-118), f'选择战斗道具  第{page+1}页（点击中央切换）', 15)
         if len(all_rows) > 4:
             cx, cy = W*168/800, H*(1-180/480)
             self.hits['item_center'] = (cx-38, cy-38, cx+38, cy+38)
 
     def _draw_pet_menu(self, frame, draw):
-        frame.alpha_composite(Image.new('RGBA', (560, 300), (18, 22, 28, 235)), (40, 150))
-        draw.rectangle((40, 150, 600, 450), outline=(220, 190, 120, 255), width=2)
-        self._label(draw, (320, 165), '选择出战宠物', 20, (245, 215, 140, 255), 'ma')
+        ui = self.app.cocos_ui
+        layer = ui.render('PetSelectUI', (W, H), visible={'close_Button': not self.battle.force_switch})
+        rect = ui.rects['pet_ListView']
+        self.hits['pet_back'] = ui.buttons.get('close_Button', (-1, -1, -1, -1))
+        left, top, right, bottom = [round(v) for v in rect]
+        viewport = Image.new('RGBA', (right-left, bottom-top))
+        scale = W/800
+        row_height = 74*scale
+        self.pet_scroll = min(getattr(self, 'pet_scroll', 0), max(0, len(self.battle.player)*row_height-viewport.height))
         for index, unit in enumerate(self.battle.player):
-            y = 195+index*40
-            rect = (55, y, 585, y+34)
-            fill = (52, 62, 74, 230) if unit.alive else (40, 40, 40, 180)
-            if index == self.battle.player_index:
-                fill = (74, 92, 60, 240)
-            draw.rounded_rectangle(rect, 6, fill=fill)
-            self.hits[f'pet_{index}'] = rect
-            self._label(draw, (68, y+17), f'{unit.name}  Lv.{unit.pet.level}', 16, anchor='lm')
-            self._label(draw, (420, y+17), f'HP {unit.hp}/{unit.max_hp}', 15, anchor='lm')
-            self._label(draw, (525, y+17), '出战中' if index == self.battle.player_index else
-                        ('可出战' if unit.alive else '已倒下'), 14, anchor='lm')
-        self.hits['pet_back'] = (55, 420, 150, 444)
-        self._label(draw, (102, 432), '返回', 15, anchor='mm')
+            y = index*row_height-self.pet_scroll
+            if y+row_height <= 0 or y >= viewport.height:
+                continue
+            row = self.app.data.tables['Pet'][unit.pet.species]
+            kind = self.app.data.tables['PetKindEnum'][str(row['kind'])]['iconTexture']
+            art = ui.render('PetSelectItemUI', (round(309*scale), round(row_height)),
+                {'name_Text': unit.name, 'lv_BitmapFontLabel': str(unit.pet.level),
+                 'hpHave_BitmapFontLabel': str(unit.hp), 'hpMax_BitmapFontLabel': str(unit.max_hp),
+                 'enHave_BitmapFontLabel': str(unit.energy), 'enMax_BitmapFontLabel': str(unit.max_energy),
+                 'friendly_BitmapFontLabel': str(unit.pet.friendly)},
+                {'selected_Image': index == self.battle.player_index},
+                {'kind_Image': 'UI/'+kind})
+            if not unit.alive:
+                alpha = art.getchannel('A')
+                art = art.convert('LA').convert('RGBA')
+                art.putalpha(alpha)
+            viewport.alpha_composite(art, (0, round(y)))
+            self.hits[f'pet_{index}'] = (left, max(top, top+y), right, min(bottom, top+y+row_height))
+        layer.alpha_composite(viewport, (left, top))
+        frame.alpha_composite(layer)
+
+    def wheel(self, delta):
+        if self.screen == 'pets':
+            self.pet_scroll = max(0, getattr(self, 'pet_scroll', 0)-delta*74*(W/800))
+            self.frame = None
 
     def _draw_confirm(self, frame, draw):
         frame.alpha_composite(Image.new('RGBA', (520, 220), (18, 22, 28, 240)), (252, 178))
@@ -558,6 +571,8 @@ class BattleUI:
                 self.screen = 'pets' if self.battle.force_switch else (
                     'commands' if key == 'mineMenuPos_Panel' else 'skills')
                 return 'refresh'
+        if self.screen == 'pets' and self.battle.force_switch:
+            return None
         if self.screen != 'main':
             self.screen = 'main'
             return 'refresh'
@@ -612,7 +627,7 @@ class BattleUI:
             if index-1 < len(rows):
                 item_id, row, count = rows[index-1]
                 self.selected = {'id': item_id, 'kind': 'ball' if self.screen == 'balls' else 'item'}
-                self.screen = 'confirm'
+                return self._action('confirm_yes')
         elif key == 'item_center':
             if self.screen == 'balls':
                 self.ball_page = (self.ball_page+1) % max(1, (len(self._battle_items(True))+3)//4)

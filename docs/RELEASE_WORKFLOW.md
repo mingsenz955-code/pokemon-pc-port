@@ -17,7 +17,7 @@ outputs/口袋妖怪启动器/current-release.txt。稳定启动器为同目录�
 首次安装或恢复桌面入口：
 
 ```powershell
-.\.venv\Scripts\python.exe tools\install_launcher.py outputs\口袋妖怪-PC移植开发版0.2.46 --desktop
+.\.venv\Scripts\python.exe tools\install_launcher.py outputs\口袋妖怪-PC移植开发版0.2.47 --desktop
 ```
 
 后续只需正常构建，无需重复创建桌面快捷方式。修改启动器时会重新编译 native/Launcher.cs，

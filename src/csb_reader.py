@@ -123,6 +123,10 @@ def node(tree):
             result['font_name'] = options.text(2)
             result['font_size'] = options.scalar(3)
             result['text'] = options.text(4)
+            result['text_area'] = [options.scalar(5), options.scalar(6)]
+            result['horizontal_alignment'] = options.scalar(7)
+            result['vertical_alignment'] = options.scalar(8)
+            result['custom_text_size'] = bool(options.scalar(10, '<?'))
         elif classname == 'TextBMFont':
             result['text'] = options.text(2)
         elif classname in ['Panel', 'ScrollView', 'PageView', 'ListView']:

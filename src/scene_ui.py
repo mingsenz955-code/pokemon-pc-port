@@ -7,9 +7,11 @@ import time
 from tkinter import messagebox
 from event_runtime import Request
 from mounts import Mounts
+from guide import exit_map_id
 
 
 class SceneUI:
+    SHOP_TYPES = (1, 4, 3, 2, 5)  # shop, bank, materials, scrolls, gym
     def __init__(self, app):
         self.app = app
         self.hits = {}
@@ -30,10 +32,23 @@ class SceneUI:
         group = self.groups[key]
         group.update(start=value, target=0.0 if group['target'] else 1.0, clock=time.monotonic())
 
+    def shop_exits(self):
+        result = {}
+        for obj in sorted(getattr(self.app.map, 'objects', []), key=lambda o: str(o.get('name', '')).zfill(12)):
+            target = obj.get('props', {}).get('toExit')
+            if obj.get('group') != 'spriteLayer' or not target:
+                continue
+            mid = exit_map_id(self.app.data.tables, target)
+            kind = int(self.app.data.tables['VillageMap'].get(str(mid), {}).get('shopType', 0))
+            if kind > 0:
+                result.setdefault(kind, obj)
+        return result
+
     def render(self, frame):
         app = self.app
         left, right, up = (self.value(key) for key in ('left', 'right', 'up'))
-        signature = (left, right, up, self.hidden, app.WIDTH, app.HEIGHT)
+        shops = self.shop_exits()
+        signature = (left, right, up, self.hidden, app.WIDTH, app.HEIGHT, tuple(shops))
         if self.cached_key == signature and self.cached_layer is not None:
             frame.alpha_composite(self.cached_layer)
             return
@@ -52,6 +67,8 @@ class SceneUI:
                    'giftReceive_Button': False, 'giftReceive_Particle': False,
                    'petCatchState_Panel': False, 'playerState_ListView': False,
                    'mapName_ProjectNode': False}
+        for index, kind in enumerate(self.SHOP_TYPES, 1):
+            visible[f'up_left_{index}_Button'] = kind in shops
         # These embedded notification nodes contain editor sample numbers.
         # Display them only after their real activity counters are connected.
         for name in ('petCanEvolution_Node', 'achievementCanReceived_Node', 'rankChanged_Node',
@@ -81,12 +98,11 @@ class SceneUI:
 
     def action(self, key):
         app = self.app
-        toggles = {'mainLeft_Button': 'left', 'mainRight_Button': 'right'}
+        toggles = {'mainLeft_Button': 'left', 'mainRight_Button': 'right', 'mainUp_Button': 'up'}
         if key in toggles:
             self.toggle(toggles[key])
             return
         callbacks = {'save_Button': app.save, 'task_Button': app.tasks_ui,
-                     'mainUp_Button': app.guide_toggle,
                      'draw_Button': app.lottery_ui, 'right_left_1_Button': app.bag_ui,
                      'right_left_2_Button': app.pets_ui,
                      'right_left_3_Button': app.illustrated_ui,
@@ -108,6 +124,8 @@ class SceneUI:
         if key.startswith('up_left_'):
             try:
                 app.guide_shop(int(key.split('_')[2]))
+                if self.groups['up']['target']:
+                    self.toggle('up')
             except ValueError as error:
                 messagebox.showinfo('指引', str(error), parent=app.root)
             return
