@@ -104,7 +104,7 @@ class GuideResolver:
         locations = sorted(locations, key=lambda item: (item[3] != 'event', item[0]))
         return locations[0][0], locations[0][1], locations[0][2], locations[0]
 
-    def catch_point(self, pet_kind, pet_id, map_id):
+    def catch_point(self, pet_id, pet_kind, map_id):
         requested = int(map_id) if map_id > 0 else None
         target = None
         for mid, row in self.tables['VillageMap'].items():

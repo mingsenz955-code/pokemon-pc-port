@@ -127,6 +127,25 @@
 日期回拨、存档往返和奖励发放失败回滚。本轮未打开窗口观察；未验证原版逐帧视觉一致。
 完整范围继续由 [未完成清单](RESTORATION_REMAINING.md) 约束。
 
+## 0.2.38：原版镜头时序与存读档
+
+重新核对原 ARM：`setViewpointCenter` 0x2d8f50 跟随玩家位置加一个格高（Cocos 底部原点），
+在 PC 顶部原点坐标中为玩家 y 减一个格高。`PlotEventItemScreenMove::begin` 0x2f5df8
+检查 speedscale 是否存在，缺省值为 1；`setViewpoint` 0x2d9eb0 将目标夹在可视地图范围内，
+按距离/格高×0.1/speedscale 创建 MoveTo，接 DelayTime(0.5) 和 moveScreenOver 完成回调。
+speedscale=0 即刻完成；stop=1 固定镜头，其他情况完成后恢复跟随。
+
+本次将此过程接入 NativeGame：动作未完成不 resume 剧情，完成后只回调一次；
+presentation 增加 camera_action，手动存读档可恢复剩余动作而非重新执行；
+渲染地图、藏宝箱光效、破障碎片及任务指引共用 camera_origin。
+另补正捕捉条件字段顺序为 `(petId, petKind, mapId)`，与 TaskProgress 的事件参数一致。
+
+`tools/check_story_camera.py` 7 项不启动窗口的检查覆盖插值、默认/零速度、停留、
+恢复跟随、小地图边界、事件快照与 NativeGame 实际存读档路径；
+指引 8 项、每日任务逻辑、26 项回归和事件/存档运行时检查通过。
+这些检查不代表视觉逐帧一致，也不证明剧情人物寻路、相对移动、全部转场或自动备份已经恢复。
+本轮按用户要求没有窗口观察，旧审查工作树中的自动备份和 Spine 等改动仍需分别整合。
+
 ## 仍未完成
 
 融合/合体已接入核心逻辑，但完整原版动画、坐骑商店/破障交互、宠物使者付费试用/发货、
