@@ -148,7 +148,7 @@ class MountChecks(unittest.TestCase):
                         # collideLayer at the same tile; covered by check_obstacles.
                         continue
                     self.assertEqual(world.terrain_at(x, y), category)
-                    self.assertEqual(world.blocked(x, y), category != 0)
+                    self.assertEqual(world.blocked(x, y), category != 0 or world.sprite_blocked(x, y))
                     found.add(category)
         self.assertTrue({0, 1, 2, 3}.issubset(found))
 

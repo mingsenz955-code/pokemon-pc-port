@@ -40,6 +40,18 @@ class OriginalData:
         self.tables = json.loads((self.root/'tables.json').read_text(encoding='utf-8'))
         self.image_paths = {p.name: p for p in self.assets.rglob('*.png')}
 
+    @lru_cache(maxsize=1)
+    def sprite_tiles(self):
+        path = self.assets/'Sprite/spriteTile.json'
+        if not path.exists():
+            return {}
+        raw = path.read_bytes()
+        if not raw.lstrip().startswith(b'{'):
+            alphabet = b'ABCDEFGHIJKLmnopqrstuvwxyz01234abcdefghijklMNOPQRSTUVWXYZ+/56789'
+            standard = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+            raw = base64.b64decode(raw.translate(bytes.maketrans(alphabet, standard)))
+        return json.loads(raw)
+
     @lru_cache(maxsize=128)
     def image(self, path):
         p = self.assets/path
@@ -297,6 +309,20 @@ class OriginalMap:
                 ty = int(float(obj['y']))//self.th
                 self.obstacles[(tx, ty)] = obs
         self.removed_obstacles = set()
+        self.sprite_collision = set()
+        self._scenery = None
+        for obj in self.objects:
+            if obj['group'] != 'spriteTileLayer' or not obj.get('gid'):
+                continue
+            properties = self.tile_properties(int(obj['gid']))
+            if int(properties.get('obsType', 0)):
+                continue  # Breakable objects use the removable obstacle layer.
+            definition = data.sprite_tiles().get(str(properties.get('spriteId')), {})
+            tx, ty = int(float(obj['x'])//self.tw), int(float(obj['y'])//self.th)
+            for dx, dy in json.loads(definition.get('collideInfo', '[]')):
+                cell = (tx+int(dx), ty-int(dy))
+                if 0 <= cell[0] < self.width and 0 <= cell[1] < self.height:
+                    self.sprite_collision.add(cell)
 
     def tileset(self, gid):
         gid = gid & 0x1fffffff
@@ -345,23 +371,40 @@ class OriginalMap:
                     out.alpha_composite(tile, (index % self.width*self.tw,
                                                index//self.width*self.th))
         if include_objects:
-            for obj in sorted(self.objects, key=lambda x: float(x.get('y', 0))):
+            for x, y, tile in sorted(self.scenery(), key=lambda item: item[1]):
+                ax, ay = tile.info.get('origin', (tile.width/2, tile.height))
+                out.alpha_composite(tile, (round(x-ax), round(y-ay)))
+        return out.resize((round(size[0]*scale), round(size[1]*scale)), Image.Resampling.LANCZOS)
+
+    def scenery(self):
+        if self._scenery is None:
+            self._scenery = []
+            images = {}
+            for obj in self.objects:
                 if obj['group'] != 'spriteTileLayer' or not obj.get('gid'):
                     continue
-                tx = int(float(obj['x']))//self.tw
-                ty = int(float(obj['y']))//self.th
-                if (tx, ty) in self.removed_obstacles:
-                    continue
                 gid = int(obj['gid'])
-                tile = self.tile(gid)
-                p = self.tile_properties(gid)
-                sid = p.get('spriteId')
-                if sid in self.data.tables['VillageSprite']:
-                    tile = self.data.village_sprite(sid)
-                if tile:
-                    out.alpha_composite(tile, (round(float(obj['x'])+self.tw/2-tile.width/2),
-                                               round(float(obj['y']))-tile.height))
-        return out.resize((round(size[0]*scale), round(size[1]*scale)), Image.Resampling.LANCZOS)
+                sid = self.tile_properties(gid).get('spriteId')
+                key = sid or gid
+                if key not in images:
+                    image = self.data.village_sprite(sid) if sid else self.tile(gid)
+                    if image is not None:
+                        image = image.copy()
+                        definition = self.data.sprite_tiles().get(str(sid))
+                        if definition:
+                            image.info['origin'] = (image.width/2-float(definition['x']),
+                                                    image.height/2+float(definition['y']))
+                    images[key] = image
+                if images[key] is not None:
+                    self._scenery.append((float(obj['x'])+self.tw/2, float(obj['y']), images[key]))
+        return [(x, y, image) for x, y, image in self._scenery
+                if (int((x-self.tw/2)//self.tw), int(y//self.th)) not in self.removed_obstacles]
+
+    def sprite_blocked(self, x, y, mounts=None):
+        cell = (int(x//self.tw), int(y//self.th))
+        if cell not in getattr(self, 'sprite_collision', set()):
+            return False
+        return not (mounts is not None and mounts.can_fly(int(self.info['mapType'])))
 
     def terrain_at(self, x, y):
         """Original collideTile category, or None outside the map."""
@@ -390,6 +433,8 @@ class OriginalMap:
 
     def blocked(self, x, y, mounts=None):
         terrain = self.terrain_at(x, y)
+        if self.sprite_blocked(x, y, mounts):
+            return True
         if mounts is None:
             return terrain != 0
         return not mounts.can_enter(terrain, int(self.info['mapType']))
