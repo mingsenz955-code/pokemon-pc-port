@@ -53,13 +53,17 @@ class SceneUI:
             frame.alpha_composite(self.cached_layer)
             return
         positions = {}
+        alphas = {}
         for i in range(1, 6):
             positions[f'left_right_{i}_Button'] = [72*i*left, 0]
             positions[f'up_left_{i}_Button'] = [-47*i*up, 0]
+            alphas[f'up_left_{i}_Button'] = round(255*up)
         for i in range(1, 8):
             positions[f'right_left_{i}_Button'] = [-72*i*right, 0]
+            alphas[f'right_left_{i}_Button'] = round(255*right)
         for i in range(1, 4):
             positions[f'right_up_{i}_Button'] = [0, 78*i*right]
+            alphas[f'right_up_{i}_Button'] = round(255*right)
         visible = {'left_right_Panel': left > 0, 'right_left_Panel': right > 0,
                    'right_up_Panel': right > 0, 'up_left_Panel': up > 0,
                    'task_Button': right == 0, 'community_Button': right == 0,
@@ -83,9 +87,11 @@ class SceneUI:
                     hide_buttons(child)
             hide_buttons(app.cocos_ui.layout('MainUI')['tree'])
         layer = app.cocos_ui.render('MainUI', (app.WIDTH, app.HEIGHT),
-                                    visible=visible, positions=positions)
+                                    visible=visible, positions=positions, alphas=alphas)
         self.hits = {key: rect for key, rect in app.cocos_ui.hits.items()
-                     if '/' not in key and key.endswith('_Button')}
+                     if '/' not in key and key.endswith('_Button')
+                     and visible.get(key, True) is not False
+                     and alphas.get(key, 255) > 0}
         self.cached_key, self.cached_layer = signature, layer
         frame.alpha_composite(layer)
 
@@ -98,12 +104,12 @@ class SceneUI:
 
     def action(self, key):
         app = self.app
-        toggles = {'mainLeft_Button': 'left', 'mainRight_Button': 'right'}
+        toggles = {'mainLeft_Button': 'left', 'mainRight_Button': 'right',
+                   'mainUp_Button': 'up'}
         if key in toggles:
             self.toggle(toggles[key])
             return
         callbacks = {'save_Button': app.save_ui, 'task_Button': app.tasks_ui,
-                     'mainUp_Button': app.guide_toggle,
                      'draw_Button': app.lottery_ui, 'store_Button': app.store_ui,
                      'rechargeReward_Button': app.recharge_ui,
                      'right_left_1_Button': app.bag_ui,

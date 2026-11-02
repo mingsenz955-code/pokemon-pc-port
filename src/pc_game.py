@@ -96,7 +96,7 @@ class NativeGame(ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.52（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.53（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -440,7 +440,7 @@ class NativeGame(ActivityUI, Preview):
         50: ('SecondConfirmUI', '二次确认'),
         51: ('TipConfirmUI', '提示'),
         52: ('ShopGoodsUI', '商品详情'),
-        53: ('GoodsBuyConfirmUI', '购买确认'),
+        53: ('BuyConfirmUI', '购买确认'),
         54: ('SkillReplaceUI', '技能替换'),
         55: ('OpenChestConfirmUI', '开启宝箱'),
         56: ('FreePetConfirmUI', '放生确认'),
@@ -793,6 +793,8 @@ class NativeGame(ActivityUI, Preview):
     def _shop_body(self, body, info, uiid):
         table = {1: 'Shop', 2: 'EvolutionShop', 3: 'SkillShop',
                  22: 'IArenaShop', 28: 'MedalShop'}[uiid]
+        layout = {1: 'ShopUI', 2: 'EvolutionShopUI', 3: 'SkillShopUI',
+                  22: 'InfiniteArenaShopUI', 28: 'MedalShopUI'}[uiid]
         self.shop_uiid = uiid
         clerk = {1: '1', 2: '3', 3: '4'}.get(uiid)
         if clerk:
@@ -805,7 +807,9 @@ class NativeGame(ActivityUI, Preview):
                 continue
             goods.append((str(goods_key), row))
         current = [0]
-        info.set(f'商店共 {len(goods)} 件商品 · 持有金币 {self.state.count("700001")}')
+        scroll = [0]
+        info.set(f'商店共 {len(goods)} 件商品 · 持有金币 {self.state.count("700001")}'
+                 + (' · 滚轮翻页' if len(goods) > 8 else ''))
         body.pack_forget()
 
         def choose(index):
@@ -816,17 +820,36 @@ class NativeGame(ActivityUI, Preview):
             self.open_goods_detail(uiid, table, key, row)
 
         def paint():
-            layer = self.cocos_ui.render('ShopUI', (800, 480), {'info_Text': info.get()})
+            money_text = {
+                'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                    str(self.state.count('700002')),
+                'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                    str(self.state.count('700001')),
+            }
+            layer = self.cocos_ui.render(layout, (800, 480),
+                                         {'info_Text': info.get(), **money_text},
+                                         resources={
+                                             'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/icon_Sprite':
+                                                 'UI/money_little_icon_badge.png',
+                                             'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/icon_Sprite':
+                                                 'UI/money_little_icon_gold.png',
+                                         })
             base_hits = dict(self.cocos_ui.hits)
             base_buttons = dict(self.cocos_ui.buttons)
             base_rects = dict(self.cocos_ui.rects)
             base_text = dict(self.cocos_ui.button_text)
+            for old in [key for key in self.ui_actions if key.startswith('shop_goods_')]:
+                self.ui_actions.pop(old, None)
+            for old in [key for key in self.ui_hits if key.startswith('shop_goods_')]:
+                self.ui_hits.pop(old, None)
             rect = base_rects.get('goods_ListView') or base_hits.get('goods_ListView')
             if rect:
                 cell_w = (rect[2]-rect[0])/4
                 cell_h = (rect[3]-rect[1])/2
-                for index, (key, row) in enumerate(goods[:8]):
-                    column, line = index % 4, index // 4
+                page = goods[scroll[0]:scroll[0]+8]
+                for slot, (key, row) in enumerate(page):
+                    index = scroll[0]+slot
+                    column, line = slot % 4, slot // 4
                     card = self.render_component('GoodsItemNode', (126, 126),
                         {'name_Text': row['name'],
                          'count_BitmapFontLabel': f'x{row.get("count", 1)}'},
@@ -851,6 +874,20 @@ class NativeGame(ActivityUI, Preview):
                 photo = ImageTk.PhotoImage(layer)
                 self.ui_art_label.configure(image=photo)
                 self.ui_art_label.image = photo
+
+        def wheel(event):
+            page(-1 if event.delta > 0 else 1)
+
+        def page(step):
+            if not goods:
+                return
+            scroll[0] = max(0, min(len(goods)-1, scroll[0]+8*step))
+            info.set(f'商店共 {len(goods)} 件商品 · 第 {scroll[0]//8+1}/{(len(goods)+7)//8} 页 · '
+                     f'持有金币 {self.state.count("700001")}')
+            paint()
+        self.shop_scroll = page
+        if hasattr(self, 'ui_art_label'):
+            self.ui_art_label.bind('<MouseWheel>', wheel)
 
         def detail():
             if not goods:
@@ -882,7 +919,7 @@ class NativeGame(ActivityUI, Preview):
             'parameters': {'uiid': shop_uiid}}))
 
     def render_component(self, name, size=(800, 480), text=None, resources=None,
-                         positions=None):
+                         positions=None, visible=None):
         """Render a prefab layout on a full canvas instead of its tiny node size."""
         layout = self.cocos_ui.layout(name)
         root = layout['tree']
@@ -890,6 +927,7 @@ class NativeGame(ActivityUI, Preview):
         root['size'] = list(size)
         try:
             return self.cocos_ui.render(name, size, text or {},
+                                        visible=visible or {},
                                         resources=resources or {},
                                         positions=positions or {})
         finally:
@@ -908,17 +946,36 @@ class NativeGame(ActivityUI, Preview):
         shop_uiid = int(parameters.get('shop_uiid', 1))
         row = self.data.tables[table][key]
         currency = self.data.tables['Money'].get(str(row['moneyType']), {}).get('name', row['moneyType'])
+        detail_text = f'{row["name"]} · {row["price"]} {currency}\n{row.get("des", "")}'
+        info.set(detail_text)
         if getattr(self, 'ui_art_label', None) is not None:
-            base = self.cocos_ui.render('ShopUI', (800, 480), {})
+            base = self.cocos_ui.render('ShopUI', (800, 480), {
+                'info_Text': detail_text,
+                'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                    str(self.state.count('700002')),
+                'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                    str(self.state.count('700001')),
+            }, visible={'info_Text': False}, resources={
+                'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/icon_Sprite':
+                    'UI/money_little_icon_badge.png',
+                'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/icon_Sprite':
+                    'UI/money_little_icon_gold.png',
+            })
             base_buttons = dict(self.cocos_ui.buttons)
             card = self.cocos_ui.render('ShopGoodsUI', (153, 233), {
                 'name_Text': row['name'],
                 'cost_BitmapFontLabel': str(row['price']),
                 'count_BitmapFontLabel': f'x{row.get("count", 1)}',
+            }, resources={
+                'moneyIcon_Image': 'UI/' + (
+                    self.data.tables['Money'].get(str(row['moneyType']), {})
+                    .get('littleIconTexture', 'money_little_icon_gold.png')),
+                'icon_Image': f'ItemIcon/{row.get("texture", "")}',
             })
             card_buttons = dict(self.cocos_ui.buttons)
             card = card.resize((184, 280), Image.Resampling.LANCZOS)
             base.alpha_composite(card, (320, 90))
+            self.ui_base_layer = base
             photo = ImageTk.PhotoImage(base)
             self.ui_art_label.configure(image=photo)
             self.ui_art_label.image = photo
@@ -950,24 +1007,70 @@ class NativeGame(ActivityUI, Preview):
         key = str(key)
         shop_uiid = int(parameters.get('shop_uiid', 1))
         row = self.data.tables[table][key]
-        currency = self.data.tables['Money'].get(str(row['moneyType']), {}).get('name', row['moneyType'])
-        text = f'购买 {row["name"]}？\n需要 {row["price"]} {currency}'
-        if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('GoodsBuyConfirmUI', (800, 480), {'info_Text': text})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        info.set(text)
+        money = self.data.tables['Money'].get(str(row['moneyType']), {})
+        currency = money.get('name', row['moneyType'])
+        quantity = [1]
+
+        def paint():
+            back = self.cocos_ui.render('ShopUI', (800, 480), {
+                'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                    str(self.state.count('700002')),
+                'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                    str(self.state.count('700001')),
+            }, visible={'info_Text': False}, resources={
+                'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/icon_Sprite':
+                    'UI/money_little_icon_badge.png',
+                'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/icon_Sprite':
+                    'UI/money_little_icon_gold.png',
+            })
+            layer = self.cocos_ui.render('BuyConfirmUI', (800, 480), {
+                'name_Text': row['name'],
+                'count_BitmapFontLabel': str(quantity[0]),
+                'getItemCount_BitmapFontLabel': f'x{quantity[0]}',
+                'costCount_BitmapFontLabel': str(int(row['price']) * quantity[0]),
+            }, resources={
+                'icon_Sprite': f'ItemIcon/{row.get("texture", "")}',
+                'moneyIcon_Sprite': 'UI/' + money.get('littleIconTexture',
+                                                      'money_little_icon_gold.png'),
+            })
+            back.alpha_composite(layer)
+            layer = back
+            self.ui_base_layer = layer
+            self.ui_hits = dict(self.cocos_ui.hits)
+            self.ui_rects = dict(self.cocos_ui.rects)
+            self.ui_buttons = dict(self.cocos_ui.buttons)
+            self.ui_button_text = dict(self.cocos_ui.button_text)
+            if getattr(self, 'ui_art_label', None) is not None:
+                photo = ImageTk.PhotoImage(layer)
+                self.ui_art_label.configure(image=photo)
+                self.ui_art_label.image = photo
+
+        def change(step):
+            quantity[0] = max(1, min(99, quantity[0] + step))
+            info.set(f'{row["name"]} × {quantity[0]} · 共需 '
+                     f'{int(row["price"]) * quantity[0]} {currency}')
+            paint()
+
         def confirm():
             try:
-                self.state.buy(table, key)
+                self.state.buy(table, key, quantity[0])
             except (ValueError, KeyError, NotImplementedError) as error:
-                info.set(str(error))
+                messagebox.showwarning('购买失败', str(error), parent=self.ui_window)
                 return
             self._back_to_shop(shop_uiid)
+
+        def cancel():
+            self._back_to_shop(shop_uiid)
+
+        self.ui_actions['left_Button'] = lambda: change(-1)
+        self.ui_actions['right_Button'] = lambda: change(1)
+        self.ui_actions['confirm_Button'] = confirm
+        self.ui_actions['cancel_Button'] = cancel
         self.ui_actions['buy_Button'] = confirm
-        self.ui_actions['buy_2_Button'] = confirm
-        self.ui_actions['close_Button'] = self.close_ui
+        self.ui_actions['close_Button'] = cancel
+        info.set(f'{row["name"]} × 1 · 共需 {row["price"]} {currency}')
+        paint()
+        body.pack_forget()
 
     def heal_party(self):
         self.state.cure_party()
@@ -1094,6 +1197,8 @@ class NativeGame(ActivityUI, Preview):
             self.restore()
         elif key == 'g':
             self.guide_toggle()
+        elif key == 'b':
+            self.bag_ui()
         elif key not in ['m', 'f3', 'escape']:
             if key in {'up', 'down', 'left', 'right', 'w', 'a', 's', 'd'}:
                 self.guide.stop('已停止自动指引。')
@@ -1129,7 +1234,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.52')
+        win.title('任务指引 · 原生 0.2.53')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2992,7 +3097,18 @@ class NativeGame(ActivityUI, Preview):
             # page and draw original BagListItemUI rows in item_ListView;
             # never place a host Listbox over the original tabs/info panel.
             layer = self.cocos_ui.render('BagUI', (800, 480),
-                                         {'info_Text': info.get()})
+                                         {'info_Text': info.get(),
+                                          'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                                              str(self.state.count('700002')),
+                                          'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/goldCount_BitmapFontLabel':
+                                              str(self.state.count('700001'))},
+                                         resources={
+                                             'Layer/root_Panel/badge_ProjectNode/Layer/root_Panel/icon_Sprite':
+                                                 'UI/money_little_icon_badge.png',
+                                             'Layer/root_Panel/gold_ProjectNode/Layer/root_Panel/icon_Sprite':
+                                                 'UI/money_little_icon_gold.png',
+                                         },
+                                         positions={'info_Text': [190, 150.4]})
             self.ui_base_layer = layer
             self.ui_hits = dict(self.cocos_ui.hits)
             self.ui_rects = dict(self.cocos_ui.rects)

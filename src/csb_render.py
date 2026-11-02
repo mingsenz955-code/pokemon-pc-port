@@ -88,7 +88,7 @@ class CocosUI:
         return result
 
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
-               offset=(0, 0), pressed=None, positions=None, rich_text=()):
+               offset=(0, 0), pressed=None, positions=None, rich_text=(), alphas=None):
         layout = self.layout(name)
         root = layout['tree']
         design = root.get('size', [800, 480])
@@ -99,6 +99,7 @@ class CocosUI:
         text, visible, resources = text or {}, visible or {}, resources or {}
         pressed = pressed or {}
         positions = positions or {}
+        alphas = alphas or {}
 
         def visit(node, parent=(0, 0), scale=(1, 1), alpha=1, depth=0, prefix=''):
             if depth > 50:
@@ -125,7 +126,7 @@ class CocosUI:
             anchor = node.get('anchor', [0, 0])
             x, y = parent[0]+local[0]*scale[0], parent[1]+local[1]*scale[1]
             origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
-            alpha *= node.get('alpha', 255)/255
+            alpha *= resolve(alphas, node.get('alpha', 255))/255
             image = None
             resource = resolve(resources, node.get('resource', {}).get('path', ''))
             classname = node['class']

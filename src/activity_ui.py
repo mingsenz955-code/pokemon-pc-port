@@ -615,6 +615,7 @@ class ActivityUI:
         refresh()
 
     def _area_map_body(self, body, info):
+        body.pack_forget()
         info.set(f'当前地图：{self.map.info["name"]}（{self.map_id}）\n'
                  '世界地图列出原版 WorldMap 区域；飞行只前往已经到过的城镇。')
         def world_map():
@@ -718,6 +719,7 @@ class ActivityUI:
         body.pack_forget()
 
     def _arena_body(self, body, info, arena_id=None, phase=1):
+        body.pack_forget()
         progress = ArenaProgress(self.state)
         arena = self.data.tables['Arena'].get(str(arena_id)) if arena_id else None
         if not arena:
@@ -774,6 +776,31 @@ class ActivityUI:
         self.ui_actions['leave_Button'] = leave
         self.ui_actions['close_Button'] = leave
         self.ui_actions['weixin_Button'] = share
+        def paint():
+            money_row = (self.data.tables['Money'].get(cost[0]) if cost else {}) or {}
+            text = {
+                'rank_BitmapFontLabel': str(rank),
+                'myTitle_Text': title or '暂无称号',
+                'enemyRank_BitmapFontLabel': str(npc['rankInterval']).split(',')[-1] if npc else '--',
+                'costCount_BitmapFontLabel': str(cost[1]) if cost else '0',
+            }
+            resources = {}
+            if arena.get('titleTexture'):
+                resources['title_Sprite'] = f'UI/{arena["titleTexture"]}'
+            if money_row.get('littleIconTexture'):
+                resources['icon_Sprite'] = f'UI/{money_row["littleIconTexture"]}'
+            layer = self.cocos_ui.render('ArenaInfoUI', (800, 480), text, resources=resources)
+            self.ui_base_layer = layer
+            self.ui_hits = dict(self.cocos_ui.hits)
+            self.ui_rects = dict(self.cocos_ui.rects)
+            self.ui_buttons = dict(self.cocos_ui.buttons)
+            self.ui_button_text = dict(self.cocos_ui.button_text)
+            label = getattr(self, 'ui_art_label', None)
+            if label is not None:
+                photo = ImageTk.PhotoImage(layer)
+                label.configure(image=photo)
+                label.image = photo
+        paint()
         tk.Button(body, text='开始挑战', command=challenge).pack(pady=3)
         tk.Button(body, text='查看规则', command=rule).pack(pady=3)
         tk.Button(body, text='离开竞技场', command=leave).pack(pady=3)
@@ -1028,6 +1055,7 @@ class ActivityUI:
                              {'parameters': {'uiid': uiid}}))
 
     def _running_body(self, body, info):
+        body.pack_forget()
         """RunningPetWelUI: original medal gate and join button."""
         game = RunningPetGame(self.state)
         medals = self.state.count(game.MEDAL)
@@ -1076,6 +1104,7 @@ class ActivityUI:
         tk.Button(body, text=f'购买 {count_got} 枚奖牌', command=buy).pack(pady=4)
 
     def _running_ready_body(self, body, info):
+        body.pack_forget()
         game = RunningPetGame(self.state)
         if not self.running_session or self.running_session.get('settled'):
             try:
@@ -1151,6 +1180,7 @@ class ActivityUI:
         tk.Button(body, text='开始比赛', command=confirm).pack(side='left', padx=8)
 
     def _running_result_body(self, body, info):
+        body.pack_forget()
         session = getattr(self, 'running_result', None)
         if not session:
             info.set('当前没有赛跑结果。')
@@ -1199,6 +1229,7 @@ class ActivityUI:
         tk.Button(body, text='继续参赛', command=again).pack(pady=4)
 
     def _running_race_body(self, body, info):
+        body.pack_forget()
         """RunningPetMapUI: four original armatures, 8s winner timeline."""
         session = getattr(self, 'running_result', None)
         if not session or not session.get('times'):
@@ -1303,22 +1334,121 @@ class ActivityUI:
         draw_race()
 
     def _rank_body(self, body, info):
-        pages = {
-            'fightTag_Button': ('战斗排名', 'FightRank'),
-            'integralTag_Button': ('积分排名', 'PetCollectCountRank'),
-            'receiveTag_Button': ('领取奖励', 'RankReward'),
-            'taoFaTag_Button': ('讨伐', 'RankNpcPet'),
+        body.pack_forget()
+        tabs = {
+            'fight': ('fightTag_Button', '战斗排名', 'FightRank'),
+            'integral': ('integralTag_Button', '积分排名', 'PetCollectCountRank'),
+            'taofa': ('taoFaTag_Button', '讨伐排名', 'RankNpcPet'),
         }
-        def show(label, table):
-            rows = self.data.tables.get(table, {})
-            info.set(f'{label}：原版 {table} 共 {len(rows)} 行。')
-        for key, (label, table) in pages.items():
-            self.ui_actions[key] = lambda label=label, table=table: show(label, table)
-        self.ui_actions['fight_Button'] = lambda: show('挑战排名', 'RankNpcPet')
-        self.ui_actions['taoFa_Button'] = lambda: show('讨伐目标', 'RankNpcPet')
-        self.ui_actions['monsterInfo_Button'] = lambda: show('怪物资料', 'Pet')
-        tk.Button(body, text='战斗排名', command=lambda: show(*pages['fightTag_Button'])).pack(pady=2)
-        tk.Button(body, text='怪物资料', command=lambda: show('怪物资料', 'Pet')).pack(pady=2)
+        current = ['fight']
+        scroll = [0]
+
+        def source_rows():
+            page = current[0]
+            table = tabs[page][2]
+            raw = self.data.tables.get(table, {})
+            ordered = sorted(raw.items(), key=lambda pair: int(pair[0]))
+            rows = []
+            for index, (key, row) in enumerate(ordered, 1):
+                if page == 'fight':
+                    name = row.get('name', '未知训练师')
+                    value = '-'
+                elif page == 'integral':
+                    name = row.get('name', '未知训练师')
+                    value = str(row.get('petCount', '-'))
+                else:
+                    pet = self.data.tables.get('Pet', {}).get(str(row.get('petId', '')), {})
+                    level = str(row.get('level', '-'))
+                    name = pet.get('name', f'讨伐目标 {key}')
+                    value = level
+                rows.append((index, name, value))
+            return rows
+
+        def paint():
+            rows = source_rows()
+            visible = {
+                'Layer/root_Panel/fightTag_Button/selected_Sprite': current[0] != 'fight',
+                'Layer/root_Panel/integralTag_Button/selected_Sprite': current[0] != 'integral',
+                'Layer/root_Panel/taoFaTag_Button/selected_Sprite': current[0] != 'taofa',
+                'Layer/root_Panel/titleRank_fight_Sprite': current[0] != 'fight',
+                'Layer/root_Panel/titleRank_integral_Sprite': current[0] != 'integral',
+                'Layer/root_Panel/titleRank_damage_Sprite': current[0] != 'taofa',
+                'fight_Button': current[0] != 'fight',
+                'taoFa_Button': current[0] != 'taofa',
+                'mineRank_ProjectNode': False,
+                'tips_Text': False,
+            }
+            page_label = tabs[current[0]][1]
+            layer = self.cocos_ui.render('RankUI', (800, 480), {}, visible=visible)
+            base_hits = dict(self.cocos_ui.hits)
+            base_buttons = dict(self.cocos_ui.buttons)
+            base_rects = dict(self.cocos_ui.rects)
+            base_text = dict(self.cocos_ui.button_text)
+            area = base_rects.get('rank_ScrollView') or base_hits.get('rank_ScrollView')
+            if area:
+                width = round(area[2]-area[0])
+                row_h = 25
+                count = max(1, int((area[3]-area[1])/row_h))
+                for slot, (rank, name, value) in enumerate(rows[scroll[0]:scroll[0]+count]):
+                    card = self.render_component('RankItemUI', (width, row_h), {
+                        'rank_BitmapFontLabel': str(rank),
+                        'name_Text': name,
+                        'current_BitmapFontLabel': value,
+                        'noRank_Text': '',
+                    }, visible={
+                        'noRank_Text': False,
+                        'bg_double_Image': slot % 2 == 1,
+                        'bg_single_Image': slot % 2 == 0,
+                        'bg_mine_Image': False,
+                        'head_Image': False,
+                        'rank_bg_1_Image': rank != 1,
+                        'rank_bg_2_Image': rank != 2,
+                        'rank_bg_3_Image': rank != 3,
+                    })
+                    x = area[0]
+                    y = area[1] + slot*row_h
+                    layer.alpha_composite(card, (round(x), round(y)))
+                    self.ui_hits[f'rank_row_{slot}'] = (x, y, x+width, y+row_h)
+                    self.ui_actions[f'rank_row_{slot}'] = (
+                        lambda r=rank, n=name, v=value: info.set(
+                            f'第 {r} 名 · {n} · {v}'))
+            self.ui_base_layer = layer
+            self.ui_hits.update(base_hits)
+            self.ui_buttons = base_buttons
+            self.ui_rects = base_rects
+            self.ui_button_text = base_text
+            if getattr(self, 'ui_art_label', None) is not None:
+                photo = ImageTk.PhotoImage(layer)
+                self.ui_art_label.configure(image=photo)
+                self.ui_art_label.image = photo
+            info.set(f'{page_label} · 原版 {tabs[current[0]][2]} 共 {len(rows)} 行 · '
+                     f'第 {scroll[0]+1}-{min(len(rows), scroll[0]+max(1, int((area[3]-area[1])/25)) if area else 1)} 名')
+
+        def choose(page):
+            current[0] = page
+            scroll[0] = 0
+            paint()
+
+        def wheel(event):
+            rows = source_rows()
+            step = -1 if event.delta > 0 else 1
+            scroll[0] = max(0, min(max(0, len(rows)-10), scroll[0]+step))
+            paint()
+
+        for page, (button, _label, _table) in tabs.items():
+            self.ui_actions[button] = lambda value=page: choose(value)
+        self.ui_actions['receiveTag_Button'] = lambda: info.set(
+            '原版 RankReward 表为空，当前没有可领取的排名奖励配置。')
+        self.ui_actions['fight_Button'] = lambda: info.set(
+            '战斗排名为原版展示榜；挑战入口需要对应的排名 NPC 配置。')
+        self.ui_actions['taoFa_Button'] = lambda: info.set(
+            '讨伐榜展示原版 RankNpcPet 的怪物与等级。')
+        self.ui_actions['monsterInfo_Button'] = lambda: info.set(
+            '怪物资料：RankNpcPet 中每条记录包含 petId、level、技能和天赋。')
+        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
+        if hasattr(self, 'ui_art_label'):
+            self.ui_art_label.bind('<MouseWheel>', wheel)
+        paint()
 
     def _treasure_buy_body(self, body, info, par1=None):
         rows = self.data.tables.get('Treasure', {})
@@ -1358,6 +1488,7 @@ class ActivityUI:
         tk.Button(body, text='确认', command=lambda: self.close_ui('yes')).pack(pady=3)
 
     def _treasure_body(self, body, info, par1=None):
+        body.pack_forget()
         rows = list(self.data.tables.get('Treasure', {}).values())
         hunt = TreasureHunt(self.state)
         entry = hunt.active()
@@ -1418,6 +1549,7 @@ class ActivityUI:
         tk.Button(body, text='放弃', command=give_up).pack(pady=3)
 
     def _infinite_body(self, body, info, uiid, arena_id=None):
+        body.pack_forget()
         progress = InfiniteArenaProgress(self.state)
         arena = self.data.tables['InfiniteArena'].get(str(arena_id or 1))
         if not arena:

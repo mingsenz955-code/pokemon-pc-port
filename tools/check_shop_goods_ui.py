@@ -29,17 +29,26 @@ try:
     assert app.ui_base_layer.size == (800, 480)
     assert 'shop_goods_0' in app.ui_actions
     assert 'goods_ListView' in app.ui_rects
+    assert hasattr(app, 'shop_scroll')
+    app.shop_scroll(1)
+    assert 'shop_goods_8' in app.ui_actions
+    assert 'shop_goods_10' in app.ui_actions
+    assert '第 2/3 页' in app.ui_info.get()
+    app.shop_scroll(-1)
+    assert 'shop_goods_0' in app.ui_actions
     app.open_goods_detail(1, 'Shop', key, row)
     assert app.ui_render_args['name'] == 'ShopGoodsUI'
     assert 'buy_Button' in app.ui_actions
     rect = app.ui_buttons['buy_Button']
     assert app.ui_hit_at((rect[0]+rect[2])/2, (rect[1]+rect[3])/2)[0] == 'buy_Button'
     app.ui_actions['buy_Button']()
-    assert app.ui_render_args['name'] == 'GoodsBuyConfirmUI'
+    assert app.ui_render_args['name'] == 'BuyConfirmUI'
     assert state.shop_purchases.get(f'Shop:{key}', 0) == 0
-    app.ui_actions['buy_Button']()
-    assert state.shop_purchases.get(f'Shop:{key}', 0) == 1
-    assert state.activities['shop_spent']['700001'] >= int(row['price'])
+    app.ui_actions['right_Button']()
+    app.ui_actions['right_Button']()
+    app.ui_actions['confirm_Button']()
+    assert state.shop_purchases.get(f'Shop:{key}', 0) == 3
+    assert state.activities['shop_spent']['700001'] >= int(row['price'])*3
     assert app.ui_render_args['name'] == 'ShopUI'
     app.close_ui()
     assert not app.ui_open

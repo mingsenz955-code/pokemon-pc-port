@@ -1,14 +1,26 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.52%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.53%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.52 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.53 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
+
+0.2.53 专门修主界面入口和商店流程：主界面右侧“功能”菜单的子按钮现在
+按展开动画真实显示并可点；未展开时隐藏按钮不再抢点击，所以点“功能”能
+打开菜单，红背包图标、宠物、图鉴、成就、排行、礼包、蓝牙都能进入。键盘
+`B` 也可直接打开背包。商店按原版拆成 `ShopUI`、`EvolutionShopUI`、
+`SkillShopUI`、`InfiniteArenaShopUI`、`MedalShopUI` 五种页面，标题、NPC
+和商品同步；右上金币/奖牌读取真实存档，不再显示编辑器占位 `8888888`；
+商品支持滚轮翻页，点击商品打开 `ShopGoodsUI` 卡片，购买改用原版
+`BuyConfirmUI`（数量左右按钮、总价、取消/购买），确认后真实扣货币并回店。
+排行榜改为读取 `FightRank`、`PetCollectCountRank`、`RankNpcPet` 真实行，
+替换编辑器占位“一个大鸭子 5000”。这些页面仍不是全部深层玩法；0.2.53
+不是完整还原。
 
 0.2.52 继续按手机版 APK 内原始 `assets/Data`、`res/UI/*.csb`、`PlotEvent`
 和 UI 布局驱动页面，不再用宿主 Tk 列表框盖住原版画面。宠物页改为

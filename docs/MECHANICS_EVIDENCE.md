@@ -1,5 +1,38 @@
 # 1.20.4 规则核对记录
 
+## 0.2.53：主菜单点击、五类商店、购买确认与排行榜
+
+这版修的是“页面能画出来但点不到/点开是错的”问题：
+
+- 主界面右侧子菜单在收起时 `alpha=0`，但渲染器仍把它们的按钮区域算进
+  命中表，导致点“功能”先被看不见的背包按钮吃掉。`SceneUI` 现在只把
+  `visible` 且 `alpha>0` 的按钮放进命中表；`mainRight_Button`、
+  `mainUp_Button` 点击后能展开原版动画菜单，背包红图标真实可点。
+- 键盘 `B` 作为 PC 快捷入口打开 `BagUI`，不改变原版菜单。
+- 商店按原版拆页：`ShopUI`（联盟商店）、`EvolutionShopUI`（进化材料屋）、
+  `SkillShopUI`（技能屋）、`InfiniteArenaShopUI`（竞技场商店）、
+  `MedalShopUI`（奖牌兑换）；不再用一张 `ShopUI` 冒充所有商店。
+- 金币/奖牌读取 `GameState.count('700001')` 与 `700002`，并替换
+  `badge_ProjectNode` / `gold_ProjectNode` 内嵌的 `8888888`；金币图标与
+  奖牌图标也按节点名改回 `money_little_icon_gold.png` /
+  `money_little_icon_badge.png`。
+- 商品列表按每页 8 格分页，滚轮翻页；点击商品用原版 `GoodsItemNode`
+  打开 `ShopGoodsUI` 卡片，显示真实图标、名称、价格和货币图标。
+- 购买从错误的 `GoodsBuyConfirmUI`（复活礼包模板）改成原版
+  `BuyConfirmUI`：左右按钮调数量（1–99）、`共需` 总价、取消/购买；
+  确认调用 `GameState.buy(table,key,quantity)` 扣真实货币并回到原商店。
+- 排行榜 `RankUI` 读取 `FightRank`、`PetCollectCountRank`、`RankNpcPet`
+  实际行，替换编辑器占位“一个大鸭子 5000”；分页展示前 10 名，点击行
+  显示名次/名称/数值，三个页签切换。
+- 仍不是完整 1∶1：商店的限购/刷新/排序、排行榜挑战与奖励表、深层
+  活动规则尚未全部接入；`RankReward` 在原表中为空，页面明确说明，不伪造。
+
+测试：`tools/check_main_bag_shop.py`、`check_shop_goods_ui.py`、
+`check_rank_ui.py`、`check_ui_buttons.py`、`check_bag_ui.py` 已通过。
+截图：`outputs/verification/main-right-expanded.png`、`shop-current.png`、
+`shop-detail-current.png`、`buy-confirm-current.png`、`bag-ui-current.png`、
+`rank-current.png`、`rank-taofa.png`。
+
 ## 0.2.52：宠物、图鉴、成就与活动页改为原版布局
 
 继续用手机版 APK 内的原始资源，而不是宿主 Tk 控件：
