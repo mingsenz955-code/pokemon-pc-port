@@ -27,11 +27,13 @@ from daily_tasks import DailyTasks
 from achievements import Achievements
 from task_progress import TaskProgress
 from mounts import Mounts
-from guide import Guide
+from guide import Guide, GuideTarget
 from story_motion import StoryMotion, FACES
+from scene_ui import SceneUI
 
 
 class NativeGame(ActivityUI, Preview):
+    WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
     def __init__(self, root, data):
         self.state = GameState(data.tables)
         self.cocos_ui = CocosUI(data)
@@ -80,26 +82,20 @@ class NativeGame(ActivityUI, Preview):
         self.running_result = None
         self.running_race_token = None
         self.story_motion = StoryMotion(self)
+        self.scene_ui = SceneUI(self)
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.39（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.40（全系统还原进行中）')
         top = root.winfo_children()[0]
-        for child in top.winfo_children():
-            child.destroy()
-        tk.Label(top, text='口袋妖怪 · PC 移植开发版', fg='#f5d492', bg='#202b30',
-                 font=('Microsoft YaHei UI', 12, 'bold')).pack(side='left', padx=14, pady=10)
-        for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui),
-                                ('指引', self.guide_ui), ('抽宠', self.lottery_ui),
-                                ('坐骑', self.mounts_ui), ('宝藏', self.treasure_ui),
-                                ('赛跑', self.running_pet_ui),
-                                ('签到', self.login_ui), ('每日', self.daily_ui),
-                                ('图鉴', self.illustrated_ui),
-                                ('成就', self.achievements_ui),
-                                ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
-            ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
+        top.destroy()
+        for child in root.winfo_children():
+            if isinstance(child, tk.Label):
+                child.pack_forget()
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
         self.save_path = Path(os.environ.get('POCKET_NATIVE_SAVE_DIR', str(default_save)))/'slot1.json'
+        if self.save_path.exists() and self.restore():
+            return
         self.load_map(7401, 17*64+32, (30-14)*64)
         self.reset_encounter()
         self.runtime.notify('tomap', map=7401)
@@ -116,7 +112,9 @@ class NativeGame(ActivityUI, Preview):
                 self.state.visited_maps.append(self.map_id)
             self.camera_focus = None
             self.camera_action = None
+            self.player_visible = True
             self.inside_areas = set()
+            self._processed_area_tile = None
             self.encounter_distance, self.encounter_threshold = 0.0, 0
 
     def reset_encounter(self):
@@ -956,12 +954,28 @@ class NativeGame(ActivityUI, Preview):
                 self.keys.clear()
                 self.guide.start(target)
 
+    def guide_shop(self, shop_type):
+        candidates = []
+        for key, row in self.data.tables['VillageMap'].items():
+            if int(row.get('shopType', 0)) != int(shop_type):
+                continue
+            route = self.guide.graph.route(self.map_id, int(key))
+            if route:
+                candidates.append((len(route), int(key)))
+        if not candidates:
+            raise ValueError('原版出口表没有可用的商店指引路线。')
+        _, target = min(candidates)
+        world = self.data.load_map(target)
+        self.keys.clear()
+        self.guide.start(GuideTarget('map', world.info['name'], target,
+            world.width*world.tw/2, world.height*world.th/2))
+
     def guide_ui(self):
         if self.battle:
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.39')
+        win.title('任务指引 · 原生 0.2.40')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1166,6 +1180,9 @@ class NativeGame(ActivityUI, Preview):
             if action == 'finish':
                 self.finish_battle()
             return
+        if not self.runtime.running and not self.ui_open and self.main_ui_visible:
+            if self.scene_ui.click(event.x, event.y):
+                return
         self.interact()
 
     def start_battle(self, npcid, kind=None):
@@ -1434,6 +1451,33 @@ class NativeGame(ActivityUI, Preview):
             self.runtime.resume()
         self.drive()
 
+    def process_player_areas(self, force=False):
+        """areaProcess @ 0x2e4934: plot notification, then type-1 task event.
+
+        PlotEventManager::process @ 0x2f7958 ignores new triggers while its
+        running flag is set. Task counters still receive the area event.
+        """
+        tile = (self.map_id, int(self.x//self.map.tw), int(self.y//self.map.th))
+        if not force and tile == getattr(self, '_processed_area_tile', None):
+            return
+        self._processed_area_tile = tile
+        x, y = (tile[1]+.5)*self.map.tw, (tile[2]+.5)*self.map.th
+        self.inside_areas = set()
+        for obj in self.map.objects:
+            if obj['group'] != 'eventLayer':
+                continue
+            left, top = float(obj.get('x', 0)), float(obj.get('y', 0))
+            width, height = float(obj.get('width', 64)), float(obj.get('height', 64))
+            if not (left <= x < left+width and top <= y < top+height):
+                continue
+            area = int(obj['name'])
+            self.inside_areas = {str(area)}
+            if not self.runtime.running:
+                self.runtime.notify('toarea', area=area)
+            self.advance_main_condition('area', area)
+            # getAreaSpriteAtTileCoord returns the first matching area.
+            return
+
     def tick(self):
         now = time.monotonic()
         elapsed = max(0.0, now-self._play_clock)
@@ -1478,20 +1522,8 @@ class NativeGame(ActivityUI, Preview):
             self.status.set('点击我方宠物打开补给/换宠，点击对方宠物打开技能/捕捉 | '+message)
             return
         self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
-        areas = set()
-        for obj in self.map.objects:
-            if obj['group'] != 'eventLayer':
-                continue
-            x, y = float(obj.get('x', 0)), float(obj.get('y', 0))
-            w, h = float(obj.get('width', 64)), float(obj.get('height', 64))
-            if x <= self.x < x+w and y <= self.y < y+h:
-                areas.add(obj['name'])
-        if not self.runtime.running:
-            for area in areas-self.inside_areas:
-                self.advance_main_condition('area', area)
-                if self.runtime.notify('toarea', area=int(area)):
-                    break
-        self.inside_areas = areas
+        if not any(a['kind'] == 1 for a in self.story_motion.actions):
+            self.process_player_areas()
         self.event_issue = self.runtime_error
         guide_note = ''
         if self.guide.target:
@@ -1514,6 +1546,8 @@ class NativeGame(ActivityUI, Preview):
             self.dialogue = original_dialogue
         if getattr(self, 'screen_black', False):
             frame.paste('#101010', (0, 0, self.WIDTH, self.HEIGHT))
+        elif self.main_ui_visible:
+            self.scene_ui.render(frame)
         if original_dialogue is None:
             self._draw_chest_fx(frame)
             self._draw_obstacle_fx(frame)
@@ -1583,6 +1617,7 @@ class NativeGame(ActivityUI, Preview):
         self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
         self.state.presentation = {
             'face': self.face, 'player_visible': self.player_visible,
+            'player_visibility_map': self.map_id,
             'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
             'camera_action': self.camera_action,
             'story_motion_actions': self.story_motion.actions if getattr(self, 'story_motion', None) else [],
@@ -1600,10 +1635,10 @@ class NativeGame(ActivityUI, Preview):
     def restore(self):
         if self.battle:
             self.event_issue = '战斗中暂不支持读取存档，请在战斗结束后读取。'
-            return
+            return False
         if not self.save_path.exists():
             self.event_issue = '还没有原生移植存档。'
-            return
+            return False
         try:
             state = GameState.load(self.data.tables, self.save_path)
             runtime = EventRuntime(self.data, state)
@@ -1625,13 +1660,34 @@ class NativeGame(ActivityUI, Preview):
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
             self.player_sprite = state.sprite_id
+            self.repair_legacy_player_visibility()
             self.story_motion = StoryMotion(self)
             self.story_motion.actions = state.presentation.get('story_motion_actions', [])
             self.story_motion.faces = state.presentation.get('story_motion_faces', {})
             self._play_clock = time.monotonic()
             self.drive()
+            return True
         except (ValueError, KeyError, OSError) as error:
             messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
+            return False
+
+    def repair_legacy_player_visibility(self):
+        # Confirmed broken save: map 101 / pEvent101001, player flag false,
+        # despite no player-hide instruction in this original arrival plot.
+        presentation = self.state.presentation
+        if ('player_visibility_map' in presentation or self.player_visible
+                or self.map_id != 101 or not 1 <= self.state.main_task <= 6):
+            return
+        for step in self.runtime.sequence[:self.runtime.index+1]:
+            if step['type'] != 'spritevisible':
+                continue
+            rows = step.get('parameters', {})
+            for row in rows if isinstance(rows, list) else [rows]:
+                if row.get('spritetype') == 1 and not row.get('visible', 1):
+                    return
+        self.player_visible = True
+        self.state.audit.append({'repair': 'legacy-hidden-player-in-101-arrival',
+                                 'map': self.map_id, 'event': self.runtime.file})
 
     def close_transient_ui(self):
         # Loading must not acknowledge an old event through close_ui().

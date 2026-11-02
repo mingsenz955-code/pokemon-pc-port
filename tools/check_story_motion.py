@@ -109,12 +109,69 @@ class StoryChecks(unittest.TestCase):
             self.assertNotEqual((2, 1), (int(app.x//64), int(app.y//64)))
         self.assertEqual((224, 96), (app.x, app.y))
 
-    def test_unreachable_target_keeps_position_and_stops_script(self):
+    def test_unreachable_target_walks_to_original_closest_candidate(self):
         app = host(move(), walls={(3, 1)})
         app.drive()
-        self.assertTrue(app.runtime_error)
+        self.assertFalse(app.runtime_error)
         self.assertEqual((96, 96), (app.x, app.y))
         self.assertEqual('toplace', app.runtime.pending.kind)
+        app.story_motion.advance(10)
+        self.assertEqual((160, 96), (app.x, app.y))
+        app.drive()
+        self.assertEqual('talk', app.display_request.kind)
+
+    def test_completely_enclosed_actor_completes_without_teleport(self):
+        app = host(move(), walls={(1, 0), (0, 1), (2, 1), (1, 2)})
+        app.drive()
+        self.assertEqual((96, 96), (app.x, app.y))
+        self.assertFalse(app.story_motion.actions)
+        self.assertEqual('talk', app.display_request.kind)
+
+    def test_bulk_movement_notifies_task_for_intermediate_area(self):
+        app = host(move())
+        app.map.objects = [{'group': 'eventLayer', 'name': '10101',
+                            'x': 128, 'y': 64, 'width': 64, 'height': 64}]
+        app.drive()
+        self.assertEqual(3, app.state.main_state)
+        app.story_motion.advance(.41)
+        self.assertEqual((224, 96), (app.x, app.y))
+        self.assertEqual(4, app.state.main_state)
+        self.assertEqual([1], app.state.task_counts['main:1'])
+        self.assertEqual([], app.runtime.queue)
+
+    def test_outside_goal_uses_valid_edge_candidate(self):
+        app = host(move(x=100))
+        app.drive()
+        app.story_motion.advance(10)
+        self.assertEqual((608, 96), (app.x, app.y))
+        app.drive()
+        self.assertEqual('talk', app.display_request.kind)
+
+    def test_manual_area_checks_count_tile_callbacks_not_render_frames(self):
+        app = host(move())
+        app.state.tables = dict(DATA.tables)
+        app.state.tables['MainTask'] = dict(DATA.tables['MainTask'])
+        app.state.tables['MainTask']['1'] = dict(DATA.tables['MainTask']['1'], counts='3')
+        app.map.objects = [{'group': 'eventLayer', 'name': '10101',
+                            'x': 64, 'y': 64, 'width': 128, 'height': 64}]
+        app.process_player_areas()
+        for _ in range(5):
+            app.process_player_areas()
+        self.assertEqual([1], app.state.task_counts['main:1'])
+        app.x = 160
+        app.process_player_areas()
+        self.assertEqual([2], app.state.task_counts['main:1'])
+        app.process_player_areas(force=True)
+        self.assertEqual(4, app.state.main_state)
+        self.assertEqual([], app.runtime.queue)
+
+    def test_overlapping_areas_use_first_original_object(self):
+        app = host(move())
+        first = {'group': 'eventLayer', 'name': '10101', 'x': 64, 'y': 64, 'width': 64, 'height': 64}
+        app.map.objects = [first, dict(first, name='10199')]
+        app.process_player_areas()
+        self.assertEqual({'10101'}, app.inside_areas)
+        self.assertEqual(4, app.state.main_state)
 
     def test_save_restores_remaining_segment_and_callback(self):
         with tempfile.TemporaryDirectory() as folder:

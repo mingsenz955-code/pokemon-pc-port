@@ -84,7 +84,7 @@ class CocosUI:
         return result
 
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
-               offset=(0, 0), pressed=None):
+               offset=(0, 0), pressed=None, positions=None):
         layout = self.layout(name)
         root = layout['tree']
         design = root.get('size', [800, 480])
@@ -94,6 +94,7 @@ class CocosUI:
         self.hits, self.buttons, self.button_text, self.rects, self.diagnostics = {}, {}, {}, {}, []
         text, visible, resources = text or {}, visible or {}, resources or {}
         pressed = pressed or {}
+        positions = positions or {}
 
         def visit(node, parent=(0, 0), scale=(1, 1), alpha=1, depth=0, prefix=''):
             if depth > 50:
@@ -113,7 +114,7 @@ class CocosUI:
 
             if not resolve(visible, node.get('visible', True)):
                 return
-            local = node.get('position', [0, 0])
+            local = resolve(positions, node.get('position', [0, 0]))
             node_scale = node.get('scale', [1, 1])
             sx, sy = scale[0]*node_scale[0], scale[1]*node_scale[1]
             width, height = node.get('size', [0, 0])
