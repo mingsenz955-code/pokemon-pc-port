@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.31（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.32（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -380,6 +380,7 @@ class NativeGame(ActivityUI, Preview):
         55: ('OpenChestConfirmUI', '开启宝箱'),
         56: ('FreePetConfirmUI', '放生确认'),
         57: ('PetPropertyUI', '宠物属性'),
+        58: ('LuckyDrawPetInfoUI', '抽宠结果'),
     }
 
     def open_ui(self, request):
@@ -515,6 +516,8 @@ class NativeGame(ActivityUI, Preview):
             self._free_pet_body(body, info)
         elif uiid == 57:
             self._pet_property_body(body, info)
+        elif uiid == 58:
+            self._lucky_pet_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -938,7 +941,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.31')
+        win.title('任务指引 · 原生 0.2.32')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1825,6 +1828,42 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['confirm_Button'] = confirm
         self.ui_actions['cancel_Button'] = back
         self.ui_actions['close_Button'] = back
+
+    def open_lucky_pet_info(self, uid, back=None):
+        self.open_ui(Request('openui', 'lucky-pet', 1, {
+            'parameters': {'uiid': 58, 'uid': uid, 'back': back}}))
+
+    def _lucky_pet_body(self, body, info):
+        uid = str(self.ui_parameters.get('uid') or
+                  (self.state.pets[-1].uid if self.state.pets else ''))
+        back = self.ui_parameters.get('back')
+        pet = next((candidate for candidate in self.state.pets
+                    if str(candidate.uid) == uid), None)
+        if pet is None:
+            info.set('抽宠记录不在携带栏。')
+            return
+        stats = pet.stats(self.data.tables)
+        name = self.data.tables['Pet'][pet.species]['name']
+        if getattr(self, 'ui_art_label', None) is not None:
+            layer = self.cocos_ui.render('LuckyDrawPetInfoUI', (800, 480), {
+                'name_Text': name,
+                'arrtLife_BitmapFontLabel': str(stats[0]),
+                'arrtEnergy_BitmapFontLabel': str(stats[1]),
+                'arrtStrength_BitmapFontLabel': str(stats[2]),
+                'arrtDefense_BitmapFontLabel': str(stats[3]),
+                'arrtSpeed_BitmapFontLabel': str(stats[4])})
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(f'抽到 {name} Lv.{pet.level} · 生命 {stats[0]} / 能量 {stats[1]} / '
+                 f'攻击 {stats[2]} / 防御 {stats[3]} / 速度 {stats[4]}')
+        def finish():
+            self.close_ui()
+            if back == 'lottery':
+                self.lottery_ui(force=True)
+        self.ui_actions['confirm_Button'] = finish
+        self.ui_actions['weixin_Button'] = finish
+        self.ui_actions['close_Button'] = finish
 
     def open_pet_property(self, uid):
         self.open_ui(Request('openui', 'pet-property', 1, {

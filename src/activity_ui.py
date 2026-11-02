@@ -1539,8 +1539,8 @@ class ActivityUI:
         self.ui_actions['refresh_Button'] = lambda: refresh(True)
         refresh()
 
-    def lottery_ui(self):
-        if self.battle or self.runtime.running or self.ui_open:
+    def lottery_ui(self, force=False):
+        if not force and (self.battle or self.runtime.running or self.ui_open):
             self.event_issue = '请先结束当前对话、界面或战斗。'
             return
         if self.state.functions.get('8', 0) != 1:
@@ -1562,6 +1562,8 @@ class ActivityUI:
                 pets = Activities(self.state).draw_pets(kind, free=free)
                 info.set('获得：'+ '、'.join(self.data.tables['Pet'][p.species]['name'] for p in pets)
                          + f' · 剩余徽章 {self.state.count("700002")}')
+                if pets:
+                    self.open_lucky_pet_info(pets[0].uid, back='lottery')
             except (ValueError, KeyError) as error:
                 info.set(str(error))
         buttons = tk.Frame(win)
