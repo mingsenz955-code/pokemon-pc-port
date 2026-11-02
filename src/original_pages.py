@@ -900,10 +900,14 @@ class OriginalPages(PetPages):
         goods = [(k, r) for k, r in sorted(self.data.tables[table].items(), key=lambda p: int(p[0]))
                  if str(r.get('repeat', '1')) != '0' or not self.state.shop_purchases.get(f'{table}:{k}')]
         selected, offset = [0], [0]
+        if uiid == 69 and getattr(self, 'battle_shop_view', None):
+            selected[0], offset[0] = self.battle_shop_view
         self.shop_uiid = uiid
         stride = 153+self._list_margin(layout, 'goods_ListView')
 
         def paint():
+            if uiid == 69:
+                self.battle_shop_view = (selected[0], offset[0])
             row = goods[selected[0]][1] if goods else {}
             description = row.get('des', '')
             info.set(f'商店 · {row.get("name", "")}\n{description}')
@@ -940,6 +944,9 @@ class OriginalPages(PetPages):
             paint()
 
         def buy(key):
+            if uiid == 69:
+                selected[0] = next(i for i, (kid, _) in enumerate(goods) if kid == key)
+                self.battle_shop_view = (selected[0], offset[0])
             self.open_ui(Request('openui', 'shop-buy', 1, {'parameters': {
                 'uiid': 53, 'table': table, 'key': key, 'shop_uiid': uiid}}))
 

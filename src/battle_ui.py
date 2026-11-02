@@ -822,6 +822,7 @@ class BattleUI:
         if self.app.ui_open:
             return
         from event_runtime import Request
+        self.app.battle_shop_view = None
         self.app.open_ui(Request('openui', 'battle-shop', 0,
                                 {'parameters': {'uiid': 69}}))
 

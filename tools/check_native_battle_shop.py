@@ -72,6 +72,8 @@ class BattleShopChecks(unittest.TestCase):
         row=a.data.tables['BattleShop']['212'];before=a.state.count(row['goodsKid'])
         self.buy_card(11);self.click('confirm_Button')
         self.assertEqual(before+1,a.state.count(row['goodsKid']))
+        self.assertEqual(11,a.battle_shop_view[0])
+        self.assertTrue(any(k.startswith('shop_goods_11/') and k.endswith('/buy_Button') for k in a.ui_actions))
 
     def test_shop_tick_does_not_render_or_advance_battle(self):
         a=self.open_shop();battle=a.battle
