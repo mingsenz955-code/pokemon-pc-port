@@ -97,7 +97,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.58（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.59（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -218,17 +218,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     def mounts_ui(self):
         if self.battle or self.runtime.running or self.ui_open:
             return
-        rows = [(0, '步行 / 下坐骑')]
-        for key, row in self.data.tables['Ride'].items():
-            owned = int(key) in [int(k) for k in self.state.rides]
-            rows.append((int(key), row['name'] + (' · 已获得' if owned else ' · 未获得')))
-        def select(key):
-            try:
-                Mounts(self.state).select(key, self.map.terrain_at(self.x, self.y),
-                                          int(self.map.info['mapType']))
-            except ValueError as error:
-                messagebox.showinfo('坐骑', str(error), parent=self.root)
-        self.choose('坐骑', rows, select)
+        self.scene_ui.toggle('left')
 
     def player_image(self, face):
         row = Mounts(self.state).active()
@@ -1025,7 +1015,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.58')
+        win.title('任务指引 · 原生 0.2.59')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1700,6 +1690,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'), .7)
         if getattr(self, 'task_page', None):
             frame.alpha_composite(self.task_page.render().resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS))
+        self.scene_ui.render_tip(frame)
         return frame
 
     def draw_guide(self, frame):

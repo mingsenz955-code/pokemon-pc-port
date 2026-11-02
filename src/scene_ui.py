@@ -18,6 +18,14 @@ class SceneUI:
         self.hidden = False
         self.cached_layer = None
         self.cached_key = None
+        self.tip = None
+        self.ride_buttons = {}
+        def collect(node):
+            if node.get('name', '').startswith('left_right_') and node.get('class') == 'Button':
+                self.ride_buttons[node['name']] = int(node['tag'])
+            for child in node.get('children', []):
+                collect(child)
+        collect(app.cocos_ui.layout('MainUI')['tree'])
         self.groups = {key: {'value': 0.0, 'start': 0.0, 'target': 0.0, 'clock': 0.0}
                        for key in ('left', 'right', 'up')}
 
@@ -31,6 +39,37 @@ class SceneUI:
         value = self.value(key)
         group = self.groups[key]
         group.update(start=value, target=0.0 if group['target'] else 1.0, clock=time.monotonic())
+        self.cached_key = None
+        if key == 'left' and not group['target']:
+            self.hits = {k: v for k, v in self.hits.items() if k not in self.ride_buttons}
+
+    def fold_rides(self):
+        group = self.groups['left']
+        group.update(start=self.value('left'), target=0.0, clock=time.monotonic())
+        # Native leftButtonsFold disables touches immediately, before MoveTo ends.
+        self.hits = {k: v for k, v in self.hits.items() if k not in self.ride_buttons}
+        self.cached_key = None
+
+    def show_tip(self, text):
+        # TipsUiLayer::showTips: delay one second, fade out over one second.
+        self.tip = (str(text), time.monotonic())
+
+    def render_tip(self, frame):
+        if self.tip is None:
+            return
+        text, started = self.tip
+        elapsed = time.monotonic()-started
+        if elapsed >= 2:
+            self.tip = None
+            return
+        ui = self.app.cocos_ui
+        width = min(760, max(100, ui.font('', 30).getlength(text)+34))
+        layer = ui.render('TipsUiNode', frame.size, canvas_size=(800, 480),
+            text={'tip_Text': text}, auto_text=('tip_Text',),
+            positions={'bg_Image': (400, 240), 'tip_Text': (width/2, 29.5)},
+            sizes={'bg_Image': (width, 59)},
+            alphas={'Node': round(255*min(1, 2-elapsed))})
+        frame.alpha_composite(layer)
 
     def shop_exits(self):
         result = {}
@@ -48,7 +87,8 @@ class SceneUI:
         app = self.app
         left, right, up = (self.value(key) for key in ('left', 'right', 'up'))
         shops = self.shop_exits()
-        signature = (left, right, up, self.hidden, app.WIDTH, app.HEIGHT, tuple(shops))
+        owned = tuple(int(key) for key in getattr(getattr(app, 'state', None), 'rides', ()))
+        signature = (left, right, up, self.hidden, app.WIDTH, app.HEIGHT, tuple(shops), owned)
         if self.cached_key == signature and self.cached_layer is not None:
             frame.alpha_composite(self.cached_layer)
             return
@@ -56,6 +96,8 @@ class SceneUI:
         alphas = {}
         for i in range(1, 6):
             positions[f'left_right_{i}_Button'] = [72*i*left, 0]
+            # CSB authors these at opacity zero; native initialization sets 255.
+            alphas[f'left_right_{i}_Button'] = 255
             positions[f'up_left_{i}_Button'] = [-47*i*up, 0]
             alphas[f'up_left_{i}_Button'] = round(255*up)
         for i in range(1, 8):
@@ -97,16 +139,19 @@ class SceneUI:
             # Keep the four-arrow toggle hidden while the right menu is open.
             visible['uiDisappear_Button'] = right == 0
         layer = app.cocos_ui.render('MainUI', (app.WIDTH, app.HEIGHT),
-                                    visible=visible, positions=positions, alphas=alphas)
+                                    visible=visible, positions=positions, alphas=alphas,
+                                    bright={key: ride in owned for key, ride in self.ride_buttons.items()})
         self.hits = {key: rect for key, rect in app.cocos_ui.hits.items()
                      if '/' not in key and key.endswith('_Button')
                      and visible.get(key, True) is not False
-                     and alphas.get(key, 255) > 0}
+                     and alphas.get(key, 255) > 0
+                     and (key not in self.ride_buttons or self.groups['left']['target'] == 1)}
         self.cached_key, self.cached_layer = signature, layer
         frame.alpha_composite(layer)
 
     def click(self, x, y):
-        for key, rect in self.hits.items():
+        # Match painter order: the main riding button covers the folding icons.
+        for key, rect in reversed(tuple(self.hits.items())):
             if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
                 self.action(key)
                 return True
@@ -132,18 +177,25 @@ class SceneUI:
         if key in callbacks:
             callbacks[key]()
             return
-        if key.startswith('left_right_'):
-            index = int(key.split('_')[2])
-            ride = [500001, 500002, 500003, 500004, 500005][index-1]
+        if key in self.ride_buttons:
+            if not self.groups['left']['target']:
+                return
+            self.fold_rides()
+            ride = self.ride_buttons[key]
             mounts = Mounts(app.state)
             if app.state.ride == ride:
                 ride = 0
             try:
+                if ride == 0 and app.map.sprite_blocked(app.x, app.y):
+                    raise ValueError('此处不能收回坐骑')
                 mounts.select(ride, app.map.terrain_at(app.x, app.y), int(app.map.info['mapType']))
             except ValueError as error:
                 row = app.data.tables['Ride'].get(str(ride), {})
-                text = row.get('des', str(error)) if ride not in app.state.rides else str(error)
-                app.open_ui(Request('openui', 'ride-tip', 1, {'parameters': {'uiid': 51, 'text': text}}))
+                if ride and ride not in [int(k) for k in app.state.rides] and not app.state.trial_ride:
+                    app.open_ui(Request('openui', 'ride-tip', 1,
+                        {'parameters': {'uiid': 51, 'text': row.get('des', str(error))}}))
+                else:
+                    self.show_tip(str(error))
             return
         if key.startswith('up_left_'):
             try:

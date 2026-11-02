@@ -14,6 +14,7 @@ from task_page import TaskPage
 from task_guide import TaskGuide
 from guide import Guide
 from scene_ui import SceneUI
+from csb_render import CocosUI
 from daily_tasks import DailyTasks
 from pc_game import NativeGame
 
@@ -110,7 +111,8 @@ class OriginalPages(unittest.TestCase):
         self.assertIsNone(TaskGuide(app).point())
 
     def test_up_menu_uses_current_map_exits_and_bank_type_four(self):
-        app = SimpleNamespace(data=DATA, state=GameState(DATA.tables, 1), map=DATA.load_map(101))
+        app = SimpleNamespace(data=DATA, state=GameState(DATA.tables, 1), map=DATA.load_map(101),
+                              cocos_ui=CocosUI(DATA))
         scene = SceneUI(app)
         self.assertEqual((1, 4, 3, 2, 5), scene.SHOP_TYPES)
         self.assertEqual('10107', scene.shop_exits()[4]['name'])
