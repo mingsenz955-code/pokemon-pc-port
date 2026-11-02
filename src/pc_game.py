@@ -80,7 +80,7 @@ class NativeGame(ActivityUI, Preview):
         super().__init__(root, data)
         self.booting = False
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.32（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.33（全系统还原进行中）')
         top = root.winfo_children()[0]
         for child in top.winfo_children():
             child.destroy()
@@ -381,6 +381,7 @@ class NativeGame(ActivityUI, Preview):
         56: ('FreePetConfirmUI', '放生确认'),
         57: ('PetPropertyUI', '宠物属性'),
         58: ('LuckyDrawPetInfoUI', '抽宠结果'),
+        59: ('GameAboutUI', '关于'),
     }
 
     def open_ui(self, request):
@@ -518,6 +519,8 @@ class NativeGame(ActivityUI, Preview):
             self._pet_property_body(body, info)
         elif uiid == 58:
             self._lucky_pet_body(body, info)
+        elif uiid == 59:
+            self._about_body(body, info)
         elif uiid == 26:
             self._rank_body(body, info)
         elif uiid in (19, 20, 21):
@@ -941,7 +944,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.32')
+        win.title('任务指引 · 原生 0.2.33')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1829,6 +1832,38 @@ class NativeGame(ActivityUI, Preview):
         self.ui_actions['cancel_Button'] = back
         self.ui_actions['close_Button'] = back
 
+    def _about_body(self, body, info):
+        text = self.ui_parameters.get('text') or (
+            '口袋妖怪 · 原生 PC 移植开发版 0.2\n\n'
+            '使用原版 1.20.4 数据和 Cocos 布局，不是安卓模拟器封装。\n'
+            '剧情、战斗、捕捉、养成、道具、任务和界面仍在持续还原；'
+            '缺失机制会停在原位置，不伪造结果。')
+        if getattr(self, 'ui_art_label', None) is not None:
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            fields = {
+                'about_Text_0': lines[0] if lines else '口袋妖怪 · 原生 PC 移植',
+                'about_Text_1': '原版数据 1.20.4 · 原生 Windows 开发版',
+                'about_Text_2': '不是安卓模拟器封装',
+                'about_Text_3': '剧情 / 战斗 / 捕捉 / 养成 / 道具 / 任务持续还原',
+                'about_Text_9': '缺失机制会停在原位置，不伪造结果',
+                'about_Text_42': '15 个数值函数已与原二进制比较 3,000 组',
+                'about_Text_51': '每个可打开界面均使用原版 Cocos 布局',
+                'about_Text_52': '',
+                'about_Text_56': '',
+                'about_Text_57': '',
+                'about_Text_58': '',
+            }
+            layer = self.cocos_ui.render('GameAboutUI', (800, 480), fields)
+            photo = ImageTk.PhotoImage(layer)
+            self.ui_art_label.configure(image=photo)
+            self.ui_art_label.image = photo
+        info.set(text)
+        def close():
+            self.close_ui()
+        tk.Button(body, text='关闭', command=close).pack(pady=6)
+        self.ui_actions['close_Button'] = close
+        self.ui_window.bind('<Escape>', lambda _event: close())
+
     def open_lucky_pet_info(self, uid, back=None):
         self.open_ui(Request('openui', 'lucky-pet', 1, {
             'parameters': {'uiid': 58, 'uid': uid, 'back': back}}))
@@ -2313,7 +2348,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = text
             return
         self.open_ui(Request('openui', 'about-tip', 1, {
-            'parameters': {'uiid': 51, 'text': text}}))
+            'parameters': {'uiid': 59, 'text': text}}))
 
 
 def main():
