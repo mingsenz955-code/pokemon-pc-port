@@ -1,4 +1,4 @@
-## 0.2.58：特殊战斗演出、已见图鉴与可见范围寻宝
+## 0.2.59：特殊战斗演出、已见图鉴与可见范围寻宝
 
 - showSkillEffect1 0x2c6dec 同时载入 path1/path2，分别加入前方z=101和后方z=99，不是我方/敌方文件。showSkillEffect2 0x2c685c 对反向目标旋转180度，300025 噪音特判 winSize/2+(0,21)。showSkillEffect3 0x2c6330 以选中骨骼世界坐标定位；showSkillEffect4 0x2c5cd0 创建六个 MoveBy，方向交替±84，每段0.4秒；showSkillEffect5 0x2c57d0 处理治愈。
 - 目标选择先读取 SkillData vtable+0x34=getEffectpos，骨骼读取+0x40=getBodyPos。SkillEffectData+0x18=getPath2、+0x1c=getPath1，未把 PosType 当成攻击对象。
@@ -7,6 +7,14 @@
 - VillageChestControler::isInScreen 0x2d6574 将 spriteTile.box 转为世界矩形，与 VisibleRect 相交。handleTreasureChestFindEvent 0x2d877c 只对可见隐藏宝箱显现；TreasureChestFindEvent::handle 0x2ee2ec 独立发送消耗事件，因此未找到也扣道具。
 - spriteTile.json 中宝藏30002/30003/30004的box均[-32,-32,64,64]。原查找加载 leida.ExportJson（Animation1/dr=61），Text.json treasureTips3=恭喜您发现宝藏！、treasureTips4=没有发现宝藏！，原提示时间2秒。
 - tools/inspect_binary.py 新增控制流遍历，绕过函数内文字/浮点常量池；支持读取未导出的回调地址。不能把常量池作为指令解读。
+
+## 0.2.58：PR #13 三项复审修复
+
+- 传送：沿用已核对的 `VillageAreaMapUiLayer::handleSelectMapUISelectedEvent` 0x3c56fc 的 `<map>01` 目标语义。通过原 TMX 中无 gid 的出口对象及现有 exit_spawn 计算落点，排除同名 NPC；验证地面碰撞与其他出口触发区。配置异常时只选择最近可行走格；无安全格则在扣道具前拒绝。不将地图几何中心当作原版落点。
+- 抽宠：`Activities.draw_pets` 的免费期限校验未改变；页面不再捕获打开时的资格。在按下回调内使用同一当前秒数决定 free 并传给核心。普通抽宠免费到期后不扣徽章，下一次未到期限仍扣原 Store 配置费用；页面每秒刷新剩余时间。
+- 奖励：进入奖励页前保存活动页的滚轮处理函数，确认/关闭先恢复，再调用原返回回调。适用于原页重新绘制和仅 publish 两种返回方式，防止旧奖励页的 wheel 再次打开奖励。
+
+新增5项隔离回归：遍历所有传送道具目的地的原出口/碰撞、真实消费与落点、无落点不扣费、页面打开期间免费到期及随后付费、登录领奖返回后滚动不会重新弹奖。导航回归隔离后续剧情触发，不声称完整剧情通关。
 
 ## 0.2.57：背包交互、宠物详情和奖励星光
 

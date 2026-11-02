@@ -1,8 +1,14 @@
-## 2026-11-02 / 0.2.58 接续
+## 2026-11-02 / 0.2.59 接续
 
-分支 codex/restore-special-battle-effects，基于 0.2.57/7bb529c，需先合入 PR13。新增六类特效计划与多命中时间线、已见图鉴保存、可见区域寻宝与原雷达。优先跑 check_special_battle_effects.py、check_seen_encyclopedia.py、check_treasure_search.py，以及 battle/原页面/道具/存档回归。详见 VERIFICATION_0.2.58.md。
+分支 codex/restore-special-battle-effects，基于 origin/main/5be35b5，包含 PR13 及 9f11787 review 修复。新增六类特效计划与多命中时间线、已见图鉴保存、可见区域寻宝与原雷达。优先跑 check_special_battle_effects.py、check_seen_encyclopedia.py、check_treasure_search.py，以及 battle/原页面/道具/存档回归。详见 VERIFICATION_0.2.59.md。
 
 不要将 path2 当成敌方特效；目标读取 Skill.effectpos。寻找宝藏必须传入当前地图和世界坐标可见矩形；搜索失败仍会消耗道具。新 seen_species 存档字段的历史缺失只能从捕获记录恢复。完整剩余项仍在 RESTORATION_REMAINING.md 顶部。
+
+## PR #13 复审修复 / 0.2.58
+
+继续使用本 PR 的全部 0.2.57 页面改动，新增修复不得回退：传送先调用 `_transport_arrival` 验证原 `<map>01` 出口落点再扣道具；抽宠在点击时重查资格并把同一 `now` 传给 Activities；奖励弹窗通过 `_page_wheel` 保存/恢复实际滚轮回调。所有新增回归在 tools/check_pr13_review.py，使用临时存档，不能拿玩家真实进度做测试。
+
+---
 
 ## 2026-11-02 / 0.2.57 接续
 
