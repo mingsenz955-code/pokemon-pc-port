@@ -25,6 +25,9 @@ try:
     app.bag_ui()
     assert app.ui_open
     assert app.ui_render_args['name'] == 'BagUI'
+    assert app.ui_base_layer.size == (800, 480)
+    assert 'bag_row_0' in app.ui_actions
+    assert 'item_ListView' in app.ui_rects
     assert 'use_Button' in app.ui_actions
     assert 'heCheng_Button' in app.ui_actions
     for index in range(1, 6):

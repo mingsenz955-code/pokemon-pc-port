@@ -1,14 +1,22 @@
 # 口袋妖怪单机版 · 原生 Windows PC 移植
 
-[![状态](https://img.shields.io/badge/status-0.2.50%20development-orange)](#当前完成度)
+[![状态](https://img.shields.io/badge/status-0.2.51%20development-orange)](#当前完成度)
 [![平台](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)](#从源码运行)
 [![Python](https://img.shields.io/badge/python-3.12-3776AB)](https://www.python.org/)
 
 使用《口袋妖怪单机版》1.20.4 原版数据、地图、Cocos UI 与 Spine 资源制作的**原生 Windows 桌面移植**。不是安卓模拟器封装，不依赖网页或网络服务。
 
-> **当前是 0.2.50 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
+> **当前是 0.2.51 开发版，不是完整 1∶1 成品。** 序章、初始宠物、战斗与捕捉、主线 1–6 有受控测试；不代表全程步行通关。大量系统和页面、原版动画及转场仍未完成。遇到未实现的机制会明确停下，不伪造通过。
 
 ### 当前开发改动
+
+0.2.51 把背包和商店从宿主 Tk 控件改为原版页面：背包在 `BagUI` 的
+`item_ListView` 内逐行合成 `BagListItemUI`，显示原版页签、道具图标、名称、
+数量和右侧说明，支持滚轮翻行；道具分类改为道具/蛋/卷轴/重要/碎片五页，
+精灵球等捕捉道具回到“道具”页。商店在 `ShopUI` 的 `goods_ListView` 内按
+原版 `GoodsItemNode` 排成 4×2 商品格，点击商品进入 `ShopGoodsUI` 详情。
+主界面公告、设置、蓝牙、礼包、排行榜等入口也改为打开对应原版布局，不再
+弹“功能未完成”。这些页面仍有未接入的深层玩法；0.2.51 不是完整还原。
 
 0.2.50 修复野外遇敌：每次进入地图重新按 `enemyAppearInterval` 设置步数阈值，不再把阈值清成 0。
 胜利结算改用原版 `WorldMonsterBattleResultUI` 的胜利牌/名称/伤害值/经验/掉落和确认按钮，

@@ -109,7 +109,18 @@ class SceneUI:
                      'right_left_1_Button': app.bag_ui,
                      'right_left_2_Button': app.pets_ui,
                      'right_left_3_Button': app.illustrated_ui,
-                     'right_left_4_Button': app.achievements_ui}
+                     'right_left_4_Button': app.achievements_ui,
+                     'right_left_5_Button': lambda: app.open_ui(Request(
+                         'openui', 'scene-rank', 0, {'parameters': {'uiid': 26}})),
+                     'right_left_6_Button': lambda: app.open_ui(Request(
+                         'openui', 'scene-gift', 0, {'parameters': {'uiid': 27}})),
+                     'right_left_7_Button': lambda: app.open_ui(Request(
+                         'openui', 'scene-bluetooth', 0, {'parameters': {'uiid': 66}})),
+                     'right_up_1_Button': lambda: app.open_ui(Request(
+                         'openui', 'scene-system', 0, {'parameters': {'uiid': 65}})),
+                     'community_Button': lambda: app.open_ui(Request(
+                         'openui', 'scene-notice', 0, {'parameters': {'uiid': 64}})),
+                     'ad_Button': app.recharge_ui}
         if key in callbacks:
             callbacks[key]()
             return

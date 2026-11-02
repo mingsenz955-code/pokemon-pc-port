@@ -96,7 +96,7 @@ class NativeGame(ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.50（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.51（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -451,6 +451,10 @@ class NativeGame(ActivityUI, Preview):
         61: ('EvolutionConditionUI', '进化条件'),
         62: ('HatchCheckUI', '孵化检查'),
         63: ('RechargeFreeUI', '充值奖励'),
+        64: ('PublicNoticeUI', '公告'),
+        65: ('SystemUI', '系统设置'),
+        66: ('BluetoothListUI', '蓝牙'),
+        67: ('AsideUI', '侧边栏'),
     }
 
     def open_ui(self, request):
@@ -535,17 +539,49 @@ class NativeGame(ActivityUI, Preview):
             info.set(f'保存当前进度到本机用户目录：\n{self.save_path}')
             def save_now():
                 if self.save():
-                    info.set(f'进度已保存。\n{self.save_path}')
                     self.close_ui('yes')
                 else:
                     info.set(self.event_issue or '保存失败。')
+                    if self.ui_window and self.ui_window.winfo_exists():
+                        self.ui_window.title(self.event_issue or '保存失败')
             self.ui_actions['confirm_Button'] = save_now
             self.ui_actions['cancel_Button'] = lambda: self.close_ui('no')
+            # SaveConfirmUI is a self-contained 800x480 original page; do not
+            # append a host Tk form below it.
+            body.pack_forget()
         elif uiid == 63:
             info.set('这里是原版充值奖励入口。当前单机移植不接入真实支付，'
                      '不会伪造充值到账或扣费；可关闭本页继续游戏。')
             self.ui_actions['confirm_Button'] = lambda: info.set(
                 '单机版没有计费点，不能伪造免费领取；请关闭本页。')
+        elif uiid == 64:
+            info.set('原版公告页。单机版没有联网公告服务，'
+                     '这里不伪造运营公告；关闭后可继续游戏。')
+            self.ui_actions['confirm_Button'] = self.close_ui
+            self.ui_actions['close_Button'] = self.close_ui
+            body.pack_forget()
+        elif uiid == 65:
+            info.set('原版系统设置页。音乐/音效开关尚未接入宿主音频，'
+                     '不会伪装成已生效。')
+            self.ui_actions['close_Button'] = self.close_ui
+            self.ui_actions['about_Button'] = self.about
+            for name in ('moreGame_Button', 'control_click_Button',
+                         'control_direct_Button', 'music_open_Button',
+                         'music_close_Button', 'effect_open_Button',
+                         'effect_close_Button'):
+                self.ui_actions[name] = lambda: info.set(
+                    '该设置项尚未接入，当前不会修改游戏状态。')
+            body.pack_forget()
+        elif uiid == 66:
+            info.set('原版蓝牙页。Windows 单机版不使用蓝牙联机，'
+                     '这里不伪造附近玩家列表。')
+            self.ui_actions['close_Button'] = self.close_ui
+            body.pack_forget()
+        elif uiid == 67:
+            info.set('原版侧边栏。这里没有可用的联网侧边功能，'
+                     '关闭后可继续游戏。')
+            self.ui_actions['close_Button'] = self.close_ui
+            body.pack_forget()
         elif uiid == 4:
             self._bank_body(body, info)
         elif uiid == 6:
@@ -764,44 +800,76 @@ class NativeGame(ActivityUI, Preview):
             talks[clerk] = int(talks.get(clerk, 0))+1
             self.state.activities['shop_talks'] = talks
         goods = []
-        for key, row in sorted(self.data.tables[table].items(), key=lambda pair: int(pair[0])):
-            if str(row.get('repeat', '1')) == '0' and self.state.shop_purchases.get(f'{table}:{key}'):
+        for goods_key, row in sorted(self.data.tables[table].items(), key=lambda pair: int(pair[0])):
+            if str(row.get('repeat', '1')) == '0' and self.state.shop_purchases.get(f'{table}:{goods_key}'):
                 continue
-            goods.append((str(key), row))
-        info.set(f'商店共 {len(goods)} 件商品 · 持有金币 {self.state.count("700001")} · 双击商品查看原版详情')
-        frame = tk.Frame(self.ui_window, bg='#202b30')
-        rect = self.ui_hits.get('goods_ListView') or self.ui_rects.get('goods_ListView')
-        if rect:
-            frame.place(x=rect[0], y=rect[1], width=max(220, rect[2]-rect[0]),
-                        height=max(120, rect[3]-rect[1]))
-            frame.lift()
-        else:
-            frame = tk.Frame(body, bg='#202b30')
-            frame.pack(fill='both', expand=True)
-        box = tk.Listbox(frame, width=58, height=6, font=('Microsoft YaHei UI', 10))
-        box.pack(side='left', fill='both', expand=True)
-        for key, row in goods:
-            currency = self.data.tables['Money'].get(str(row['moneyType']), {}).get('name', row['moneyType'])
-            box.insert('end', f'{row["name"]}  {row["price"]} {currency}  — {row.get("des", "")}')
-        def detail(event=None):
-            if not box.curselection():
+            goods.append((str(goods_key), row))
+        current = [0]
+        info.set(f'商店共 {len(goods)} 件商品 · 持有金币 {self.state.count("700001")}')
+        body.pack_forget()
+
+        def choose(index):
+            if not 0 <= index < len(goods):
                 return
-            key, row = goods[box.curselection()[0]]
+            current[0] = index
+            key, row = goods[index]
             self.open_goods_detail(uiid, table, key, row)
-        def buy():
-            if not box.curselection():
+
+        def paint():
+            layer = self.cocos_ui.render('ShopUI', (800, 480), {'info_Text': info.get()})
+            base_hits = dict(self.cocos_ui.hits)
+            base_buttons = dict(self.cocos_ui.buttons)
+            base_rects = dict(self.cocos_ui.rects)
+            base_text = dict(self.cocos_ui.button_text)
+            rect = base_rects.get('goods_ListView') or base_hits.get('goods_ListView')
+            if rect:
+                cell_w = (rect[2]-rect[0])/4
+                cell_h = (rect[3]-rect[1])/2
+                for index, (key, row) in enumerate(goods[:8]):
+                    column, line = index % 4, index // 4
+                    card = self.render_component('GoodsItemNode', (126, 126),
+                        {'name_Text': row['name'],
+                         'count_BitmapFontLabel': f'x{row.get("count", 1)}'},
+                        resources={'icon_Image': f'ItemIcon/{row.get("texture", "")}'},
+                        positions={'root_Panel': [63, 63]})
+                    x = rect[0]+column*cell_w+(cell_w-126)/2
+                    y = rect[1]+line*cell_h+(cell_h-126)/2
+                    layer.alpha_composite(card, (round(x), round(y)))
+                    self.ui_hits[f'shop_goods_{index}'] = (
+                        x, y, x+126, y+126)
+                    self.ui_actions[f'shop_goods_{index}'] = (
+                        lambda value=index: choose(value))
+            self.ui_base_layer = layer
+            self.ui_hits.update(base_hits)
+            self.ui_buttons = base_buttons
+            self.ui_rects = base_rects
+            self.ui_button_text = base_text
+            self.ui_actions['shop_buy'] = buy
+            self.ui_actions['shop_detail'] = detail
+            self.ui_actions['close_Button'] = self.close_ui
+            if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                photo = ImageTk.PhotoImage(layer)
+                self.ui_art_label.configure(image=photo)
+                self.ui_art_label.image = photo
+
+        def detail():
+            if not goods:
                 return
-            key, row = goods[box.curselection()[0]]
+            key, row = goods[current[0]]
+            self.open_goods_detail(uiid, table, key, row)
+
+        def buy():
+            if not goods:
+                return
+            key, row = goods[current[0]]
             try:
                 self.state.buy(table, key)
                 info.set(f'购买 {row["name"]} 成功 · 剩余 {self.state.count(row["moneyType"])}')
             except (ValueError, KeyError, NotImplementedError) as error:
                 info.set(str(error))
-        box.bind('<Double-Button-1>', detail)
-        tk.Button(frame, text='购买', command=buy).pack(side='left', padx=8, anchor='n')
-        tk.Button(frame, text='详情', command=detail).pack(side='left', padx=8, anchor='n')
-        self.ui_actions['shop_buy'] = buy
-        self.ui_actions['shop_detail'] = detail
+            paint()
+
+        paint()
 
     def open_goods_detail(self, shop_uiid, table, key, row):
         self.open_ui(Request('openui', 'shop-goods', 1, {
@@ -813,14 +881,17 @@ class NativeGame(ActivityUI, Preview):
         self.open_ui(Request('openui', 'shop-return', 1, {
             'parameters': {'uiid': shop_uiid}}))
 
-    def render_component(self, name, size=(800, 480), text=None):
+    def render_component(self, name, size=(800, 480), text=None, resources=None,
+                         positions=None):
         """Render a prefab layout on a full canvas instead of its tiny node size."""
         layout = self.cocos_ui.layout(name)
         root = layout['tree']
         old = root.get('size')
         root['size'] = list(size)
         try:
-            return self.cocos_ui.render(name, size, text or {})
+            return self.cocos_ui.render(name, size, text or {},
+                                        resources=resources or {},
+                                        positions=positions or {})
         finally:
             if old is None:
                 root.pop('size', None)
@@ -868,6 +939,7 @@ class NativeGame(ActivityUI, Preview):
                                'shop_uiid': shop_uiid}}))
         self.ui_actions['buy_Button'] = buy
         self.ui_actions['close_Button'] = self.close_ui
+        body.pack_forget()
 
     def _goods_confirm_body(self, body, info):
         parameters = self.ui_parameters
@@ -1057,7 +1129,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.50')
+        win.title('任务指引 · 原生 0.2.51')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2782,11 +2854,12 @@ class NativeGame(ActivityUI, Preview):
 
     def _bag_body(self, body, info):
         """Original BagUI: five tabs, item list, use and fragment synthesis."""
-        tabs = {1: ('道具', {1, 3, 4, 6}), 2: ('蛋', {5}), 3: ('卷轴', {2}),
-                4: ('重要', {7}), 5: ('碎片', {8})}
+        tabs = {1: ('道具', {1, 2, 3}), 2: ('蛋', {5}), 3: ('卷轴', {6}),
+                4: ('重要', {4, 7}), 5: ('碎片', {8})}
         state, tables = self.state, self.data.tables
         current = [1]
         selected = [None]
+        scroll = [0]
         targets = list(state.pets)
         target_name = tk.StringVar()
         target_box = ttk.Combobox(body, textvariable=target_name, state='readonly',
@@ -2815,8 +2888,40 @@ class NativeGame(ActivityUI, Preview):
         bar.pack(side='right', fill='y')
         rows = []
 
+        def paint():
+            nonlocal rows
+            # BagUI is an 800x480 original page.  Keep its art as the whole
+            # page and draw original BagListItemUI rows in item_ListView;
+            # never place a host Listbox over the original tabs/info panel.
+            layer = self.cocos_ui.render('BagUI', (800, 480),
+                                         {'info_Text': info.get()})
+            self.ui_base_layer = layer
+            self.ui_hits = dict(self.cocos_ui.hits)
+            self.ui_rects = dict(self.cocos_ui.rects)
+            self.ui_buttons = dict(self.cocos_ui.buttons)
+            self.ui_button_text = dict(self.cocos_ui.button_text)
+            if rect:
+                for index, (item_id, row, count) in enumerate(
+                        rows[scroll[0]:scroll[0]+3]):
+                    item_index = scroll[0]+index
+                    row_layer = self.cocos_ui.render(
+                        'BagListItemUI', (300, 89),
+                        {'itemName_Text': row['name'],
+                         'itemCount_BitmapFontLabel': f'X{count}'},
+                        resources={'icon_Image': f'ItemIcon/{row.get("texture", "")}'},
+                        visible={'selected_Image': bool(
+                            selected[0] and selected[0][0] == item_id)})
+                    layer.alpha_composite(row_layer, (round(rect[0]), round(rect[1]+index*89)))
+                    self.ui_hits[f'bag_row_{index}'] = (
+                        rect[0], rect[1]+index*89, rect[0]+300, rect[1]+(index+1)*89)
+            if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
+                photo = ImageTk.PhotoImage(layer)
+                self.ui_art_label.configure(image=photo)
+                self.ui_art_label.image = photo
+
         def refresh(_=None):
             rows.clear()
+            scroll[0] = 0
             box.delete(0, 'end')
             allowed = tabs[current[0]][1]
             for item_id, count in state.inventory.items():
@@ -2831,6 +2936,7 @@ class NativeGame(ActivityUI, Preview):
             if rows:
                 box.selection_set(0)
                 show()
+            paint()
 
         def show(_=None):
             if not rows or not box.curselection():
@@ -2840,6 +2946,7 @@ class NativeGame(ActivityUI, Preview):
             debris = tables.get('DebrisItem', {}).get(item_id)
             synth = (f' · 碎片合成需要 {debris["needCount"]} 个' if debris else '')
             info.set(f'{row["name"]} × {count}{synth}\n{row.get("des", "")}')
+            paint()
 
         def use():
             entry = selected[0]
@@ -2857,6 +2964,7 @@ class NativeGame(ActivityUI, Preview):
                 refresh()
             except ValueError as error:
                 info.set(str(error))
+                paint()
 
         def synthesize():
             entry = selected[0]
@@ -2886,18 +2994,38 @@ class NativeGame(ActivityUI, Preview):
             selected[0] = None
             refresh()
 
+        def choose_row(index):
+            if not 0 <= index < len(rows):
+                return
+            box.selection_clear(0, 'end')
+            box.selection_set(index)
+            show()
+
+        def wheel(event):
+            step = -1 if event.delta > 0 else 1
+            top = max(0, len(rows)-3)
+            scroll[0] = min(top, max(0, scroll[0]+step))
+            paint()
+
         for index in range(1, 6):
             self.ui_actions[f'tag_{index}_Button'] = (
                 lambda value=index: tab(value))
+        for index in range(3):
+            self.ui_actions[f'bag_row_{index}'] = (
+                lambda value=index: choose_row(scroll[0]+value))
         self.ui_actions['use_Button'] = use
         self.ui_actions['heCheng_Button'] = synthesize
         self.ui_actions['bag_use'] = use
         self.ui_actions['bag_synthesize'] = synthesize
         self.ui_actions['close_Button'] = self.close_ui
         box.bind('<<ListboxSelect>>', show)
+        if hasattr(self, 'ui_art_label'):
+            self.ui_art_label.bind('<MouseWheel>', wheel)
         refresh()
-        tk.Button(body, text='使用', command=use).pack(side='left', padx=6)
-        tk.Button(body, text='碎片合成', command=synthesize).pack(side='left', padx=6)
+        # The original BagUI already contains the tabs, list, info panel and
+        # action buttons.  Host widgets stay only as hidden state holders.
+        body.pack_forget()
+        list_frame.place_forget()
 
     def tasks_ui(self):
         TaskProgress(self.state).update()

@@ -26,6 +26,9 @@ try:
     key, row = sorted(data.tables['Shop'].items(), key=lambda pair: int(pair[0]))[0]
     app.open_ui(Request('openui', 'shop', 1, {'parameters': {'uiid': 1}}))
     assert app.ui_render_args['name'] == 'ShopUI'
+    assert app.ui_base_layer.size == (800, 480)
+    assert 'shop_goods_0' in app.ui_actions
+    assert 'goods_ListView' in app.ui_rects
     app.open_goods_detail(1, 'Shop', key, row)
     assert app.ui_render_args['name'] == 'ShopGoodsUI'
     assert 'buy_Button' in app.ui_actions

@@ -1,5 +1,37 @@
 # 1.20.4 规则核对记录
 
+## 0.2.51：背包、商店与主界面入口
+
+用户反馈“商店不够还原、背包也并没有”。实际截取旧实现的 Tk 页面后确认：
+背包把 `tk.Listbox` 和下拉框直接覆盖在 `BagUI` 的 800×480 原图上，窗口被
+撑到 804×613，列表与说明互相遮挡；商店同样用 `tk.Listbox` 盖住
+`goods_ListView`。因此不是“原版页面”，而是宿主控件叠图。
+
+现在：
+
+- 背包只保留原版 `BagUI` 整页。`item_ListView` 的 300×319 区域内逐行合成
+  `BagListItemUI`（300×89），行内使用原版 `icon_Image`、`itemName_Text`、
+  `itemCount_BitmapFontLabel`，选中行显示 `selected_Image`；右侧
+  `info_Text` 显示名称、数量和原版 `des`。滚动条区域支持鼠标滚轮翻行。
+- 五页签按原物品分类：道具 `type 1/2/3`（含精灵球、香水、卷轴、食物和药品）、
+  蛋 `5`、卷轴 `6`、重要 `4/7`、碎片 `8`。0.2.50 把 `type 2` 放进“卷轴”，
+  导致精灵球不在道具页；已纠正。
+- 商店只保留原版 `ShopUI`。`goods_ListView` 内按 `GoodsItemNode` 4 列×2 行
+  合成商品格；格内使用原版图标底、物品图标、`name_Text` 和 `count_BitmapFontLabel`。
+  点击商品格打开原版 `ShopGoodsUI`，再走 `GoodsBuyConfirmUI` 的真实购买路径。
+- 主界面 `community_Button`、`right_up_1_Button`、`right_left_6/7_Button`、
+  `ad_Button` 不再弹“功能未完成”，分别打开原版
+  `PublicNoticeUI`、`SystemUI`、`GiftBagSaleUI`、`BluetoothListUI`
+  和 `RechargeFreeUI`。这些页面中未接入的联网/音频/计费功能仍会明确说明，
+  不伪造奖励。
+
+`tools/check_bag_ui.py`、`tools/check_shop_goods_ui.py`、
+`tools/check_main_entries.py` 和 `tools/check_ui_buttons.py` 已重跑；
+`check_ui_buttons.py` 覆盖 63 个原版布局、162 个原版按钮、47 个关闭按钮，
+未绑定按钮为 0。视觉截图保存在 `outputs/verification/bag-ui-current.png`
+和 `shop-ui-current.png`。这仍不是背包/商店全部深层规则（排序、分页、
+宠物选择、限购刷新等）的完成证明。
+
 ## 0.2.50：野外遇敌、原版胜利页与教程按钮
 
 用户反馈三点，分别核对到三个独立缺陷：
