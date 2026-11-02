@@ -513,6 +513,22 @@ class Guide:
                 if str(a[1]).isdigit() and 20000 <= int(a[1]) <= 30001
                 and not str(a[0]).startswith(('temp:', 'fx:'))}
 
+    def other_exit_cells(self, selected=''):
+        """A route must not cross another portal on its way to the goal."""
+        world = self.app.map
+        result = set()
+        for obj in world.objects:
+            if (obj.get('group') != 'spriteLayer' or 'toExit' not in obj.get('props', {})
+                    or str(obj.get('name')) == str(selected)):
+                continue
+            x, y = float(obj['x']), float(obj['y'])
+            right, bottom = x+float(obj.get('width', world.tw)), y+float(obj.get('height', world.th))
+            for tx in range(max(0, int(x//world.tw)), min(world.width, int(right//world.tw)+1)):
+                for ty in range(max(0, int(y//world.th)), min(world.height, int(bottom//world.th)+1)):
+                    if x <= (tx+.5)*world.tw < right and y <= (ty+.5)*world.th < bottom:
+                        result.add((tx, ty))
+        return result
+
     def task_stamp(self):
         state = self.app.state
         return (state.main_task, state.main_state, tuple(sorted(state.branch_states.items())),
@@ -574,7 +590,7 @@ class Guide:
         def inside(px, py):
             return x <= px < x+w and y <= py < y+h
         path = walk_path(self.app.map, (self.app.x, self.app.y), (x+w/2, y+h/2), inside,
-                         mounts=Mounts(self.app.state), occupied=self.occupied_cells())
+                         mounts=Mounts(self.app.state), occupied=self.occupied_cells() | self.other_exit_cells(edge['from_exit']))
         if not path and inside(self.app.x, self.app.y):
             return []
         if not path:
@@ -603,7 +619,7 @@ class Guide:
                             and float(obj['y']) <= py < float(obj['y'])+float(obj.get('height', 64)))
             return (px-target.x)**2 + (py-target.y)**2 <= target.radius**2
         path = walk_path(self.app.map, (self.app.x, self.app.y), (target.x, target.y), reached,
-                         mounts=Mounts(self.app.state), occupied=self.occupied_cells())
+                         mounts=Mounts(self.app.state), occupied=self.occupied_cells() | self.other_exit_cells())
         if not path and reached(self.app.x, self.app.y):
             return []
         if not path:

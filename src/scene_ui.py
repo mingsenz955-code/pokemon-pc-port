@@ -98,11 +98,12 @@ class SceneUI:
 
     def action(self, key):
         app = self.app
-        toggles = {'mainLeft_Button': 'left', 'mainRight_Button': 'right', 'mainUp_Button': 'up'}
+        toggles = {'mainLeft_Button': 'left', 'mainRight_Button': 'right'}
         if key in toggles:
             self.toggle(toggles[key])
             return
         callbacks = {'save_Button': app.save, 'task_Button': app.tasks_ui,
+                     'mainUp_Button': app.guide_toggle,
                      'draw_Button': app.lottery_ui, 'right_left_1_Button': app.bag_ui,
                      'right_left_2_Button': app.pets_ui,
                      'right_left_3_Button': app.illustrated_ui,

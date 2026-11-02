@@ -104,9 +104,8 @@ class OriginalPages(unittest.TestCase):
         guide.point = lambda: (100, 0)
         self.assertEqual((100, -28, 90), guide.pose())
 
-    def test_original_main_guide_has_no_late_task_arrow(self):
-        app = SimpleNamespace(state=GameState(DATA.tables, 1))
-        app.state.main_task = 18
+    def test_task_arrow_is_hidden_without_a_navigation_request(self):
+        app = SimpleNamespace(guide=SimpleNamespace(active=False, click_mode=False, waypoints=[]))
         self.assertIsNone(TaskGuide(app).point())
 
     def test_up_menu_uses_current_map_exits_and_bank_type_four(self):
@@ -114,8 +113,7 @@ class OriginalPages(unittest.TestCase):
         scene = SceneUI(app)
         self.assertEqual((1, 4, 3, 2, 5), scene.SHOP_TYPES)
         self.assertEqual('10107', scene.shop_exits()[4]['name'])
-        scene.action('mainUp_Button')
-        self.assertEqual(1, scene.groups['up']['target'])
+        self.assertEqual(0, scene.groups['up']['target'])
 
     def test_battle_pet_selection_uses_original_petselect_layout(self):
         ui, battle = spine_checks.SpineChecks().make_ui()

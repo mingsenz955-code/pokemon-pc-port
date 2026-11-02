@@ -96,7 +96,7 @@ class NativeGame(ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.47（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.48（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1021,11 +1021,13 @@ class NativeGame(ActivityUI, Preview):
         TaskProgress(self.state).update(kind, int(value))
 
     def guide_toggle(self):
-        if self.battle:
+        if (self.battle or self.runtime.running or self.ui_open or self.display_request
+                or self.pending_wait):
             return
         if self.guide.active:
             self.guide.stop('已停止自动指引。')
         else:
+            TaskProgress(self.state).update()
             target = self.guide.refresh()
             if target:
                 self.keys.clear()
@@ -1045,7 +1047,7 @@ class NativeGame(ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.47')
+        win.title('任务指引 · 原生 0.2.48')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1724,7 +1726,8 @@ class NativeGame(ActivityUI, Preview):
         self.state.presentation = {
             'face': self.face, 'player_visible': self.player_visible,
             'player_visibility_map': self.map_id,
-            'sprite_collision_version': 1,
+            'sprite_collision_version': 2,
+            'obstacle_coordinates_version': 2,
             'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
             'camera_action': self.camera_action,
             'story_motion_actions': self.story_motion.actions if getattr(self, 'story_motion', None) else [],
@@ -1750,6 +1753,7 @@ class NativeGame(ActivityUI, Preview):
             return False
         try:
             state = GameState.load(self.data.tables, self.save_path)
+            self.repair_legacy_obstacle_coordinates(state)
             runtime = EventRuntime(self.data, state)
             runtime.restore(state.pending_runtime)
             self.close_transient_ui()
@@ -1784,6 +1788,27 @@ class NativeGame(ActivityUI, Preview):
         except (ValueError, KeyError, OSError) as error:
             messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
             return False
+
+    def repair_legacy_obstacle_coordinates(self, state):
+        if int(state.presentation.get('obstacle_coordinates_version', 0)) >= 2:
+            return
+        migrated = []
+        for entry in state.removed_obstacles:
+            world = self.data.load_map(entry[0])
+            for obj in world.objects:
+                if obj.get('group') != 'spriteTileLayer' or not obj.get('gid'):
+                    continue
+                kind = int(world.tile_properties(int(obj['gid'])).get('obsType', 0))
+                old = (int(float(obj['x'])//world.tw), int(float(obj['y'])//world.th))
+                if kind and old == (int(entry[1]), int(entry[2])) and (len(entry) < 4 or kind == int(entry[3])):
+                    before = list(entry)
+                    entry[2] = int((float(obj['y'])-world.th/2)//world.th)
+                    if before != entry:
+                        migrated.append({'before': before, 'after': list(entry)})
+                    break
+        state.presentation['obstacle_coordinates_version'] = 2
+        if migrated:
+            state.audit.append({'repair': 'legacy-obstacle-half-tile-origin', 'entries': migrated})
 
     def repair_starter_save_position(self):
         # Observed old save: the selected-starter plot in the 21x20 lab has
@@ -1837,7 +1862,7 @@ class NativeGame(ActivityUI, Preview):
                                  'map': self.map_id, 'event': self.runtime.file})
 
     def repair_legacy_sprite_collision(self):
-        if (self.state.presentation.get('sprite_collision_version') or self.runtime.running
+        if (int(self.state.presentation.get('sprite_collision_version', 0)) >= 2 or self.runtime.running
                 or not hasattr(self.map, 'sprite_blocked')):
             return
         mounts = Mounts(self.state)
