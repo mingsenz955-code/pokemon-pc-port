@@ -1,3 +1,11 @@
+## 2026-11-02 / 0.2.60 试玩阻塞修复
+
+分支 codex/fix-playtest-blockers，接续 PR14/fca759e。用户五张截图暴露：选宠悬停恢复空模板、误用世界Boss结算卡、空指向教程、捕捉成功读取Pet.name后刷新中断、敌方随机发呆及低帧率。当前修复/边界见 VERIFICATION_0.2.60.md。
+
+不要再把普通战斗套入 WorldMonsterBattleResultUI；当前资源包缺 BattleResultInfoUI.csb，完整原版经验/升级/掉落串联仍待补，不能用排行榜代替。目标帧率60不等于稳定60；姿态以30Hz采样但秒数不变。旧剧情按钮若不可见或已换功能必须跳过，正常剧情不可批量删除。
+
+优先回归 check_playtest_blockers.py，必须覆盖投球成功后的实际结果绘制、宿主tick和返回，不能只断言扣道具。旧包/玩家存档保留，不强杀玩家正在运行的游戏。
+
 ## 2026-11-02 / 0.2.59 接续
 
 分支 codex/restore-special-battle-effects，基于 origin/main/5be35b5，包含 PR13 及 9f11787 review 修复。新增六类特效计划与多命中时间线、已见图鉴保存、可见区域寻宝与原雷达。优先跑 check_special_battle_effects.py、check_seen_encyclopedia.py、check_treasure_search.py，以及 battle/原页面/道具/存档回归。详见 VERIFICATION_0.2.59.md。

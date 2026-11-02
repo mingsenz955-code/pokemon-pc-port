@@ -159,11 +159,11 @@ def draw_order(slots, frames, seconds):
 
 
 @lru_cache(maxsize=96)
-def render_pose(path_string, animation='', frame=0, loop=True, limit=550):
+def render_pose(path_string, animation='', frame=0, loop=True, limit=550, fps=12):
     path = Path(path_string)
     data = skeleton(path_string)
     clip = data.get('animations', {}).get(animation, {})
-    seconds, duration = float(frame)/12, animation_duration(clip)
+    seconds, duration = float(frame)/fps, animation_duration(clip)
     if loop and duration > 0:
         seconds %= duration
     else:
