@@ -23,7 +23,7 @@ class TaskProgress:
             return self.state.count(identifier)
         if kind == 1:
             pets = [p for p in self.state.pets+self.state.bank
-                    if (identifier == -1 or p.species == str(identifier))
+                    if not p.trial_id and (identifier == -1 or p.species == str(identifier))
                     and (level == -1 or p.level == level)]
             return len({p.species for p in pets}) if unique == 1 else len(pets)
         raise ValueError(f'Original collection kind {kind} is not implemented')

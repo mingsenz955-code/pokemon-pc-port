@@ -172,7 +172,7 @@ class BattlePet:
 
     @property
     def alive(self):
-        return self.hp > 0
+        return self.hp > 0 and self.pet.trial_remaining != 0
 
     @property
     def name(self):

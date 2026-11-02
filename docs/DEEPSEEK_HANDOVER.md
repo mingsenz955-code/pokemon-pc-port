@@ -1,3 +1,7 @@
+## 0.2.63 接续
+
+分支 codex/fix-global-labels-capture-trial 接续 PR18。先读 VERIFICATION_0.2.63.md。不要恢复固定 Text 样本宽度锚点、背包标签旧层级或捕获后的额外结算循环；试用必须使用事件 par1 的 TrialPet。新增 check_global_layout_lottery_capture.py 十项。
+
 ## 0.2.62 接续
 
 分支 codex/restore-evolution-login-treasure 基于 PR16 并合入 origin/main/89ff3af 的骑宠修复。先读 VERIFICATION_0.2.62.md。不要恢复半透明矩形 bg_Panel；不要用爱心样图代替放大镜/钥匙；成就星级不等于品质。登录页面动画走 set_layer 单向上传，普通模态页打开时暂停背后重复地图绘制。check_restore_followups.py 七项为本轮入口。
