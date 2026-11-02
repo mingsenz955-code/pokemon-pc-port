@@ -7,11 +7,13 @@ No screenshot backgrounds or hand-drawn substitutes for the recovered cards.
 from __future__ import annotations
 
 import math
+import time
 from PIL import Image, ImageTk, ImageDraw
 from event_runtime import Request
 from game_state import numbers
 from achievements import Achievements
 from continuous_login import ContinuousLogin
+from pet_pages import PetPages
 
 
 def intersect(a, b):
@@ -24,6 +26,7 @@ class Page:
     def __init__(self, app, name, **args):
         self.app = app
         self.specs = []
+        self.particles = []
         self.hits, self.buttons, self.rects, self.actions = {}, {}, {}, {}
         self.layer = self.add(name, (0, 0), **args)
 
@@ -32,6 +35,8 @@ class Page:
         if size is None:
             size = tuple(max(1, round(v)) for v in ui.layout(name)['tree']['size'])
         art = ui.render(name, size, **args)
+        for resource, (x, y), scale, alpha in getattr(ui, 'particles', []):
+            self.particles.append((resource, (x+at[0], y+at[1]), scale, alpha, clip))
         for source, destination in ((ui.rects, self.rects), (ui.hits, self.hits),
                                     (ui.buttons, self.buttons)):
             for key, rect in source.items():
@@ -99,9 +104,190 @@ class Page:
             photo = ImageTk.PhotoImage(self.layer)
             label.configure(image=photo)
             label.image = photo
+        if self.particles and getattr(app, 'ui_window', None) is not None:
+            job = getattr(app, 'ui_effect_job', None)
+            if job:
+                app.ui_window.after_cancel(job)
+            self.effect_start = time.monotonic()
+            app.ui_effect_job = app.ui_window.after(40, self.animate)
+
+    def animate(self):
+        app = self.app
+        if getattr(app, 'original_page', None) is not self or not app.ui_window or not app.ui_window.winfo_exists():
+            return
+        from particles import draw_emitter
+        frame = self.layer.copy()
+        for resource, position, scale, alpha, clip in self.particles:
+            path = app.data.assets/'res'/resource
+            if path.exists():
+                draw_emitter(frame, path, position, scale, time.monotonic()-self.effect_start, alpha, clip)
+        photo = ImageTk.PhotoImage(frame)
+        app.ui_art_label.configure(image=photo)
+        app.ui_art_label.image = photo
+        app.ui_effect_job = app.ui_window.after(40, self.animate)
 
 
-class OriginalPages:
+class OriginalPages(PetPages):
+    def _topup_page(self, body, info):
+        body.pack_forget()
+        rows = sorted((r for r in self.data.tables['ContinuousTopUp'].values() if r['platform'] == '-1'),
+                      key=lambda r: int(r['keyId']))
+        selected, offset = [0], [0]
+        def paint():
+            row = rows[selected[0]]
+            page = Page(self, 'ContinuousTopUpUI', timeline_frame=60,
+                        text={'days_BitmapFontLabel': '0', 'topUpMoneyCount_BitmapFontLabel': '0',
+                              'info_Text': row['des']})
+            area = page.rects['Layer/root_Panel/goods_ListView']
+            for i, r in enumerate(rows):
+                x, y = round(area[0]+i*160-offset[0]), round(area[1])
+                if x+153 <= area[0] or x >= area[2]:
+                    continue
+                name, icon = self._item_data(r['rewardKid'])
+                page.add('ContinuousTopUpItemUI', (x, y), prefix=f'topup_{i}/', clip=area,
+                         text={'day_BitmapFontLabel': str(i+1), 'name_Text': name,
+                               'count_BitmapFontLabel': f'x{r["rewardCount"]}',
+                               'needTopUpCount_Text': f'{int(r["condition"])/100:g}元'},
+                         resources={'icon_Image': icon}, native_resources=('icon_Image',),
+                         visible={'selected_Image': i == selected[0], 'receive_Image': False,
+                                  'received_Image': False, 'wait_Image': True, 'receive_Particle': False},
+                         actions={'get_Button': lambda: self._page_tip('尚未达到今日领取条件。', paint)})
+                page.hit(f'topup_card_{i}', (x, y, x+153, y+240), lambda v=i: choose(v), area)
+            page.actions['close_Button'] = self.close_ui
+            page.publish()
+        def choose(value):
+            selected[0] = value
+            paint()
+        def wheel(event):
+            offset[0] = max(0, min(max(0, len(rows)*160-517), offset[0]+(-160 if event.delta > 0 else 160)))
+            paint()
+        self._page_wheel(wheel)
+        paint()
+
+    def _lottery_page(self, body, info):
+        from activities import Activities
+        body.pack_forget()
+        def paint():
+            seconds = max(0, int(self.state.activities.get('lucky_free_at', 0)-time.time()))
+            page = Page(self, 'LuckyDrawUI', timeline_frame=60, text={
+                'surplusTime_BitmapFontLabel': f'{seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02}',
+                'price_1_BitmapFontLabel': '10', 'price_2_BitmapFontLabel': '25',
+                'price_3_BitmapFontLabel': '50', 'price_3_old_BitmapFontLabel': '75',
+                'cost_1_BitmapFontLabel': str(self.state.count('700002')),
+                'cost_2_BitmapFontLabel': str(self.state.count('700002')),
+                'cost_3_BitmapFontLabel': str(self.state.count('700002'))},
+                visible={'weixin_Button': False})
+            page.actions.update({'draw_1_Button': lambda: draw(1, seconds == 0),
+                                 'draw_2_Button': lambda: draw(2), 'draw_3_Button': lambda: draw(3),
+                                 'draw_3_1_Button': lambda: draw(3), 'close_Button': self.close_ui})
+            page.publish()
+        def draw(kind, free=False):
+            if self.state.functions.get('8', 0) != 1:
+                self._page_tip('抽宠会在完成原版道馆训练剧情后开放。', paint)
+                return
+            try:
+                pets = Activities(self.state).draw_pets(kind, free=free)
+            except (ValueError, KeyError) as error:
+                self._page_tip(str(error), paint)
+                return
+            if pets:
+                self.lucky_result_queue = [p.uid for p in pets[1:]]
+                self.open_lucky_pet_info(pets[0].uid, back='lottery')
+        paint()
+
+    def _treasure_page(self, body, info, par1=None):
+        from treasure import TreasureHunt
+        body.pack_forget()
+        hunt = TreasureHunt(self.state)
+        def paint():
+            current = hunt.active()
+            row = self.data.tables['Treasure'].get(str(current['id'])) if current else None
+            text = row['des'] if row else '当前没有藏宝图，请先获得一张藏宝图。'
+            if current and current.get('revealed'):
+                text += '\n宝藏已经显现，前往线索地点寻找吧。'
+            page = Page(self, 'TreasureCheckUI', timeline_frame=60, text={
+                'tip_Text': text, 'costTip_Text': '每次使用消耗一个放大镜', 'haveTip_Text': '持有数量',
+                'have_BitmapFontLabel': str(self.state.count('220007'))})
+            page.actions.update({'use_Button': search, 'giveUp_Button': give_up, 'close_Button': self.close_ui})
+            page.publish()
+        def search():
+            try:
+                hunt.use_magnifier()
+            except (ValueError, KeyError) as error:
+                self._page_tip(str(error), paint)
+                return
+            self.close_ui('yes')
+        def give_up():
+            if not hunt.active():
+                self._page_tip('当前没有可放弃的藏宝图。', paint)
+                return
+            page = Page(self, 'SecondConfirmUI', text={'info_Text': '确定放弃当前藏宝图？'})
+            page.actions.update({'confirm_Button': abandon, 'cancel_Button': paint, 'close_Button': paint})
+            page.publish()
+        def abandon():
+            hunt.give_up()
+            paint()
+        paint()
+
+    def reward_overlay(self, items, back=None, title='获得物品'):
+        previous = self.ui_base_layer.copy() if back and self.ui_base_layer is not None else None
+        items = [(str(k), int(n)) for k, n in items if int(n) > 0]
+        offset = [0]
+        def done():
+            self.reward_visible = False
+            (back or self.close_ui)()
+        def paint():
+            page = Page(self, 'GetItemUI', timeline_frame=60)
+            if previous is not None:
+                art = page.layer
+                page.layer = previous.copy()
+                page.layer.alpha_composite(art)
+            area = page.rects['Layer/root_Panel/item_ListView']
+            for index, (kid, count) in enumerate(items):
+                x, y = round(area[0]+index*132-offset[0]), round(area[1])
+                if x+128 <= area[0] or x >= area[2]:
+                    continue
+                name, icon = self._item_data(kid)
+                page.add('GetItemUIItemUI', (x, y), prefix=f'reward_{index}/', clip=area,
+                         text={'item_name_Text': name, 'itemCount_BitmapFontLabel': f'x{count}'},
+                         resources={'icon_Image': icon}, sizes={'item_name_Text': (128, 24)},
+                         native_resources=('icon_Image',))
+            page.actions.update({'confirm_Button': done, 'close_Button': done})
+            page.publish()
+            self.reward_visible = True
+        def wheel(event):
+            offset[0] = max(0, min(max(0, len(items)*132-264), offset[0]+(-132 if event.delta > 0 else 132)))
+            paint()
+        self._page_wheel(wheel)
+        paint()
+
+    def _transport_item_page(self, kid, callback, back, info):
+        allowed = set(numbers(self.data.tables['FunctionItem'][kid]['parameters']))
+        maps = sorted(allowed & set(int(m) for m in self.state.visited_maps))
+        offset, height = [0], [328]
+        def paint():
+            page = Page(self, 'MapSelectUI')
+            area = next(r for k, r in page.rects.items() if k.endswith('_ListView'))
+            height[0] = area[3]-area[1]
+            for i, mid in enumerate(maps):
+                name = self.data.tables['VillageMap'][str(mid)]['name']
+                x, y = round(area[0]), round(area[1]+i*48-offset[0])
+                if y+48 <= area[1] or y >= area[3]:
+                    continue
+                page.add('MapSelectItemUI', (x, y), prefix=f'item_flight_{mid}/', clip=area,
+                         text={'name_Text': name}, visible={'moneyIcon_Image': False,
+                              'cost_BitmapFontLabel': False, 'selected_Image': False})
+                page.hit(f'item_flight_{mid}', (x, y, area[2], y+48), lambda m=mid: callback(m), area)
+            page.actions['close_Button'] = back
+            page.publish()
+            self._page_wheel(wheel)
+        def wheel(event):
+            offset[0] = max(0, min(max(0, len(maps)*48-height[0]), offset[0]+(-48 if event.delta > 0 else 48)))
+            paint()
+        paint()
+        if not maps:
+            self._page_tip('尚未到达可传送的城镇。', back)
+
     def _illustrated_body(self, body, info):
         body.pack_forget()
         tables = self.data.tables
@@ -110,12 +296,12 @@ class OriginalPages:
             self._page_tip('没有这只宠物的图鉴资料。', self.close_ui)
             return
         row = tables['Pet'][key]
-        properties = [False]
+        properties, scroll, limit = [False], [0], [0]
 
         def paint():
             page = Page(self, 'IllustratedPetInfoUI', text={
                 'name_Text': row['name'], 'number_BitmapFontLabel': str(int(key) % 1000),
-                'info_Text': row.get('des', '')},
+                'info_Text': ''},
                 visible={'noName_Sprite': False, 'info_Text': not properties[0],
                          'infoTitle_1_Text': properties[0], 'infoTitle_2_Text': properties[0],
                          'property_ListView_1': properties[0], 'property_ListView_2': properties[0],
@@ -138,23 +324,30 @@ class OriginalPages:
                                                    numbers(evolution.get('itemCounts')))]
                 if evolution.get('level'):
                     materials.insert(0, f'等级 {evolution["level"]}')
+                from pet_pages import text_box
                 font = self.cocos_ui.font('', 14)
+                limits = []
                 for suffix, lines in (('property_ListView_1', locations or ['暂无地点']),
                                       ('property_ListView_2', materials or ['无需进化'])):
                     area = page.rects.get('Layer/root_Panel/info_bg_Image/'+suffix)
                     if area:
-                        w, h = round(area[2]-area[0]), round(area[3]-area[1])
-                        layer = Image.new('RGBA', (w, h))
-                        draw = ImageDraw.Draw(layer)
-                        for i, line in enumerate(lines):
-                            draw.text((0, i*19), line, font=font, fill='#693100')
-                        page.layer.alpha_composite(layer, (round(area[0]), round(area[1])))
+                        limits.append(text_box(page, area, '\n'.join(lines), font, scroll[0]))
+                limit[0] = max(limits, default=0)
+            else:
+                from pet_pages import text_box
+                area = next(r for k, r in page.rects.items() if k.endswith('/info_Text'))
+                limit[0] = text_box(page, area, row.get('des', ''), self.cocos_ui.font('', 16), scroll[0])
             page.actions['check_Button'] = toggle
             page.actions['close_Button'] = self.close_ui
             page.publish()
+            self._page_wheel(wheel)
 
         def toggle():
             properties[0] = not properties[0]
+            scroll[0] = 0
+            paint()
+        def wheel(event):
+            scroll[0] = max(0, min(limit[0], scroll[0]+(-24 if event.delta > 0 else 24)))
             paint()
         info.set(row['name'])
         paint()
@@ -212,6 +405,8 @@ class OriginalPages:
         paint()
 
     def _page_tip(self, message, back):
+        if self.ui_info is not None:
+            self.ui_info.set(message)
         previous = self.ui_base_layer.copy()
         page = Page(self, 'TipConfirmUI', text={'info_Text': message})
         art = page.layer
@@ -351,6 +546,7 @@ class OriginalPages:
     def _bag_page(self, info, allowed_keys=None, select_item=None, back=None):
         tabs = {1: {1, 2, 3}, 2: {5}, 3: {6}, 4: {4, 7}, 5: {8}}
         kind, offset, selected = [2 if allowed_keys is not None else 1], [0], [None]
+        description_scroll, description_limit, description_area = [0], [0], [None]
         rows = []
         stride = 89+self._list_margin('BagUI', 'item_ListView')
 
@@ -375,10 +571,14 @@ class OriginalPages:
                                         int(row.get('useType', 0)) in (1, 2))}
             if allowed_keys is not None:
                 visibility.update({f'tag_{i}_Button': False for i in range(1, 6)})
-            page = Page(self, 'BagUI', text={'info_Text': description, **self._money_text()},
+            page = Page(self, 'BagUI', text={'info_Text': '', **self._money_text()},
                         resources={**self._money_icons(), **{f'tag_{i}_Button':
                             'UI/tag_selected.png' if i == kind[0] else 'UI/tag_unselected.png' for i in range(1, 6)}},
                         visible=visibility)
+            from pet_pages import text_box
+            description_area[0] = next(r for k, r in page.rects.items() if k.endswith('/info_Text'))
+            description_limit[0] = text_box(page, description_area[0], description,
+                                            self.cocos_ui.font('', 18), description_scroll[0])
             area = page.rects['Layer/root_Panel/item_ListView']
             for i, (kid, row, count) in enumerate(rows):
                 x, y = round(area[0]), round(area[1]+i*stride-offset[0])
@@ -402,10 +602,12 @@ class OriginalPages:
 
         def choose(key):
             selected[0] = key
+            description_scroll[0] = 0
             paint()
 
         def tab(value):
             kind[0], offset[0], selected[0] = value, 0, None
+            description_scroll[0] = 0
             refresh()
 
         def use():
@@ -418,12 +620,35 @@ class OriginalPages:
             if kid == '210001':
                 self.open_ui(Request('openui', 'open-chest', 1, {'parameters': {'uiid': 55}}))
                 return
+            if kid in self.data.tables.get('SkillItem', {}):
+                def learn(pet):
+                    skill = self.data.tables['SkillItem'][kid]['skillId']
+                    self.open_skill_learn_confirm(pet.uid, str(skill), scroll=kid, back=46)
+                self._select_page_pet(learn, paint, info)
+                return
+            if kid == '220001':
+                def fly(mid):
+                    self.state.consume([kid], [1])
+                    self.close_ui()
+                    self.load_map(mid)
+                    self.runtime.notify('tomap', map=mid)
+                    self.drive()
+                self._transport_item_page(kid, fly, paint, info)
+                return
+            if kid in ('220002', '220003'):
+                try:
+                    self.use_perfume(kid)
+                except ValueError as error:
+                    self._page_tip(str(error), paint)
+                    return
+                refresh()
+                return
 
             def apply(pet):
                 try:
                     message = self.state.use_item(kid, pet)
                 except ValueError as error:
-                    info.set(str(error))
+                    self._page_tip(str(error), lambda: self._select_page_pet(apply, paint, info))
                     return
                 refresh()
                 info.set(message)
@@ -446,7 +671,11 @@ class OriginalPages:
             info.set('合成成功：'+self._item_data(row['petId'])[0])
 
         def wheel(event):
-            offset[0] = max(0, min(max(0, len(rows)*stride-319), offset[0]+(-44 if event.delta > 0 else 44)))
+            r = description_area[0]
+            if r and r[0] <= getattr(event, 'x', -1) <= r[2] and r[1] <= getattr(event, 'y', -1) <= r[3]:
+                description_scroll[0] = max(0, min(description_limit[0], description_scroll[0]+(-24 if event.delta > 0 else 24)))
+            else:
+                offset[0] = max(0, min(max(0, len(rows)*stride-319), offset[0]+(-44 if event.delta > 0 else 44)))
             paint()
         refresh()
 
@@ -621,15 +850,16 @@ class OriginalPages:
         def claim(index):
             status = login.status()
             if index+1 != status['next_day']:
-                info.set('请领取当天的登录奖励。')
+                self._page_tip('请领取当天的登录奖励。', paint)
                 return
             try:
                 result = login.claim()
             except ValueError as error:
-                info.set(str(error))
+                self._page_tip(str(error), paint)
                 return
             paint()
             info.set(f'领取成功：{self._item_data(result["reward"])[0]} ×{result["count"]}')
+            self.reward_overlay([(result['reward'], result['count'])], paint)
 
         def wheel(event):
             offset[0] = max(0, min(max(0, stride*len(rewards)-517), offset[0]+(-stride if event.delta > 0 else stride)))
@@ -767,12 +997,13 @@ class OriginalPages:
 
         def claim(key):
             try:
-                api.claim(key)
+                result = api.claim(key)
             except (ValueError, KeyError) as error:
-                info.set(str(error))
+                self._page_tip(str(error), paint)
                 return
             paint()
             info.set('奖励已领取。')
+            self.reward_overlay(result['rewards'], paint)
 
         def wheel(event):
             offset[0] = max(0, min(max(0, len(entries())*164-328), offset[0]+(-82 if event.delta > 0 else 82)))

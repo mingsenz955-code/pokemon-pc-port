@@ -91,7 +91,7 @@ try:
                         {'parameters': {'uiid': 24, 'par1': 1}}))
     assert app.ui_actions.get('use_Button')
     app.ui_actions['use_Button']()
-    assert app.ui_open and '没有正在寻找的藏宝图' in app.ui_info.get()
+    assert app.ui_open and '没有藏宝图' in app.ui_info.get()
     app.close_ui()
 
     app.open_ui(Request('openui', 'treasure-buy', 1,
@@ -153,7 +153,7 @@ try:
     app.load_map(active['map_id'])
     app.x, app.y = active['x'] - 100, active['y']
     frame = app.make_frame()
-    assert frame.size == (1024, 576)
+    assert frame.size == (app.WIDTH, app.HEIGHT)
     shot = ROOT/'outputs/verification/treasure-map.png'
     shot.parent.mkdir(parents=True, exist_ok=True)
     frame.save(shot)
@@ -161,7 +161,10 @@ try:
     app.open_ui(Request('openui', 'treasure-test', 1,
                         {'parameters': {'uiid': 24, 'par1': 1}}))
     app.ui_actions['giveUp_Button']()
+    assert TreasureHunt(app.state).entries()
+    app.ui_actions['confirm_Button']()
     assert not TreasureHunt(app.state).entries()
+    app.ui_actions['close_Button']()
     assert not app.ui_open
 
     # The original talk event drives UI 24's closeui yes branch, not just a

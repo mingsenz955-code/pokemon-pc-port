@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from original_data import OriginalData
 from pc_preview import Preview, data_root
-from game_state import GameState
+from game_state import GameState, numbers
 from event_runtime import EventRuntime, PendingMechanic, Request
 from csb_render import CocosUI
 from battle import make_npc_battle, make_wild_battle
@@ -97,7 +97,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.56（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.57（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -140,6 +140,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         low = interval[0]
         high = interval[-1] if len(interval) > 1 else interval[0]
         self.encounter_threshold = self.state.rng.randint(min(low, high), max(low, high))
+
+    def use_perfume(self, kid):
+        _, steps, seconds = numbers(self.data.tables['FunctionItem'][str(kid)]['parameters'])
+        with self.state.transaction():
+            self.state.consume([kid], [1])
+            self.state.activities['perfume'] = {'item': str(kid), 'steps': steps, 'until': time.time()+seconds}
 
     def _apply_removed_obstacles(self):
         entries = getattr(getattr(self, 'state', None), 'removed_obstacles', [])
@@ -236,7 +242,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     def check_encounter(self):
         if self.battle or self.runtime.running or self.ui_open or self.display_request or self.pending_wait:
             return False
-        if self.encounter_threshold <= 0 or self.encounter_distance < self.encounter_threshold*64:
+        perfume = self.state.activities.get('perfume', {})
+        steps = int(perfume.get('steps', 0)) if float(perfume.get('until', 0)) > time.time() else 0
+        if self.encounter_threshold <= 0 or self.encounter_distance < max(1, self.encounter_threshold+steps)*64:
             return False
         row = self.data.tables['VillageMap'][str(self.map_id)]
         ids = [v for v in row['enemyIds'].split(',') if v and v != '0']
@@ -451,7 +459,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         60: ('SkillLearnConfirmUI', '技能学习确认'),
         61: ('EvolutionConditionUI', '进化条件'),
         62: ('HatchCheckUI', '孵化检查'),
-        63: ('RechargeFreeUI', '充值奖励'),
+        63: ('ContinuousTopUpUI', '连充奖励'),
+        68: ('LuckyDrawUI', '抽宠'),
         64: ('PublicNoticeUI', '公告'),
         65: ('SystemUI', '系统设置'),
         66: ('BluetoothListUI', '蓝牙'),
@@ -459,6 +468,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     }
 
     def open_ui(self, request):
+        job = getattr(self, 'ui_effect_job', None)
+        if job and self.ui_window and self.ui_window.winfo_exists():
+            self.ui_window.after_cancel(job)
+        self.ui_effect_job = None
         parameters = request.data.get('parameters', {})
         if int(parameters.get('uiid', 0) or 0) == 53:
             self.shop_underlay = self.ui_base_layer.copy() if self.ui_base_layer else None
@@ -553,10 +566,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             # append a host Tk form below it.
             body.pack_forget()
         elif uiid == 63:
-            info.set('这里是原版充值奖励入口。当前单机移植不接入真实支付，'
-                     '不会伪造充值到账或扣费；可关闭本页继续游戏。')
-            self.ui_actions['confirm_Button'] = lambda: info.set(
-                '单机版没有计费点，不能伪造免费领取；请关闭本页。')
+            self._topup_page(body, info)
+        elif uiid == 68:
+            self._lottery_page(body, info)
         elif uiid == 64:
             info.set('原版公告页。单机版没有联网公告服务，'
                      '这里不伪造运营公告；关闭后可继续游戏。')
@@ -668,7 +680,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         elif uiid == 23:
             self._breakthrough_body(body, info)
         elif uiid == 24:
-            self._treasure_body(body, info, parameters.get('par1'))
+            self._treasure_page(body, info, parameters.get('par1'))
         elif uiid == 37:
             self._treasure_buy_body(body, info, parameters.get('par1'))
         elif uiid == 38:
@@ -693,10 +705,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 if '/' not in name and any(key.endswith('/'+name) for key in source):
                     continue
                 area = max(1, (rect[2]-rect[0])*(rect[3]-rect[1]))
-                candidates.append((0 if is_button else 1, area, name))
+                actionable = self.ui_action_for(name) is not None or name.rsplit('/', 1)[-1] in {
+                    'close_Button', 'closeButton', 'cancel_Button', 'cancelButton', 'leave_Button'}
+                candidates.append((0 if actionable else 1, 0 if is_button else 1, area, name))
         if not candidates:
             return None
-        name = min(candidates)[2]
+        name = min(candidates)[3]
         return name, self.ui_button_text.get(name, '')
 
     def ui_action_for(self, name):
@@ -930,6 +944,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         win.protocol('WM_DELETE_WINDOW', lambda: finish(False))
 
     def close_ui(self, result=None):
+        job = getattr(self, 'ui_effect_job', None)
+        if job and self.ui_window and self.ui_window.winfo_exists():
+            self.ui_window.after_cancel(job)
+        self.ui_effect_job = None
         self.task_page = None
         choice = result if result in ('yes', 'no') else (self.ui_close_result or 'no')
         if self.ui_window and self.ui_window.winfo_exists():
@@ -1006,7 +1024,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.56')
+        win.title('任务指引 · 原生 0.2.57')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1938,6 +1956,13 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if not items:
             return
         if self.ui_open:
+            if getattr(self, 'original_page', None) is not None:
+                self.reward_overlay(items, self.original_page.publish, title)
+                return
+            if getattr(self, 'task_page', None) is not None:
+                self.open_ui(Request('openui', 'task-reward', 1, {'parameters': {
+                    'uiid': 49, 'items': list(items), 'title': title, 'back_task': True}}))
+                return
             self.event_issue = title + '：' + '、'.join(
                 f'{self.data.tables["Item"].get(str(key), self.data.tables["Pet"].get(str(key), self.data.tables["Money"].get(str(key), {}))).get("name", key)} × {count}'
                 for key, count in items)
@@ -1946,6 +1971,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             'parameters': {'uiid': 49, 'title': title, 'items': list(items)}}))
 
     def _get_item_body(self, body, info):
+        body.pack_forget()
+        back = (lambda: self.open_ui(Request('openui', 'task', 1, {'parameters': {
+            'uiid': 44, 'page': 'daily'}}))) if self.ui_parameters.get('back_task') else None
+        self.reward_overlay(self.ui_parameters.get('items', []), back, title=self.ui_parameters.get('title', '获得物品'))
+
+    def _legacy_get_item_body(self, body, info):
         parameters = self.ui_parameters
         title = str(parameters.get('title', '获得物品'))
         items = list(parameters.get('items', []))
@@ -2342,6 +2373,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                            'scroll': scroll, 'replace': replace, 'back': back}}))
 
     def _skill_learn_confirm_body(self, body, info):
+        body.pack_forget()
         parameters = self.ui_parameters
         uid = str(parameters.get('uid') or
                   (self.state.pets[0].uid if self.state.pets else ''))
@@ -2369,7 +2401,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         text = (f'{name} Lv.{pet.level} 学习 {row["name"]}，消耗 {cost}。'
                 + (f' 将替换第 {replace+1} 个技能槽。' if replace is not None else ''))
         if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('SkillLearnConfirmUI', (800, 480), {
+            from original_pages import Page
+            page = Page(self, 'SkillLearnConfirmUI', text={
                 'petName_Text': name, 'lv_BitmapFontLabel': str(pet.level),
                 'skillName_Text': str(row['name']),
                 'skillInfoTitle_Text': '技能学习确认',
@@ -2377,15 +2410,13 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 'cost_BitmapFontLabel': str(row.get('moneyCount', 1) if scroll is None else 1),
                 'energy_Text': str(row.get('energy', '')),
                 'energy_BitmapFontLabel': str(row.get('energy', ''))})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
+            page.publish()
         info.set(text)
         def back():
             self.close_ui()
             if back_uiid:
                 self.open_ui(Request('openui', 'skill-learn', 1, {
-                    'parameters': {'uiid': 6}}))
+                    'parameters': {'uiid': int(back_uiid)}}))
         def confirm():
             try:
                 self.state.learn_skill(pet.uid, key, scroll=scroll, replace=replace)
@@ -2437,7 +2468,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         uid = str(self.ui_parameters.get('uid') or
                   (self.state.pets[-1].uid if self.state.pets else ''))
         back = self.ui_parameters.get('back')
-        pet = next((candidate for candidate in self.state.pets
+        pet = next((candidate for candidate in self.state.pets+self.state.bank
                     if str(candidate.uid) == uid), None)
         if pet is None:
             info.set('抽宠记录不在携带栏。')
@@ -2460,7 +2491,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         def finish():
             self.close_ui()
             if back == 'lottery':
-                self.lottery_ui(force=True)
+                remaining = getattr(self, 'lucky_result_queue', [])
+                if remaining:
+                    self.open_lucky_pet_info(remaining.pop(0), back='lottery')
+                else:
+                    self.lottery_ui(force=True)
         self.ui_actions['confirm_Button'] = finish
         self.ui_actions['weixin_Button'] = finish
         self.ui_actions['close_Button'] = finish
@@ -2470,6 +2505,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             'parameters': {'uiid': 57, 'uid': uid}}))
 
     def _pet_property_body(self, body, info):
+        self._pet_property_page(body, info)
+
+    def _legacy_pet_property_body(self, body, info):
         uid = str(self.ui_parameters.get('uid') or
                   (self.state.pets[0].uid if self.state.pets else ''))
         pet = next((candidate for candidate in self.state.pets
@@ -2556,6 +2594,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.open_ui(Request('openui', 'pet-list', 1, {'parameters': {'uiid': 47}}))
 
     def _pet_list_body(self, body, info):
+        self._pet_list_page(body, info)
+
+    def _legacy_pet_list_body(self, body, info):
             """Original PetListUI: original rows and panels, no host list overlay."""
             state, tables = self.state, self.data.tables
             pets = list(state.pets)

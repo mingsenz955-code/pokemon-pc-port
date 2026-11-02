@@ -1,3 +1,9 @@
+## 2026-11-02 / 0.2.57 接续
+
+基线 origin/main=c104ab8，分支 codex/fix-original-inventory-pages。新增 pet_pages.py（原宠物行/说明框）和 particles.py（原 plist 星光）。不要回退最近商店/地图/战斗改动。优先跑 check_inventory_interactions.py、check_original_page_flows.py、check_pet_list_ui.py、check_pet_property_ui.py、check_continuous_login.py、check_treasure.py、check_activities.py、check_regressions.py。
+
+桌面 helper 超时，本次未完成屏幕试玩；连充无支付资格服务。全部剩余边界以 RESTORATION_REMAINING.md 顶部为准，不要宣称全部复刻完成。玩家存档和旧包保留。
+
 ## 2026-11-02 / 0.2.56 接续基线
 
 主目录 main 后续变更在 codex/restore-original-pages-effects 分支交付。不要回退到 0.2.55 的 mainUp_Button 地点菜单；用户已确认点击指引必须自动走向当前任务点。

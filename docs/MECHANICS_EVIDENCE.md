@@ -1,3 +1,12 @@
+## 0.2.57：背包交互、宠物详情和奖励星光
+
+- PetDataManager::init 0x326466 把 maxFriendly 初始化为 6；usePetItem 0x32aed4 的类型5调用 addCloseness、类型6调用 levelUp(vector)。levelUp(int) 0x328212 按表中 maxLevel 限制等级。宠物属性页编号由 species key 减100000，不使用宿主 UUID。
+- PlayerDataManager::useFunctionItem_battleIn 0x330314 从 FunctionItem.parameters 读取状态、步数和持续时间，调用 addPlayerState 0x3302b8；后者先删除状态1/2，再添加新状态。因此香水互相替换，不叠加。
+- FunctionItem 220004/5/6 的 Item.useType=3，仅战斗使用；未改成背包直接捕捉。技能卷轴按 SkillItem.skillId 发起原确认页，再真实消费一次。
+- GetItemUIItemUI/Particle_1 使用 UI/lizi/lizi_2.plist，原纹理是 gzip+base64；按原寿命/速度/颜色/尺寸/重力参数采样并加色混合。并未恢复原引擎随机序列。
+- 连充布局应为 ContinuousTopUpUI，奖励卡使用 ContinuousTopUpItemUI；桌面单机无支付服务，不授予伪充值记录。抽宠 function8 在 pEvent5905001.json 开放。
+- check_inventory_interactions.py 覆盖全 PetItem、全 SkillItem、全 Item 图标和描述裁剪、真实页面点击、登录防重复、星光参数、香水替换、三种捕捉球和卷轴确认返回。其他宿主回归见发布说明。
+
 ## 0.2.56：原始页面、累计登录与普通技能特效
 
 本次重新读取 original-core.so 的 ARM/Thumb 指令以及 APK 原 CSB / ExportJson，未采用截图当页面背景。

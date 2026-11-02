@@ -34,6 +34,8 @@ try:
     skill_info = app.ui_info.get()
     assert talent_info and skill_info
     app.ui_actions['close_Button']()
+    assert app.original_page.specs[0][0] == 'PetListUI'
+    app.ui_actions['close_Button']()
     assert not app.ui_open
     print('PetPropertyUI checks passed')
 finally:

@@ -411,6 +411,33 @@ class GameState:
         if self.count(item_id) <= 0:
             raise ValueError('道具数量不足。')
         effect = self.tables.get('PetItem', {}).get(item_id)
+        if effect is not None and int(effect['type']) in (5, 6):
+            kind, amount = int(effect['type']), int(effect['parameters'])
+            if amount <= 0:
+                raise ValueError('原版道具参数无效。')
+            if pet is None:
+                pet = next((p for p in self.pets if (p.friendly < 6 if kind == 5 else
+                            p.level < int(self.tables['Pet'][p.species]['maxLevel']))), None)
+            if pet is None or not any(p is pet for p in self.pets):
+                raise ValueError('请选择可使用该道具的携带宠物。')
+            if kind == 5:
+                # PetDataManager::init 0x326466 initializes maxFriendly=6.
+                if pet.friendly >= 6:
+                    raise ValueError('该宠物的亲密度已经达到上限。')
+                pet.friendly = min(6, pet.friendly+amount)
+            else:
+                maximum = int(self.tables['Pet'][pet.species]['maxLevel'])
+                if pet.level >= maximum:
+                    raise ValueError('该宠物已经达到原版等级上限。')
+                before = pet.stats(self.tables)
+                pet.level = min(maximum, pet.level+amount)
+                pet.exp = 0
+                self.sync_pet_skills(pet)
+                after = pet.stats(self.tables)
+                pet.hp = min(after[0], pet.hp+after[0]-before[0])
+                pet.energy = min(after[1], pet.energy+after[1]-before[1])
+            self.consume([item_id], [1])
+            return f'{row["name"]} 已使用。'
         if effect is not None and int(effect['type']) == 7:
             attribute_id, amount = numbers(effect['parameters'])
             if not 1 <= attribute_id <= 5 or amount <= 0:
