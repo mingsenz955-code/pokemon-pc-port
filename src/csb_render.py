@@ -43,6 +43,10 @@ class CocosUI:
 
     @lru_cache(maxsize=64)
     def layout(self, name):
+        source = self.data.assets/'res/UI'/(name+'.csb')
+        if source.exists():
+            from csb_reader import read_csb
+            return read_csb(source)
         return json.loads((self.data.root/'ui-layouts'/name).with_suffix('.json').read_text(encoding='utf-8'))
 
     @lru_cache(maxsize=32)
@@ -84,7 +88,7 @@ class CocosUI:
         return result
 
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
-               offset=(0, 0)):
+               offset=(0, 0), positions=None):
         layout = self.layout(name)
         root = layout['tree']
         design = root.get('size', [800, 480])
@@ -112,7 +116,7 @@ class CocosUI:
 
             if not resolve(visible, node.get('visible', True)):
                 return
-            local = node.get('position', [0, 0])
+            local = resolve(positions or {}, node.get('position', [0, 0]))
             node_scale = node.get('scale', [1, 1])
             sx, sy = scale[0]*node_scale[0], scale[1]*node_scale[1]
             width, height = node.get('size', [0, 0])
@@ -161,20 +165,37 @@ class CocosUI:
                 if glyphs is None:
                     font = self.font(node.get('font_resource', {}).get('path', ''), node.get('font_size', 22))
                     value = re.sub(r'#[0-9]', '', value)
+                    if classname == 'Text' and not node.get('custom_size', True):
+                        # Cocos Text::ignoreContentAdaptWithSize(true) resizes a
+                        # non-custom label when setString changes its content.
+                        measured = [font.getbbox(line or ' ') for line in value.split('\n')]
+                        width = max((b[2]-b[0] for b in measured), default=1)
+                        height = sum(b[3]-b[1] for b in measured)+3*max(0, len(measured)-1)
+                        origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
                     area = max(1, round(width)), max(1, round(height))
                     glyphs = Image.new('RGBA', area)
                     draw = ImageDraw.Draw(glyphs)
                     lines, current = [], ''
                     for char in value:
-                        if char == '\n' or draw.textlength(current+char, font=font) > area[0]:
+                        if char == '\n' or (current and draw.textlength(current+char, font=font) > area[0]+.5):
                             lines.append(current)
                             current = '' if char == '\n' else char
                         else:
                             current += char
                     lines.append(current)
                     a, r, g, b = node.get('color', [255, 94, 61, 32])
-                    for index, line in enumerate(lines):
-                        draw.text((0, index*(font.size+3)), line, font=font, fill=(r, g, b, a))
+                    # Pillow's default origin includes the font's ascent offset;
+                    # drawing at y=0 into a one-line CSB box cuts glyph bottoms.
+                    bounds = [font.getbbox(line or ' ') for line in lines]
+                    heights = [box[3]-box[1] for box in bounds]
+                    total_height = sum(heights)+3*max(0, len(lines)-1)
+                    valign = node.get('v_align', 0)
+                    cursor = (area[1]-total_height)*(0.5 if valign == 1 else 1 if valign == 2 else 0)
+                    for line, box, line_height in zip(lines, bounds, heights):
+                        halign = node.get('h_align', 0)
+                        xpos = (area[0]-(box[2]-box[0]))*(0.5 if halign == 1 else 1 if halign == 2 else 0)
+                        draw.text((xpos-box[0], cursor-box[1]), line, font=font, fill=(r, g, b, a))
+                        cursor += line_height+3
                 if sx != 1 or sy != 1:
                     glyphs = glyphs.resize((max(1, round(glyphs.width*abs(sx))),
                                             max(1, round(glyphs.height*abs(sy)))), Image.Resampling.LANCZOS)

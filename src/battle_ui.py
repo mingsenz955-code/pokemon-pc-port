@@ -6,6 +6,7 @@ and HP/energy fills are drawn over those layouts, and pet art comes from the
 original Spine package rather than from screenshots.
 """
 from __future__ import annotations
+import time
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -46,6 +47,11 @@ class BattleUI:
         self.target_hits = {}
         self.item_filter = None
         self.info = ''
+        self.animation_clock = time.monotonic()
+        self.visual_queue = []
+        self.visual_started = self.animation_clock
+        self.visual_units = {'player': battle.player_active, 'enemy': battle.enemy_active}
+        self.before_units = dict(self.visual_units)
 
     # -- HUD ----------------------------------------------------------------
     def _hud_layer(self, enemy):
@@ -119,7 +125,10 @@ class BattleUI:
 
     # -- frame ---------------------------------------------------------------
     def render(self):
+        self.advance_visual()
+        animation_frame = int((time.monotonic()-self.animation_clock)*20)
         signature = (self.screen, self.page, self.ball_page, self.notice, self.info,
+                     animation_frame,
                      self.item_filter, repr(self.selected), self.battle.result,
                      self.battle.player_index, self.battle.enemy_index,
                      tuple(self.battle.messages), repr(getattr(self.app, 'battle_tips', [])),
@@ -142,8 +151,10 @@ class BattleUI:
             background = getattr(self.app, 'background', None)
         frame.alpha_composite(cover(background, (W, H)))
         frame.alpha_composite(Image.new('RGBA', (W, H), (8, 10, 14, 60)))
-        self._draw_pet(frame, self.battle.enemy_active, (round(W*.74), round(H*.34)), 235, True)
-        self._draw_pet(frame, self.battle.player_active, (round(W*.26), round(H*.66)), 250, False)
+        units = self.visual_units if self.visual_queue else {
+            'player': self.battle.player_active, 'enemy': self.battle.enemy_active}
+        self._draw_pet(frame, units['enemy'], (round(W*.74), round(H*.34)), 235, True)
+        self._draw_pet(frame, units['player'], (round(W*.26), round(H*.66)), 250, False)
         for layer in (self._hud_layer(True), self._hud_layer(False)):
             if layer:
                 frame.alpha_composite(layer)
@@ -153,7 +164,9 @@ class BattleUI:
         self._draw_status(draw, self.battle.player_active, False)
         self._draw_team(draw)
         self.hits = {}
-        if self.battle.result:
+        if self.visual_queue:
+            pass
+        elif self.battle.result:
             self._draw_result(frame, draw)
         elif self.screen == 'main':
             pass  # Original: tap own pet for items, opponent for skills.
@@ -187,12 +200,34 @@ class BattleUI:
     def _draw_pet(self, frame, unit, center, height, enemy=False):
         if not unit:
             return
+        from spine_renderer import animated_frame
+        row = self.app.data.tables['Pet'][unit.pet.species]
+        path = self.app.data.assets/'Sprite/Spine'/(row['filePath']+'.json')
+        animation = 'stand'
+        elapsed = time.monotonic()-self.animation_clock
+        loop = True
+        if self.visual_queue and self.visual_queue[0]['side'] == unit.side:
+            animation = self.visual_queue[0]['animation']
+            elapsed = time.monotonic()-self.visual_started
+            loop = False
+        if path.exists():
+            image, offset, base_height = animated_frame(str(path), animation, elapsed, loop)
+            ratio = height/base_height
+            size = (max(1, round(image.width*ratio)), max(1, round(image.height*ratio)))
+            image = image.resize(size, Image.Resampling.LANCZOS)
+            if not enemy:
+                image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                left = center[0]-(offset[0]*ratio+size[0])
+            else:
+                left = center[0]+offset[0]*ratio
+            frame.alpha_composite(image, (round(left), round(center[1]+offset[1]*ratio)))
+            return
         image = self.app.data.pet_image(unit.pet.species)
         if image is None:
             return
         ratio = height/max(1, image.height)
         image = image.resize((max(1, round(image.width*ratio)), height), Image.Resampling.LANCZOS)
-        if enemy:
+        if not enemy:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         frame.alpha_composite(image, (center[0]-image.width//2, center[1]-image.height//2))
 
@@ -390,6 +425,9 @@ class BattleUI:
 
     # -- input ---------------------------------------------------------------
     def click(self, x, y):
+        self.advance_visual()
+        if self.visual_queue:
+            return None
         if self.info:
             self.info = ''
             return 'refresh'
@@ -417,6 +455,7 @@ class BattleUI:
 
     def _action(self, key):
         b = self.battle
+        self.before_units = {'player': b.player_active, 'enemy': b.enemy_active}
         if key.startswith('skillInfo_Button_'):
             index = int(key.rsplit('_', 1)[1])-1
             entries = self._skills()
@@ -490,6 +529,43 @@ class BattleUI:
         return 'refresh'
 
     def _after_action(self):
+        from spine_animation import duration
+        from spine_renderer import load_skeleton
+        self.visual_units = dict(self.before_units)
+        self.visual_queue = []
+        if not hasattr(self.app, 'data'):
+            return self._complete_action()
+        for event in self.battle.events:
+            animation = {'attack': 'attack', 'skill': 'attack',
+                         'damage': 'underattack', 'faint': 'dead'}.get(event['type'])
+            side = event.get('side')
+            if animation is None or side not in self.visual_units:
+                continue
+            unit = self.visual_units[side]
+            if unit is None:
+                continue
+            row = self.app.data.tables['Pet'][unit.pet.species]
+            path = self.app.data.assets/'Sprite/Spine'/(row['filePath']+'.json')
+            if not path.exists():
+                continue
+            clip = load_skeleton(str(path)).get('animations', {}).get(animation)
+            if clip is not None:
+                self.visual_queue.append({'side': side, 'animation': animation,
+                                          'duration': duration(clip)})
+        if self.visual_queue:
+            self.visual_started = time.monotonic()
+            self.screen, self.notice = 'main', ''
+            return 'refresh'
+        return self._complete_action()
+
+    def advance_visual(self):
+        now = time.monotonic()
+        while self.visual_queue and now-self.visual_started >= self.visual_queue[0]['duration']:
+            self.visual_started += self.visual_queue.pop(0)['duration']
+            if not self.visual_queue:
+                self._complete_action()
+
+    def _complete_action(self):
         b = self.battle
         if b.force_switch:
             self.screen = 'pets'

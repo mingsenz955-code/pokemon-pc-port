@@ -44,16 +44,44 @@
 
 融合/合体、坐骑商店/完整动画与破障交互、竞技场/无限竞技场/试炼塔、地图障碍与藏宝图宝箱、
 藏宝图、赛跑、成就与每日任务、连续登录和礼包等交互；
-全部技能状态和 AI 的原版对照、全部主支线通关测试、动态 Spine 动画和音频、
+全部技能状态和 AI 的原版对照、全部主支线通关测试、完整 Spine/IK/特效时序和音频、
 原 Android 存档兼容、全 UI 的原交互与布局。已有实现也仍需要针对原版逐项比较。
 不以占位窗口、自动判胜或手工发奖励视为完成。
 
-## 剧情转场核对（待实现，不能标为完成）
+## 0.2.3：显示、存档与动画恢复
+
+- 读取 Cocos TextOptions 的 custom size、h/vAlignment，按原 auto-size 行为调整动态标签；
+  修正 Pillow 字形边界的顶部偏移导致下半字裁切。旁白改用原 `AsideUI` 的居中文字，
+  不再套 `DialogUI`。解析字段参考 [Cocos 3.3 TextOptions](https://cocos2d-x.org/reference/native-cpp/V3.3/da/dea/structflatbuffers_1_1_text_options.html)。
+- 移除自制顶部工具栏和底部调试栏；恢复 MainUI 场景图标及左右/上方菜单。
+  `leftButtonsDisperse` 0x376eb4、`rightButtonsDisperse` 0x377224、`upButtonsDisperse` 0x377504
+  使用按钮尺寸乘序号和 0.2 秒 MoveTo。已接背包、宠物、抽宠、任务、保存、骑乘与已有商店等入口；
+  未完成的页面会明确提示，不能把显示原图标当成页面完整复刻。
+- 人物消失：旧 request_map 额外加了一格，580101 出口会把 x 推到 1376，超出 1344 宽地图。
+  `setPlayerPositionByExit` 0x2dbefc 实际复制出口位置并反转面向，已移除虚构偏移。
+  对旧存档越界坐标在载入内存时修回边界内，原文件先保持；地图/人物及文本截图已经检查。
+- 自动续档、20 秒定时自动保存、对话/切图/战前/战后/退出存档；写前保存上一个文件到
+  `slot1.json.bak` 与 `backups/slot1-时间戳.json`。启动可回退到备份；损坏主文件另行归档，
+  不覆盖已知正常的上一份备份。战斗中仍用战前检查点恢复，不声称支持战斗内快照。
+- 原包 Spine 的 stand/attack/underattack/dead 接入战斗播放；骨骼 rotate/translate/scale、
+  slot 附件/颜色、FFD、drawOrder 已采样。动作期间不接重复输入，动作结束才继续剧情回调。
+  162 个宠物骨架的 1941 个采样姿态可读，不等于原版全部动作视觉一致；IK 等仍待实现。
+  Spine 的曲线是十段查表而非解析贝塞尔求根：`spCurveTimeline_setCurve` 0x40b008 与
+  `getCurvePercent` 0x40b190 的 600 组 ARM 对照 binary32 精确一致。
+  历史官方参考：[Spine 2.1 Animation.c](https://github.com/EsotericSoftware/spine-runtimes/blob/1fa410bb533edd4a327c1590ba166419d8f534af/spine-c/src/spine/Animation.c)。
+  运行时不加载该 C 文件或 ARM 库，仍为原生 Python 实现。
+
+新增验证：`check_presentation.py` 7 项（开场三段旁白后开屏、正确出口落点、旧坐标恢复、
+自动续档/历史备份/损坏回退、镜头插值及完成延迟、中途存档恢复）；
+`check_spine_animation.py` 姿态覆盖与四种动作的差异图；`check_spine_curves_arm.py` 600 组原指令对照。
+
+## 剧情转场核对（仍有未完成部分）
 
 `PlotEventItemToPlace::begin` 0x2f51d4 调用 `spriteMoveToPosition` 0x2dc03e，
 后者进入 `VillageSpriteControler::moveToPosition` 0x2e6c04：speedscale=0 直接定位，否则寻路移动；
 当前移植仍将这两种都当成直接定位，缺少寻路、移动动画与完成回调。
 `PlotEventItemScreenMove::begin` 0x2f5df8 调用 `setViewpoint` 0x2d9eb0，
-原版按 speedscale 创建 MoveTo/DelayTime/完成回调，移植目前仍直接切换焦点。
-只缓存静态画面不会修好这些语义；下一步应恢复这些动作和脚本等待关系，再对照序章录像。
+原版按 speedscale 创建 MoveTo/DelayTime/完成回调，现已接镜头插值、按距离/格高×0.1/speedscale
+计算移动时长、0.5 秒 DelayTime、完成后推进脚本；镜头进行中可存档并恢复剩余动作。
+人物移动仍缺完整寻路及步行回调，镜头完整像素/时序对照尚未完成，需要继续对照序章录像。
 全部页面恢复、原音频与过场动画仍需要独立核对，不能把这次按钮修复写成“完全一样”。

@@ -414,6 +414,8 @@ class GameState:
             self.grant(item_id, quantity*int(row.get('gotCount', 1)))
             self.consume([row['moneyType']], [cost])
             self.shop_purchases[purchase_key] = self.shop_purchases.get(purchase_key, 0)+quantity
+            from daily_tasks import DailyTasks
+            DailyTasks(self).update('buy', int(item_id), amount=quantity*int(row.get('gotCount', 1)))
 
     def buy_pet(self, key):
         row = self.tables['PetShop'][str(key)]
@@ -516,7 +518,19 @@ class GameState:
         if path.exists():
             backup = path.with_suffix(path.suffix+'.bak')
             import shutil
-            shutil.copy2(path, backup)
+            from datetime import datetime
+            history = path.parent/'backups'
+            history.mkdir(exist_ok=True)
+            stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+            try:
+                prior = json.loads(path.read_text(encoding='utf-8'))
+                valid = prior.get('format') == self.FORMAT and isinstance(prior.get('state'), dict)
+            except (ValueError, UnicodeError):
+                valid = False
+            if valid:
+                shutil.copy2(path, backup)
+            name = f'{path.stem}-{stamp}.json' if valid else f'damaged-{path.stem}-{stamp}.json'
+            shutil.copy2(path, history/name)
         os.replace(temporary, path)
 
     @classmethod

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import tkinter as tk
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT/'src'))
@@ -90,9 +91,10 @@ class BattleClickChecks(unittest.TestCase):
         self.click('skillMenu_1_Button')
         self.assertGreater(self.app.battle.round, before)
 
-    def test_unchanged_frame_reuses_rendered_image(self):
-        frame = self.ui.render()
-        self.assertIs(frame, self.ui.render())
+    def test_same_animation_sample_reuses_rendered_image(self):
+        with patch('battle_ui.time.monotonic', return_value=self.ui.animation_clock+.001):
+            frame = self.ui.render()
+            self.assertIs(frame, self.ui.render())
         self.click('enemyMenuPos_Panel', targets=True)
         self.assertIsNot(frame, self.ui.render())
 

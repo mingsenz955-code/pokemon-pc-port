@@ -1,6 +1,6 @@
 """Native software setup-pose renderer for original Spine 2.1 region/mesh attachments.
 
-Animation timelines, FFD and IK are intentionally not claimed as implemented.
+Animation timelines and FFD are sampled by spine_animation; IK remains pending.
 This composes the original weighted meshes, instead of displaying texture atlases.
 """
 import json
@@ -29,6 +29,7 @@ def matrix(row):
             math.cos(angle)*sy, row.get('x', 0), row.get('y', 0))
 
 
+@lru_cache(maxsize=64)
 def atlas_regions(path):
     lines = path.read_text(encoding='utf-8').splitlines()
     page, name, regions = None, None, {}
@@ -84,9 +85,17 @@ def paint_triangle(destination, texture, points, uv):
 
 
 @lru_cache(maxsize=64)
-def render_setup(path_string, limit=550):
+def load_skeleton(path_string):
+    return json.loads(Path(path_string).read_text(encoding='utf-8'))
+
+
+@lru_cache(maxsize=128)
+def render_frame(path_string, limit=550, animation='', frame_number=0, loop=True):
     path = Path(path_string)
-    data = json.loads(path.read_text(encoding='utf-8'))
+    data = load_skeleton(path_string)
+    if animation:
+        from spine_animation import sample_pose
+        data = sample_pose(data, animation, frame_number/20, loop)
     textures = atlas_regions(path.with_suffix('.atlas'))
     bones, by_name = [], {}
     for row in data['bones']:
@@ -107,6 +116,10 @@ def render_setup(path_string, limit=550):
         texture = textures.get(attachment.get('path', name))
         if texture is None:
             continue
+        color = slot.get('color', 'ffffffff')
+        if color != 'ffffffff':
+            tint = Image.new('RGBA', texture.size, tuple(int(color[i:i+2], 16) for i in range(0, 8, 2)))
+            texture = ImageChops.multiply(texture, tint)
         kind = attachment.get('type', 'region')
         if kind == 'region':
             width, height = attachment.get('width', texture.width), attachment.get('height', texture.height)
@@ -142,7 +155,8 @@ def render_setup(path_string, limit=550):
         raise ValueError(f'No original region/mesh attachments in {path.name}')
     left, right = min(v[0] for v in all_vertices), max(v[0] for v in all_vertices)
     bottom, top = min(v[1] for v in all_vertices), max(v[1] for v in all_vertices)
-    scale = min(1, limit/max(right-left, top-bottom, 1))
+    reference = render_frame(path_string, limit)[1] if animation else (left, bottom, right, top)
+    scale = min(1, limit/max(reference[2]-reference[0], reference[3]-reference[1], 1))
     output = Image.new('RGBA', (max(1, math.ceil((right-left)*scale)+4),
                                max(1, math.ceil((top-bottom)*scale)+4)))
     for texture, vertices, uv, triangles in meshes:
@@ -150,4 +164,16 @@ def render_setup(path_string, limit=550):
         for index in range(0, len(triangles), 3):
             ids = triangles[index:index+3]
             paint_triangle(output, texture, [points[i] for i in ids], [uv[i] for i in ids])
-    return output
+    return output, (left, bottom, right, top), scale
+
+
+def render_setup(path_string, limit=550):
+    return render_frame(path_string, limit)[0]
+
+
+def animated_frame(path_string, animation, seconds, loop=True, limit=550):
+    image, bounds, scale = render_frame(path_string, limit, animation, int(max(0, seconds)*20), loop)
+    _, setup, _ = render_frame(path_string, limit)
+    center = ((setup[0]+setup[2])/2, (setup[1]+setup[3])/2)
+    offset = ((bounds[0]-center[0])*scale-2, (center[1]-bounds[3])*scale-2)
+    return image, offset, max(1, (setup[3]-setup[1])*scale+4)

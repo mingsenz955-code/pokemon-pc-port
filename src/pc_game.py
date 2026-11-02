@@ -21,6 +21,8 @@ from battle_ui import BattleUI
 from activity_ui import ActivityUI
 from task_progress import TaskProgress
 from mounts import Mounts
+from scene_ui import SceneUI
+from navigation import Navigation
 
 
 class NativeGame(ActivityUI, Preview):
@@ -33,6 +35,8 @@ class NativeGame(ActivityUI, Preview):
         self.display_request = None
         self.wait_until = 0
         self.camera_focus = None
+        self.camera_action = None
+        self.camera_clock = time.monotonic()
         self.player_visible = True
         self.player_sprite = self.state.sprite_id
         self.inside_areas = set()
@@ -47,20 +51,27 @@ class NativeGame(ActivityUI, Preview):
         self.encounter_distance = 0.0
         self.encounter_threshold = 0
         self.show_map_label = False
+        self.scene_ui = SceneUI(self)
+        self.task_page = None
+        self.navigation = None
         super().__init__(root, data)
         self.booting = False
+        self.navigation = Navigation(self)
         self.canvas.bind('<Button-1>', self.on_click)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.2（全系统还原进行中）')
+        self.canvas.bind('<MouseWheel>', lambda event: self.task_page.wheel(event.delta, event.x, event.y) if self.task_page else None)
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.3（全系统还原进行中）')
         top = root.winfo_children()[0]
-        for child in top.winfo_children():
-            child.destroy()
-        tk.Label(top, text='口袋妖怪 · PC 移植开发版', fg='#f5d492', bg='#202b30',
-                 font=('Microsoft YaHei UI', 12, 'bold')).pack(side='left', padx=14, pady=10)
-        for label, callback in [('宠物', self.pets_ui), ('背包', self.bag_ui), ('任务', self.tasks_ui), ('抽宠', self.lottery_ui),
-                                ('坐骑', self.mounts_ui), ('保存', self.save), ('读取', self.restore), ('当前进度', self.about)]:
-            ttk.Button(top, text=label, command=callback).pack(side='left', padx=3)
+        top.destroy()
+        for child in root.winfo_children():
+            if isinstance(child, tk.Label):
+                child.pack_forget()
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
         self.save_path = Path(os.environ.get('POCKET_NATIVE_SAVE_DIR', str(default_save)))/'slot1.json'
+        self.last_autosave = time.monotonic()
+        self.autosave_signature = None
+        root.protocol('WM_DELETE_WINDOW', self.on_close)
+        if self.restore(automatic=True):
+            return
         self.load_map(7401, 17*64+32, (30-14)*64)
         self.reset_encounter()
         self.runtime.notify('tomap', map=7401)
@@ -73,6 +84,7 @@ class NativeGame(ActivityUI, Preview):
             if self.map_id not in self.state.visited_maps:
                 self.state.visited_maps.append(self.map_id)
             self.camera_focus = None
+            self.camera_action = None
             self.inside_areas = set()
             self.encounter_distance, self.encounter_threshold = 0.0, 0
 
@@ -322,6 +334,7 @@ class NativeGame(ActivityUI, Preview):
         elif self.runtime.pending and self.runtime.pending.kind in ('openui', 'closeui'):
             self.runtime.resume()
         self.drive()
+        self.autosave()
 
     def key_down(self, event):
         if self.battle:
@@ -347,6 +360,7 @@ class NativeGame(ActivityUI, Preview):
             self.display_request = None
             self.runtime.resume()
             self.drive()
+            self.autosave()
             return
         if self.runtime.running or self.runtime_error:
             return
@@ -401,12 +415,15 @@ class NativeGame(ActivityUI, Preview):
         obj = found[0]
         x = float(obj.get('x', 0))+float(obj.get('width', 64))/2
         y = float(obj.get('y', 0))+float(obj.get('height', 64))/2
-        offsets = {'1': (0, -64), '2': (0, 64), '3': (-64, 0), '4': (64, 0)}
-        dx, dy = offsets.get(obj['props'].get('face'), (0, 0))
-        self.load_map(mid, x+dx, y+dy)
+        # setPlayerPositionByExit @ 0x2dbefc copies the exit's position, then
+        # reverses its face. There is no extra one-tile displacement.
+        self.load_map(mid, x, y)
+        self.face = {'1': 'standdown', '2': 'standup', '3': 'standright',
+                     '4': 'standleft'}.get(obj['props'].get('face'), self.face)
         self.advance_main_condition('map', int(mid))
         self.runtime.notify('tomap', map=int(mid))
         self.inside_areas = set()
+        self.autosave()
 
     def try_exit(self):
         if self.booting:
@@ -435,7 +452,8 @@ class NativeGame(ActivityUI, Preview):
             for p in rows:
                 if 'x' not in p or 'y' not in p:
                     continue
-                x, y = float(p['x'])*64+32, (self.map.height-float(p['y']))*64
+                # positionForTileCoord @ 0x2d8c70 uses TMX top-origin tiles.
+                x, y = (float(p['x'])+.5)*self.map.tw, (float(p['y'])+.5)*self.map.th
                 key = f'{self.map_id}:{p.get("spritetype", 2)}:{p.get("spriteid", 0)}'
                 if p.get('spritetype') == 1:
                     self.x, self.y = x, y
@@ -453,7 +471,8 @@ class NativeGame(ActivityUI, Preview):
         elif kind == 'tempnpc':
             for p in rows:
                 self.state.temp_npcs[str(p['npcid'])] = dict(p, map=self.map_id,
-                    x=float(p.get('x', 0))*64+32, y=(self.map.height-float(p.get('y', 0)))*64)
+                    x=(float(p.get('x', 0))+.5)*self.map.tw,
+                    y=(float(p.get('y', 0))+.5)*self.map.th)
         elif kind == 'spritevisible':
             for p in rows:
                 if p.get('spritetype') == 1:
@@ -465,8 +484,7 @@ class NativeGame(ActivityUI, Preview):
                     key = f'{self.map_id}:{p.get("spritetype", 2)}:{p.get("spriteid", 0)}'
                     self.state.visible[key] = bool(p['visible'])
         elif kind == 'screenmove':
-            self.camera_focus = None if parameter.get('x', -1) < 0 else (
-                float(parameter['x'])*64+32, (self.map.height-float(parameter['y']))*64)
+            self.begin_camera_move(parameter)
         elif kind == 'tomap':
             self.request_map(parameter['exit'])
         elif kind == 'areamapmove':
@@ -491,11 +509,17 @@ class NativeGame(ActivityUI, Preview):
             raise PendingMechanic(f'原画面指令 {kind} 未实现')
 
     def on_click(self, event):
+        if self.task_page:
+            self.task_page.click(event.x, event.y)
+            return
         if self.battle and self.battle_ui:
             action = self.battle_ui.click(event.x, event.y)
             if action == 'finish':
                 self.finish_battle()
             return
+        if not self.runtime.running and not self.ui_open and self.main_ui_visible:
+            if self.scene_ui.click(event.x, event.y):
+                return
         self.interact()
 
     def start_battle(self, npcid, kind=None):
@@ -505,6 +529,7 @@ class NativeGame(ActivityUI, Preview):
             raise PendingMechanic('原战斗要求至少一只宠物，当前队伍为空')
         if not any(p.hp > 0 for p in self.state.pets):
             raise PendingMechanic('队伍已全灭；原版恢复点/白屏传送尚未接入，不能伪造复活')
+        self.autosave()
         if kind == 'wild' or str(npcid) in self.data.tables.get('VillageEnemy', {}):
             battle = make_wild_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
         else:
@@ -534,6 +559,9 @@ class NativeGame(ActivityUI, Preview):
         elif result == 'win' and battle.kind != 'wild':
             TaskProgress(self.state).update('fight', 2, 1, int(battle.source_id), -1)
             self.state.npc_fights[battle.source_id] = 1
+        if battle.kind == 'wild' and result in ('win', 'caught'):
+            TaskProgress(self.state).update('fight', 1, 1, -1,
+                                            int(battle.enemy_active.pet.species))
         TaskProgress(self.state).update()
         if battle.kind == 'wild' and result in ('win', 'caught'):
             self.runtime.notify('fightover', type=1, result=1,
@@ -555,7 +583,11 @@ class NativeGame(ActivityUI, Preview):
             self.runtime.resume()
         self.drive()
 
+        self.autosave()
+
     def drive(self):
+        if getattr(self, 'camera_action', None):
+            return
         if self.display_request or self.runtime_error:
             return
         if self.battle and not self.runtime.running:
@@ -638,6 +670,8 @@ class NativeGame(ActivityUI, Preview):
                     self.runtime.resume()
                     continue
                 self.apply_visual(request)
+                if self.camera_action:
+                    return
                 self.runtime.resume()
                 self.player_sprite = self.state.sprite_id
             except (PendingMechanic, NotImplementedError, ValueError, KeyError) as error:
@@ -654,12 +688,24 @@ class NativeGame(ActivityUI, Preview):
     def tick(self):
         old_map, old_x, old_y = self.map_id, self.x, self.y
         if not self.booting:
+            now = time.monotonic()
+            elapsed = max(0, now-self.camera_clock)
+            self.advance_camera(elapsed)
+            if self.navigation:
+                try:
+                    self.navigation.advance(min(.06, elapsed))
+                except ValueError as error:
+                    self.navigation.stop()
+                    messagebox.showinfo('指引', str(error), parent=self.root)
+            self.camera_clock = now
             TaskProgress(self.state).update()
             self.drive()
-            self.steps = [1] if self.runtime.running or self.runtime_error else []
+            self.steps = [1] if self.runtime.running or self.runtime_error or self.ui_open else []
         super().tick()
         if self.booting:
             return
+        if time.monotonic()-getattr(self, 'last_autosave', 0) >= 20:
+            self.autosave()
         if not self.battle and self.map_id == old_map:
             self.encounter_distance += abs(self.x-old_x) + abs(self.y-old_y)
             if self.check_encounter():
@@ -690,6 +736,8 @@ class NativeGame(ActivityUI, Preview):
         self.status.set(self.runtime_error or '方向键/WASD移动 · 空格/E对话 · F5保存 · F9读取 | 原剧情状态机、战斗核心与原版战斗UI已接入')
 
     def make_frame(self):
+        if getattr(self, 'task_page', None):
+            return self.task_page.render()
         if self.battle and self.battle_ui:
             return self.battle_ui.render()
         original_dialogue = self.dialogue
@@ -700,7 +748,18 @@ class NativeGame(ActivityUI, Preview):
             self.dialogue = original_dialogue
         if getattr(self, 'screen_black', False):
             frame.paste('#101010', (0, 0, self.WIDTH, self.HEIGHT))
+        if (not self.booting and self.main_ui_visible and not self.runtime.running
+                and not getattr(self, 'screen_black', False)):
+            if self.navigation:
+                self.navigation.draw_guide(frame)
+            self.scene_ui.render(frame)
         if original_dialogue is not None:
+            if self.display_request and self.display_request.kind == 'aside':
+                content = self.display_request.data.get('text', '')
+                overlay = self.cocos_ui.render('AsideUI', (self.WIDTH, self.HEIGHT),
+                                               text={'aside_Text': content})
+                frame.alpha_composite(overlay)
+                return frame
             name, sep, content = original_dialogue.partition(':')
             if not sep:
                 name, content = '', original_dialogue
@@ -732,6 +791,8 @@ class NativeGame(ActivityUI, Preview):
         self.state.presentation = {
             'face': self.face, 'player_visible': self.player_visible,
             'camera_focus': self.camera_focus, 'main_ui_visible': self.main_ui_visible,
+            'camera_action': self.camera_action,
+            'navigation_destination': self.navigation.destination if self.navigation else None,
             'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
             'encounter_distance': self.encounter_distance,
             'encounter_threshold': self.encounter_threshold,
@@ -740,40 +801,127 @@ class NativeGame(ActivityUI, Preview):
         self.state.save(self.save_path)
         self.event_issue = '已保存独立移植存档，包含当前剧情位置、背包、任务和随机数状态。'
 
-    def restore(self):
+    def restore(self, automatic=False):
         if self.battle:
             self.event_issue = '战斗中暂不支持读取存档，请在战斗结束后读取。'
             return
-        if not self.save_path.exists():
+        candidates = [self.save_path, self.save_path.with_suffix('.json.bak')]
+        backup_dir = self.save_path.parent/'backups'
+        if automatic and backup_dir.exists():
+            candidates += sorted(backup_dir.glob('slot1-*.json'), reverse=True)
+        if not any(p.exists() for p in candidates):
             self.event_issue = '还没有原生移植存档。'
             return
         try:
-            state = GameState.load(self.data.tables, self.save_path)
+            failures = []
+            for candidate in candidates if automatic else [self.save_path]:
+                if not candidate.exists():
+                    continue
+                try:
+                    state = GameState.load(self.data.tables, candidate)
+                    break
+                except (ValueError, KeyError, OSError) as error:
+                    failures.append(str(error))
+            else:
+                raise ValueError('; '.join(failures))
             runtime = EventRuntime(self.data, state)
             runtime.restore(state.pending_runtime)
             self.close_transient_ui()
             self.state, self.runtime = state, runtime
+            world = self.data.load_map(state.map_id)
+            if not (0 <= state.x < world.width*world.tw and 0 <= state.y < world.height*world.th):
+                state.audit.append({'repair': 'legacy exit offset outside map', 'position': [state.x, state.y]})
+                state.x = max(world.tw/2, min(state.x, world.width*world.tw-world.tw/2))
+                state.y = max(world.th/2, min(state.y, world.height*world.th-world.th/2))
             self.load_map(state.map_id, state.x, state.y)
             self.runtime_error, self.display_request, self.dialogue = '', None, None
             self.pending_wait, self.wait_until = None, 0
             self.camera_focus, self.screen_black, self.flash_until = None, False, 0
             self.player_visible, self.main_ui_visible = True, True
             self.teach_nodes, self.battle_tips = [], []
-            for key in ('face', 'player_visible', 'camera_focus', 'main_ui_visible',
+            for key in ('face', 'player_visible', 'camera_focus', 'camera_action', 'main_ui_visible',
                         'teach_nodes', 'screen_black', 'encounter_distance', 'encounter_threshold'):
                 if key in state.presentation:
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
+            self.camera_clock = time.monotonic()
+            if self.navigation:
+                self.navigation.destination = state.presentation.get('navigation_destination')
+                self.navigation.planned_map = None
             self.player_sprite = state.sprite_id
             self.drive()
+            return True
         except (ValueError, KeyError, OSError) as error:
             messagebox.showerror('未覆盖原存档', str(error), parent=self.root)
+            # Never replace unreadable progress with a fresh opening autosave.
+            self.autosave_disabled = True
+            return False
+
+    def autosave(self):
+        if (getattr(self, 'booting', True) or getattr(self, 'battle', None)
+                or getattr(self, 'ui_open', False) or getattr(self, 'autosave_disabled', False)
+                or not hasattr(self, 'save_path')):
+            return False
+        signature = json.dumps([self.state.payload(), self.x, self.y, self.camera_action],
+                               ensure_ascii=False, sort_keys=True)
+        if getattr(self, 'autosave_signature', None) == signature:
+            self.last_autosave = time.monotonic()
+            return False
+        self.save()
+        self.autosave_signature = json.dumps([self.state.payload(), self.x, self.y, self.camera_action],
+                                             ensure_ascii=False, sort_keys=True)
+        self.last_autosave = time.monotonic()
+        return True
+
+    def on_close(self):
+        self.autosave()
+        self.root.destroy()
+
+    def begin_camera_move(self, parameter):
+        import math
+        focus = self.camera_focus or (self.x, self.y-self.map.th)
+        if float(parameter.get('x', -1)) < 0 and float(parameter.get('y', -1)) < 0:
+            target = (self.x, self.y-self.map.th)
+        else:
+            target = ((float(parameter['x'])+.5)*self.map.tw,
+                      (float(parameter['y'])-.5)*self.map.th)
+        def visible_center(point):
+            x, y = self.camera_origin(point)
+            return [(x+self.WIDTH/2)/self.SCALE, (y+self.HEIGHT/2)/self.SCALE]
+        start, target = visible_center(focus), visible_center(target)
+        speed = int(parameter.get('speedscale', 1))
+        self.camera_focus = start
+        if speed == 0:
+            self.camera_focus = target if parameter.get('stop') == 1 else None
+            return
+        if speed < 0:
+            raise ValueError('Invalid original camera speedscale')
+        # setViewpoint @ 0x2d9eb0: distance/tile-height * .1 / speedscale,
+        # followed by DelayTime(.5), then moveScreenOver -> process callback.
+        duration = math.dist(start, target)/self.map.th*.1/speed
+        self.camera_action = {'start': start, 'target': target, 'duration': duration,
+                              'elapsed': 0.0, 'stop': parameter.get('stop') == 1}
+        self.camera_clock = time.monotonic()
+
+    def advance_camera(self, seconds):
+        action = getattr(self, 'camera_action', None)
+        if not action:
+            return
+        action['elapsed'] += seconds
+        fraction = min(1, action['elapsed']/action['duration']) if action['duration'] else 1
+        self.camera_focus = [a+(b-a)*fraction for a, b in zip(action['start'], action['target'])]
+        if action['elapsed'] >= action['duration']+.5:
+            self.camera_focus = action['target'] if action['stop'] else None
+            self.camera_action = None
+            if self.runtime.pending and self.runtime.pending.kind == 'screenmove':
+                self.runtime.resume()
 
     def close_transient_ui(self):
         # Loading must not acknowledge an old event through close_ui().
         if self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.destroy()
         self.ui_window, self.ui_open = None, False
+        self.task_page = None
 
     def listing(self, title, content):
         win = tk.Toplevel(self.root)
@@ -889,19 +1037,13 @@ class NativeGame(ActivityUI, Preview):
         tk.Button(frame, text='关闭', command=win.destroy).pack(side='left', padx=4, anchor='n')
 
     def tasks_ui(self):
-        row = self.data.tables['MainTask'][str(self.state.main_task)]
-        TaskProgress(self.state).update()
-        labels = {2: '未接取', 3: '进行中', 4: '可提交', 5: '已完成'}
-        lines = [f'主线：{row["name"]} · {labels.get(self.state.main_state, self.state.main_state)}', row['des'],
-                 f'进度 {self.state.task_counts.get(f"main:{self.state.main_task}", [])} / {row["counts"]}', '', '支线任务：']
-        for key, status in sorted(self.state.branch_states.items(), key=lambda pair: int(pair[0])):
-            if status not in (3, 4):
-                continue
-            branch = self.data.tables['BranchTask'][key]
-            lines.extend([f'{branch["name"]} · {labels[status]}', branch['des'],
-                          f'进度 {self.state.task_counts.get(f"branch:{key}", [])} / {branch["counts"]}', ''])
-        lines.extend([f'已完成主线：{len(self.state.completed_main)}', f'已完成支线：{len(self.state.completed_branch)}'])
-        self.listing('任务', '\n'.join(lines))
+        if self.battle or self.runtime.running:
+            return
+        from task_ui import TaskUI
+        self.close_transient_ui()
+        self.task_page = TaskUI(self)
+        self.ui_open = True
+        self.keys.clear()
 
     def about(self):
         messagebox.showinfo('当前范围', '原生开发版 0.2，尚未完成所有内容。\n\n'
@@ -915,6 +1057,9 @@ class NativeGame(ActivityUI, Preview):
 
 
 def main():
+    if os.name == 'nt':
+        import ctypes
+        ctypes.windll.user32.SetProcessDPIAware()
     parser = argparse.ArgumentParser()
     parser.add_argument('--smoke-test', action='store_true')
     parser.add_argument('--screenshot', type=Path)

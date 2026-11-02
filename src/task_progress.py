@@ -68,3 +68,5 @@ class TaskProgress:
                 state.main_state = updated
             else:
                 state.branch_states[key] = updated
+        from daily_tasks import DailyTasks
+        DailyTasks(state).update(kind, *parameters)

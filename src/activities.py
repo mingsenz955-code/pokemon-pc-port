@@ -135,6 +135,8 @@ class Activities:
                 match['round'] += 1
                 match['enemy_index'] = state.rng.choice([i for i in range(5) if i not in match['enemy_used']])
             if match['result'] == 1:
+                from daily_tasks import DailyTasks
+                DailyTasks(state).update('cards', 1)
                 row = state.tables['CardLegend']['1']
                 ids, counts = numbers(row['itemIds']), numbers(row['itemCounts'])
                 weights = numbers(row['probabilitys'], float)
@@ -233,4 +235,6 @@ class Activities:
             state.grant(reward['item'], reward['count'])
             state.activities['roulette_count'] = state.activities.get('roulette_count', 0)+1
             state.activities['roulette_last_index'] = index
+            from daily_tasks import DailyTasks
+            DailyTasks(state).update('roulette', 0)
         return index, reward
