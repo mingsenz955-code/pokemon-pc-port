@@ -17,8 +17,14 @@ class Mounts:
         return self.state.tables['Ride'].get(str(key))
 
     @staticmethod
+    def terrains(row):
+        # Ride.collidesAble uses 0 as ordinary ground, not the empty-list
+        # sentinel used by unrelated inventory/event fields in numbers().
+        return [int(value) for value in str(row['collidesAble']).split(',') if value.strip()]
+
+    @staticmethod
     def accepts(row, terrain, map_type):
-        return (row is not None and terrain in numbers(row['collidesAble'])
+        return (row is not None and terrain in Mounts.terrains(row)
                 and map_type not in numbers(row['mapTypeDisable']))
 
     def automatic(self, terrain, map_type):
@@ -58,13 +64,15 @@ class Mounts:
         key = int(key)
         if key == 0:
             if terrain != 0:
-                raise ValueError('请回到普通地面后下坐骑。')
+                raise ValueError('此处不能收回坐骑')
         else:
             row = self.state.tables['Ride'].get(str(key))
             if key not in [int(k) for k in self.state.rides]:
                 raise ValueError('尚未获得这只坐骑。')
-            if not self.accepts(row, terrain, map_type):
-                raise ValueError('这只坐骑不能在当前地形或地图使用。')
+            if terrain not in self.terrains(row):
+                raise ValueError('该坐骑不适应此地形')
+            if map_type in numbers(row['mapTypeDisable']):
+                raise ValueError('该坐骑不适应此地图')
         previous = self.state.ride
         self.state.ride = key
         if key and key != previous:
