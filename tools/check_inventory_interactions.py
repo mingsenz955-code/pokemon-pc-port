@@ -223,6 +223,40 @@ class InventoryChecks(unittest.TestCase):
             self.assertTrue(row['des'], key)
             self.assertIsNotNone(DATA.image('ItemIcon/'+row['texture']), key)
 
+    def test_seen_but_uncaught_card_opens_without_unlocking_ownership(self):
+        a = self.app
+        species = min((k for k, r in DATA.tables['Pet'].items() if r['kind'] == '1' and r['open'] == '1'), key=int)
+        a.state.encyclopedia = []
+        a.state.record_seen_pet(species)
+        self.open(48)
+        self.click('illustrated_card_0', 45)
+        self.assertEqual('IllustratedPetInfoUI', a.original_page.specs[0][0])
+        self.assertEqual([], a.state.encyclopedia)
+
+    def test_starting_battle_records_only_active_opponent_as_seen(self):
+        a = self.app
+        before, owned = set(a.state.seen_species), list(a.state.encyclopedia)
+        a.start_battle('511051')
+        self.assertEqual(before | {a.battle.enemy_active.pet.species}, set(a.state.seen_species))
+        self.assertEqual(owned, a.state.encyclopedia)
+
+    def test_treasure_search_uses_camera_and_original_radar(self):
+        from treasure import TreasureHunt
+        a = self.app
+        a.state.inventory['700002'] = 50
+        entry = TreasureHunt(a.state).buy('1')
+        a.load_map(7401)
+        self.assertFalse(a.search_treasure())
+        self.assertEqual('没有发现宝藏！', a.treasure_search_fx['text'])
+        self.assertFalse(entry['revealed'])
+        a.load_map(entry['map_id'], entry['x'], entry['y'])
+        self.assertTrue(a.search_treasure())
+        self.assertEqual('恭喜您发现宝藏！', a.treasure_search_fx['text'])
+        self.assertEqual(1, a.state.count('220007'))
+        a.treasure_search_fx['age'] = .3
+        a.screen_black = False
+        a.make_frame().save(OUT/'treasure-radar.png')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

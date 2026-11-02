@@ -54,8 +54,8 @@ class BattleUI:
         self.shop_hit = None
         self.item_filter = None
         self.info = ''
-        # Replay action groups in order using authored Spine poses. The hit
-        # phase and duration are still provisional, not native effect callbacks.
+        # Replay authored action callbacks. Unsupported plans retain the
+        # explicitly provisional 26-tick fallback.
         self.anim = None
         self.anim_queue = []
         self.anim_frame = 0
@@ -70,24 +70,26 @@ class BattleUI:
 
     # -- animation -----------------------------------------------------------
     def advance(self, steps=1, *, seconds=None):
-        # Keep the existing provisional action phases, but advance them in
-        # elapsed time rather than one unit per potentially slow render.
+        # Use elapsed time so slow renders still cross every authored callback.
         steps = max(0.0, float(steps) if seconds is None else float(seconds)*25)
         self.anim_idle += steps
         remaining = steps
         while self.anim and remaining > 0:
-            before = self.anim['age']
             amount = min(remaining, self.anim['duration']-self.anim['age'])
             self.anim['age'] += amount
             remaining -= amount
             plan = self.anim.get('effect')
             if plan and hasattr(self.app, 'root'):
-                for when, name in plan['events']:
-                    if before <= when < self.anim['age'] and name == 'sound':
+                played = self.anim.setdefault('played_events', set())
+                for index, (when, name) in enumerate(plan['events']):
+                    if self.anim['age'] >= when and index not in played and name == 'sound':
                         self.effect_audio.play(plan['sound'])
-            if self.anim['age'] >= self.anim.get('hit_at', self.anim['duration']/2):
-                for event in self.anim.get('damages', []):
-                    if event.get('uid'):
+                        played.add(index)
+            for event in self.anim.get('damages', []):
+                if not event.get('presented') and self.anim['age'] >= event['when']:
+                    event['presented'] = True
+                    self.anim['impact'] = event
+                    if event.get('uid') and 'hp' in event:
                         self.visual_hp[(event['side'], event['uid'])] = event['hp']
             if self.anim['age'] >= self.anim['duration']:
                 self.anim = self.anim_queue.pop(0) if self.anim_queue else None
@@ -133,7 +135,7 @@ class BattleUI:
                     current['duration'] = plan['duration']
                     current['hit_at'] = plan['hit'] if plan['hit'] is not None else plan['duration']
                 self.anim_queue.append(current)
-            elif kind == 'damage':
+            elif kind in ('damage', 'heal'):
                 if current is None:
                     current = {'side': '', 'target': event['side'], 'kind': 'damage',
                                'amount': 0, 'crit': False, 'age': 0, 'duration': 26, 'damages': []}
@@ -142,7 +144,10 @@ class BattleUI:
                 current['target_uid'] = event.get('uid')
                 current['amount'] += int(event.get('amount', 0))
                 current['crit'] |= bool(event.get('crit'))
-                current['damages'].append(event)
+                hits = current.get('effect', {}).get('hits', ())
+                when = (hits[min(int(event.get('hit_index', 0)), len(hits)-1)] if hits else
+                        current.get('hit_at', current['duration']/2))
+                current['damages'].append({**event, 'when': when})
         if self.anim is None and self.anim_queue:
             self.anim = self.anim_queue.pop(0)
         self._signature = None
@@ -267,12 +272,15 @@ class BattleUI:
             player_offset = source_offset if self.anim['side'] == 'player' else target_offset
         else:
             enemy_offset, player_offset = (0, 0), (0, 0)
-        self._draw_pet(frame, self.presentation_unit(True),
+        pets_layer = Image.new('RGBA', frame.size)
+        self._draw_pet(pets_layer, self.presentation_unit(True),
                        tuple(round(v)+d for v, d in zip(self.pet_positions['enemy'], enemy_offset)),
                        235, True, flash if self.anim and self.anim['target'] == 'enemy' else 0)
-        self._draw_pet(frame, self.presentation_unit(False),
+        self._draw_pet(pets_layer, self.presentation_unit(False),
                        tuple(round(v)+d for v, d in zip(self.pet_positions['player'], player_offset)),
                        250, False, flash if self.anim and self.anim['target'] == 'player' else 0)
+        self.effects.draw(frame, self, rear=True)
+        frame.alpha_composite(pets_layer)
         self.effects.draw(frame, self)
         hide_hud = bool(self.anim and self.anim.get('effect', {}).get('hide_ui'))
         for layer in (() if hide_hud else (self._hud_layer(True), self._hud_layer(False))):
@@ -329,8 +337,8 @@ class BattleUI:
         side = 'enemy' if enemy else 'player'
         if self.anim and self.anim['side'] == side:
             clip, age, loop = 'attack', self.anim['age'], False
-        elif self.anim and self.anim['target'] == side and self.anim['age'] >= self.anim.get('hit_at', self.anim['duration']/2):
-            clip, age, loop = 'underattack', self.anim['age']-self.anim.get('hit_at', self.anim['duration']/2), False
+        elif self.anim and self.anim.get('impact', {}).get('side') == side and self.anim['impact']['type'] == 'damage':
+            clip, age, loop = 'underattack', self.anim['age']-self.anim['impact']['when'], False
         image = self.app.data.pet_frame(unit.pet.species, clip, int(age*12/25), loop)
         if image is None:
             image = setup
@@ -350,21 +358,24 @@ class BattleUI:
         frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
 
     def _draw_damage(self, draw):
-        if not self.anim or self.anim['amount'] <= 0:
+        impact = self.anim.get('impact') if self.anim else None
+        if not impact or int(impact.get('amount', 0)) <= 0:
             return
-        half = self.anim.get('hit_at', self.anim['duration']/2)
+        half = impact['when']
         if self.anim['age'] < half:
             return
         phase = min(1.0, (self.anim['age']-half)/max(1, half))
-        side = self.anim['target']
+        side = impact['side']
         x = round(self.pet_positions[side][0])
         y = round(self.pet_positions[side][1])-260
         y -= round(34*phase)
-        text = f'-{self.anim["amount"]}'
-        if self.anim['crit']:
+        healing = impact['type'] == 'heal'
+        text = ('+' if healing else '-')+str(impact['amount'])
+        if impact.get('crit'):
             text += ' 暴击!'
-        self._label(draw, (x, y), text, 28 if self.anim['crit'] else 24,
-                    (255, 236, 120, 255) if self.anim['crit'] else (255, 92, 72, 255), 'mm')
+        self._label(draw, (x, y), text, 28 if impact.get('crit') else 24,
+                    (112, 245, 138, 255) if healing else
+                    (255, 236, 120, 255) if impact.get('crit') else (255, 92, 72, 255), 'mm')
 
     def _draw_bars(self, draw):
         for side, rects in self._hud_rects.items():

@@ -1,3 +1,9 @@
+## 2026-11-02 / 0.2.58 接续
+
+分支 codex/restore-special-battle-effects，基于 0.2.57/7bb529c，需先合入 PR13。新增六类特效计划与多命中时间线、已见图鉴保存、可见区域寻宝与原雷达。优先跑 check_special_battle_effects.py、check_seen_encyclopedia.py、check_treasure_search.py，以及 battle/原页面/道具/存档回归。详见 VERIFICATION_0.2.58.md。
+
+不要将 path2 当成敌方特效；目标读取 Skill.effectpos。寻找宝藏必须传入当前地图和世界坐标可见矩形；搜索失败仍会消耗道具。新 seen_species 存档字段的历史缺失只能从捕获记录恢复。完整剩余项仍在 RESTORATION_REMAINING.md 顶部。
+
 ## 2026-11-02 / 0.2.57 接续
 
 基线 origin/main=c104ab8，分支 codex/fix-original-inventory-pages。新增 pet_pages.py（原宠物行/说明框）和 particles.py（原 plist 星光）。不要回退最近商店/地图/战斗改动。优先跑 check_inventory_interactions.py、check_original_page_flows.py、check_pet_list_ui.py、check_pet_property_ui.py、check_continuous_login.py、check_treasure.py、check_activities.py、check_regressions.py。

@@ -36,12 +36,13 @@ except ValueError:
     pass
 assert state.count('700002') == 45
 assert state.count('220007') == 3
-hunt.use_magnifier()
+context = {'map_id': entry['map_id'], 'viewport': (entry['x']-100, entry['y']-100, entry['x']+100, entry['y']+100)}
+hunt.use_magnifier(**context)
 assert state.count('220007') == 2
 assert entry['revealed']
 assert hunt.visible_on('102')
 try:
-    hunt.use_magnifier()
+    hunt.use_magnifier(**context)
     raise AssertionError('revealed treasure was searched twice')
 except ValueError:
     pass
@@ -102,6 +103,7 @@ try:
     assert app.state.count('220007') == 3
     active = TreasureHunt(app.state).active()
     assert active and not active['revealed']
+    app.load_map(active['map_id'], active['x'], active['y'])
     app.open_ui(Request('openui', 'treasure-test', 1,
                         {'parameters': {'uiid': 24, 'par1': 1}}))
     app.ui_actions['use_Button']()
@@ -146,7 +148,7 @@ try:
     # Render the actual map with the revealed chest actor.
     active = TreasureHunt(app.state).active()
     assert active and not active['revealed']
-    TreasureHunt(app.state).use_magnifier()
+    TreasureHunt(app.state).use_magnifier(map_id=active['map_id'], viewport=(active['x']-100, active['y']-100, active['x']+100, active['y']+100))
     app.runtime.sequence, app.runtime.file, app.runtime.pending = [], '', None
     app.display_request = None
     app.screen_black = False

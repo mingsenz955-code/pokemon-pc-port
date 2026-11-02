@@ -1193,7 +1193,7 @@ class ActivityUI:
                 info.set('当前没有正在寻找的藏宝图；请先购买藏宝图。')
                 return
             try:
-                hunt.use_magnifier(current['pos_id'])
+                self.search_treasure()
             except (ValueError, KeyError) as error:
                 info.set(str(error))
                 return

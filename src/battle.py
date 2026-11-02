@@ -615,7 +615,7 @@ class Battle:
         attack_count = max(1, int(skill.get('attackCount', 1) or 1))
         coe = float(skill.get('attackCoe', 0) or 0)
         hit = False
-        for _ in range(attack_count):
+        for hit_index in range(attack_count):
             if attack_count > 1:
                 rate = int(skill.get('attackRate', 100) or 100)
                 if rate < 100 and self.rng.randrange(100) >= rate:
@@ -630,7 +630,8 @@ class Battle:
                 if unit.has('all_in') and unit.has('poison', 'drain'):
                     damage *= 2
                 self._deal(unit, target, damage, attribute,
-                           crit_chance=self._crit_chance(unit, target, skill), skill=skill)
+                           crit_chance=self._crit_chance(unit, target, skill), skill=skill,
+                           hit_index=hit_index)
                 hit = True
         self._apply_states(unit, target, skill)
         if not hit and coe <= 0:
@@ -652,7 +653,7 @@ class Battle:
         base += int(float(skill.get('critRevise', 0) or 0))
         return max(0, min(100, base))
 
-    def _deal(self, unit, target, damage, attribute, crit=False, crit_chance=None, skill=None):
+    def _deal(self, unit, target, damage, attribute, crit=False, crit_chance=None, skill=None, hit_index=0):
         crit = crit if crit_chance is None else self.rng.randrange(100) < crit_chance
         # damageAddition 0x2c91bc adds 50 to the restraint percentage on a
         # critical hit, BEFORE Formula_PetSkillAttackDamage. No +/-5% jitter.
@@ -679,7 +680,7 @@ class Battle:
         self.events.append({'type': 'damage', 'side': target.side, 'name': target.name,
                             'uid': target.pet.uid,
                             'amount': taken, 'crit': crit, 'attribute': attribute,
-                            'hp': target.hp, 'max_hp': target.max_hp})
+                            'hp': target.hp, 'max_hp': target.max_hp, 'hit_index': hit_index})
         if taken == 0:
             self.messages.append(f'{target.name} 没有受到伤害。')
         else:
@@ -762,10 +763,13 @@ class Battle:
             pct = values[1] if len(values) > 1 else 15
             healed = receiver.heal(receiver.max_hp*pct//100)
             self.messages.append(f'{receiver.name} 回复了 {healed} 点生命。')
-            self.events.append({'type': 'heal', 'side': receiver.side, 'amount': healed})
+            self.events.append({'type': 'heal', 'side': receiver.side, 'amount': healed,
+                                'uid': receiver.pet.uid, 'hp': receiver.hp, 'max_hp': receiver.max_hp})
             if kind == 'heal_chance' and self.rng.randrange(100) < 30:
                 healed = receiver.heal(receiver.max_hp)
                 self.messages.append(f'{receiver.name} 回复了全部生命！')
+                self.events.append({'type': 'heal', 'side': receiver.side, 'amount': healed,
+                                    'uid': receiver.pet.uid, 'hp': receiver.hp, 'max_hp': receiver.max_hp})
         elif kind == 'energy_heal':
             pct = values[1] if len(values) > 1 else 30
             amount = receiver.restore_energy(receiver.max_energy*pct//100)

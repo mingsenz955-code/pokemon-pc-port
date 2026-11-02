@@ -1,3 +1,13 @@
+## 0.2.58：特殊战斗演出、已见图鉴与可见范围寻宝
+
+- showSkillEffect1 0x2c6dec 同时载入 path1/path2，分别加入前方z=101和后方z=99，不是我方/敌方文件。showSkillEffect2 0x2c685c 对反向目标旋转180度，300025 噪音特判 winSize/2+(0,21)。showSkillEffect3 0x2c6330 以选中骨骼世界坐标定位；showSkillEffect4 0x2c5cd0 创建六个 MoveBy，方向交替±84，每段0.4秒；showSkillEffect5 0x2c57d0 处理治愈。
+- 目标选择先读取 SkillData vtable+0x34=getEffectpos，骨骼读取+0x40=getBodyPos。SkillEffectData+0x18=getPath2、+0x1c=getPath1，未把 PosType 当成攻击对象。
+- xuanfeng/Animation1 原 dr=211，attack帧5/40/80/120/160/200；zhiyushui原dr=51，sound帧4、add帧5；kuangfeng_q/h均dr=41，只有前层带attack/sound事件。宿主按25/60换算原60Hz帧，不以绘制次数推进。
+- resetEnemyPet 0x2cba60 在0x2cbcf6把 IllustratedProcessEvent 类型设为1并发送；setPetIllustratedStatus 0x32b73e 只允许状态增加。宿主新增 seen_species，不授予捕获/坐骑；旧存档从原捕获列表恢复最低已知状态。
+- VillageChestControler::isInScreen 0x2d6574 将 spriteTile.box 转为世界矩形，与 VisibleRect 相交。handleTreasureChestFindEvent 0x2d877c 只对可见隐藏宝箱显现；TreasureChestFindEvent::handle 0x2ee2ec 独立发送消耗事件，因此未找到也扣道具。
+- spriteTile.json 中宝藏30002/30003/30004的box均[-32,-32,64,64]。原查找加载 leida.ExportJson（Animation1/dr=61），Text.json treasureTips3=恭喜您发现宝藏！、treasureTips4=没有发现宝藏！，原提示时间2秒。
+- tools/inspect_binary.py 新增控制流遍历，绕过函数内文字/浮点常量池；支持读取未导出的回调地址。不能把常量池作为指令解读。
+
 ## 0.2.57：背包交互、宠物详情和奖励星光
 
 - PetDataManager::init 0x326466 把 maxFriendly 初始化为 6；usePetItem 0x32aed4 的类型5调用 addCloseness、类型6调用 levelUp(vector)。levelUp(int) 0x328212 按表中 maxLevel 限制等级。宠物属性页编号由 species key 减100000，不使用宿主 UUID。

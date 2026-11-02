@@ -97,7 +97,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.57（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.58（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -116,6 +116,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         super().load_map(mid, x, y)
         self.chest_fx = None
         self.obstacle_fx = None
+        self.treasure_search_fx = None
         self._apply_removed_obstacles()
         if hasattr(self, 'state') and not self.booting:
             self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
@@ -359,6 +360,43 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if animation.startswith('stand') and getattr(self, 'player_walking', False):
             animation = animation.replace('stand', 'walk')
         return self.scene_sprite(self.player_sprite, animation)
+
+    def search_treasure(self):
+        from treasure import TreasureHunt
+        hunt = TreasureHunt(self.state)
+        current = hunt.active()
+        if not current:
+            raise ValueError('当前没有藏宝图。')
+        sprite = self.data.tables['TChest'][current['chest_id']]['spriteId']
+        box = json.loads(self.data.sprite_tiles()[sprite]['box'])
+        x, y = self.camera_origin()
+        viewport = (x/self.SCALE, y/self.SCALE, (x+self.WIDTH)/self.SCALE, (y+self.HEIGHT)/self.SCALE)
+        found = hunt.use_magnifier(map_id=self.map_id, viewport=viewport, box=box)
+        texts = json.loads((self.data.assets/'Data/Text.json').read_text(encoding='utf-8'))
+        key = 'treasureTips3' if found else 'treasureTips4'
+        self.treasure_search_fx = {'age': 0.0, 'text': next(row['text'] for row in texts if row['name'] == key)}
+        return found
+
+    def _draw_treasure_search(self, frame):
+        fx = getattr(self, 'treasure_search_fx', None)
+        if not fx:
+            return
+        index = int(fx['age']*60)
+        if index < 61:
+            art = self.data.armature('leida', 'Animation1', index)
+            if art is not None:
+                scale = self.WIDTH/800
+                ox, oy = art.info.get('origin', (art.width/2, art.height/2))
+                art = art.resize((max(1, round(art.width*scale)), max(1, round(art.height*scale))), Image.Resampling.LANCZOS)
+                frame.alpha_composite(art, (round(self.WIDTH/2-ox*scale), round(self.HEIGHT/2-oy*scale)))
+        # Original TipsUiNode grows its scale9 background with the text.
+        # The authored 180px sample label otherwise clips the final characters.
+        width = math.ceil(self.cocos_ui.font('', 30).getlength(fx['text']))+2
+        tip = self.cocos_ui.render('TipsUiNode', (self.WIDTH, self.HEIGHT),
+                                   text={'tip_Text': fx['text']},
+                                   sizes={'bg_Image': (width+72, 59), 'tip_Text': (width, 34)},
+                                   positions={'Node': (400, 240), 'tip_Text': ((width+72)/2, 29.5)})
+        frame.alpha_composite(tip)
 
     def _draw_chest_fx(self, frame):
         fx = getattr(self, 'chest_fx', None)
@@ -1024,7 +1062,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.57')
+        win.title('任务指引 · 原生 0.2.58')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1338,6 +1376,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         else:
             battle = make_npc_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
         battle.select_initial_player(self.state.active_pet)
+        if battle.enemy_active:
+            self.state.record_seen_pet(battle.enemy_active.pet.species)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
         battle.source_id = str(npcid)
         self.battle_tips = []
@@ -1568,6 +1608,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 return
 
     def battle_action_complete(self):
+        if self.battle and self.battle.enemy_active:
+            self.state.record_seen_pet(self.battle.enemy_active.pet.species)
         if self.pending_wait and self.runtime.pending is self.pending_wait:
             self.pending_wait = None
             self.runtime.resume()
@@ -1619,6 +1661,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
             self.battle_ui.advance(seconds=elapsed)
+        if getattr(self, 'treasure_search_fx', None):
+            self.treasure_search_fx['age'] += elapsed
+            if self.treasure_search_fx['age'] >= 2:
+                self.treasure_search_fx = None
         if getattr(self, 'chest_fx', None):
             self.chest_fx['age'] += 1
             if self.chest_fx['age'] >= 26:
@@ -1677,6 +1723,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if original_dialogue is None:
             self._draw_chest_fx(frame)
             self._draw_obstacle_fx(frame)
+            self._draw_treasure_search(frame)
         if original_dialogue is not None:
             name, sep, content = original_dialogue.partition(':')
             if not sep:

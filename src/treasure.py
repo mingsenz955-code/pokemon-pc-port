@@ -11,7 +11,9 @@ The map purchase price, currency, clue row, candidate chest positions and
 chest loot all come from the original tables.  A purchased map grants the
 row's itemId/itemCount (in 1.20.4 this is three magnifiers 220007), matching
 the layout's "当前拥有个数" text.  Using a magnifier consumes one and reveals
-the randomly chosen candidate position from Treasure.chestPoss.  The revealed
+the randomly chosen candidate position from Treasure.chestPoss only when its
+sprite tile bounding box intersects the current map viewport. A failed search
+still costs one magnifier and leaves the chest hidden. The revealed
 chest is then a normal map actor; opening it rolls one row from TChest.
 
 There is no original TChest key-cost column.  The separate ChestItem table
@@ -95,8 +97,13 @@ class TreasureHunt:
             self.entries().append(entry)
         return entry
 
-    def use_magnifier(self, pos_id=None):
-        """Consume one magnifier and reveal the active chest on the map."""
+    def use_magnifier(self, pos_id=None, *, map_id, viewport, box=(-32, -32, 64, 64)):
+        """Search the visible world rectangle, charging even when nothing is found.
+
+        VillageChestControler::isInScreen 0x2d6574 intersects the sprite tile's
+        bounding box with VisibleRect. Both host inputs use top-origin world
+        coordinates; spriteTile.box uses the original bottom-origin coordinates.
+        """
         entry = self.active()
         if not entry:
             raise ValueError('当前没有藏宝图。')
@@ -104,10 +111,19 @@ class TreasureHunt:
             raise ValueError('这张藏宝图不是这个宝箱。')
         if entry.get('revealed'):
             raise ValueError('宝藏已经显现，请直接去地图寻找。')
+        left, top, right, bottom = map(float, viewport)
+        bx, by, width, height = map(float, box)
+        if left > right or top > bottom or width <= 0 or height <= 0:
+            raise ValueError('无效的寻宝可见区域。')
+        chest_left, chest_right = entry['x']+bx, entry['x']+bx+width
+        chest_top, chest_bottom = entry['y']-by-height, entry['y']-by
+        found = str(map_id) == str(entry['map_id']) and not (
+            chest_right < left or chest_left > right or chest_bottom < top or chest_top > bottom)
         with self.state.transaction():
             self.state.consume(['220007'], [1])
-            entry['revealed'] = True
-        return entry
+            if found:
+                entry['revealed'] = True
+        return found
 
     def open(self, pos_id):
         """Open a revealed map chest and roll one TChest reward row."""

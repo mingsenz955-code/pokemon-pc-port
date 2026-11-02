@@ -160,6 +160,7 @@ class GameState:
         self.chests = []
         self.removed_obstacles = []
         self.encyclopedia = []
+        self.seen_species = []
         self.budokans = {}
         self.arenas = {}
         self.arena_ranks = {}
@@ -200,6 +201,7 @@ class GameState:
         self.bank = []
         self.active_pet = 0
         self.encyclopedia = []
+        self.seen_species = []
         self.rides, self.ride = [], 0
         self.initialization = int(key)
         self.starter_id = 0
@@ -220,7 +222,15 @@ class GameState:
         self.infinite_highest = 1
         self.infinite_honor = 0
 
+    def record_seen_pet(self, species):
+        species = str(species)
+        if species not in self.tables['Pet']:
+            raise KeyError('原版宠物表中没有这个宠物。')
+        if species not in self.seen_species:
+            self.seen_species.append(species)
+
     def record_pet(self, species):
+        self.record_seen_pet(species)
         if str(species) not in self.encyclopedia:
             self.encyclopedia.append(str(species))
         # Ride.petId connects captured/evolved/purchased pets to their mount.
@@ -738,6 +748,11 @@ class GameState:
             result.arena_streak.setdefault(key, 0)
         result.pets = [Pet(**p) for p in payload['pets']]
         result.bank = [Pet(**p) for p in payload['bank']]
+        # Older saves never tracked sightings. Recover owned species only;
+        # constructor presets and unseen opponents must not become sightings.
+        result.seen_species = list(dict.fromkeys(str(k) for k in payload['state'].get('seen_species', result.encyclopedia)))
+        if any(k not in tables['Pet'] for k in result.seen_species):
+            raise ValueError('存档的已见图鉴中存在未知宠物。')
         if 'starter_id' not in payload['state'] and result.sprite_id == '10001' and result.pets:
             result.starter_id = result.initialization
             result.initialization = 1

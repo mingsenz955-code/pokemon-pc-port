@@ -212,7 +212,7 @@ class OriginalPages(PetPages):
             page.publish()
         def search():
             try:
-                hunt.use_magnifier()
+                self.search_treasure()
             except (ValueError, KeyError) as error:
                 self._page_tip(str(error), paint)
                 return
