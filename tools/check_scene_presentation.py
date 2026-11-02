@@ -74,9 +74,16 @@ class SceneChecks(unittest.TestCase):
                 self.assertEqual(1, len(app.state.pets))
                 rect = app.scene_ui.hits['task_Button']
                 app.on_click(SimpleNamespace(x=(rect[0]+rect[2])/2, y=(rect[1]+rect[3])/2))
-                self.assertEqual('TaskUI', app.ui_render_args['name'])
+                self.assertIsNotNone(app.task_page)
+                self.assertIsNone(app.ui_window)
+                app.task_page.render()
+                self.assertNotIn('receive_Button', app.task_page.hits)
+                self.assertEqual((960, 576), app.make_frame().size)
                 app.ui_actions['receive_Button']()
-                self.assertFalse(app.ui_open)
+                self.assertTrue(app.ui_open)
+                self.assertFalse(app.guide.active)
+                app.close_ui('no')
+                app.guide_toggle()
                 self.assertTrue(app.guide.active)
                 for _ in range(160):
                     app.guide.step(.04)
@@ -122,6 +129,7 @@ class SceneChecks(unittest.TestCase):
         for name in ('save', 'tasks_ui', 'guide_toggle', 'lottery_ui', 'bag_ui', 'pets_ui', 'illustrated_ui', 'achievements_ui', 'treasure_ui'):
             setattr(app, name, lambda name=name: calls.append(name))
         app.guide_shop = lambda kind: calls.append(('shop', kind))
+        app.map, app.data = DATA.load_map(101), DATA
         ui = SceneUI(app)
         image = Image.new('RGBA', (960, 576))
         ui.render(image)

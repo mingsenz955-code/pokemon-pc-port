@@ -43,6 +43,10 @@ class CocosUI:
 
     @lru_cache(maxsize=64)
     def layout(self, name):
+        source = self.data.assets/'res/UI'/(name+'.csb')
+        if source.exists():
+            from csb_reader import read_csb
+            return read_csb(source)
         return json.loads((self.data.root/'ui-layouts'/name).with_suffix('.json').read_text(encoding='utf-8'))
 
     @lru_cache(maxsize=32)
@@ -84,7 +88,7 @@ class CocosUI:
         return result
 
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
-               offset=(0, 0), pressed=None, positions=None):
+               offset=(0, 0), pressed=None, positions=None, rich_text=()):
         layout = self.layout(name)
         root = layout['tree']
         design = root.get('size', [800, 480])
@@ -153,11 +157,14 @@ class CocosUI:
                 if alpha < 1:
                     image.putalpha(image.getchannel('A').point(lambda v: round(v*alpha)))
                 frame.alpha_composite(image, (round(origin[0]), round(frame.height-origin[1]-height*abs(sy))))
-            elif classname in ['Panel', 'ListView', 'ScrollView'] and node.get('background_type') == 1:
+            elif (classname in ['Panel', 'ListView', 'ScrollView'] and node.get('background_type') == 1
+                  and node.get('background_alpha', 255) > 0):
                 a, r, g, b = node.get('background_color', [255, 255, 255, 255])
-                ImageDraw.Draw(frame).rectangle((round(origin[0]), round(frame.height-origin[1]-height*sy),
+                background = Image.new('RGBA', frame.size)
+                ImageDraw.Draw(background).rectangle((round(origin[0]), round(frame.height-origin[1]-height*sy),
                                                 round(origin[0]+width*sx), round(frame.height-origin[1])),
                                                fill=(r, g, b, round(alpha*a*node.get('background_alpha', 255)/255)))
+                frame.alpha_composite(background)
             value = str(resolve(text, node.get('text', '')))
             if value and classname in ['Text', 'Button', 'TextBMFont']:
                 if classname == 'TextBMFont':
@@ -181,9 +188,24 @@ class CocosUI:
                         else:
                             current += char
                     lines.append(current)
+                    if key in rich_text:
+                        # RichTextEx replaces fixed-height editor Text nodes;
+                        # its content height follows the wrapped text.
+                        height = max(1, len(lines)*(font.size+3)-3)
+                        origin = x-width*anchor[0]*sx, y-height*anchor[1]*sy
+                        area = area[0], height
+                        glyphs = Image.new('RGBA', area)
+                        draw = ImageDraw.Draw(glyphs)
                     a, r, g, b = node.get('color', [255, 94, 61, 32])
+                    line_height = font.size+3
+                    ink_height = (len(lines)-1)*line_height+font.size
+                    valign = node.get('vertical_alignment', 0)
+                    y = max(0, (area[1]-ink_height)/2 if valign == 1 else area[1]-ink_height if valign == 2 else 0)
                     for index, line in enumerate(lines):
-                        draw.text((0, index*(font.size+3)), line, font=font, fill=(r, g, b, a))
+                        align = node.get('horizontal_alignment', 0)
+                        remaining = area[0]-draw.textlength(line, font=font)
+                        x = max(0, remaining/2 if align == 1 else remaining if align == 2 else 0)
+                        draw.text((x, y+index*line_height), line, font=font, fill=(r, g, b, a), anchor='lt')
                 if sx != 1 or sy != 1:
                     glyphs = glyphs.resize((max(1, round(glyphs.width*abs(sx))),
                                             max(1, round(glyphs.height*abs(sy)))), Image.Resampling.LANCZOS)
