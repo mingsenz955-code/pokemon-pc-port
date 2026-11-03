@@ -122,11 +122,16 @@ class GlobalChecks(unittest.TestCase):
         self.click('confirm_Button')
         a.state.functions['8'] = 1
         self.open(68)
+        while len(a.state.pets) < a.state.pet_capacity():
+            a.state.add_preset(1)
         total = len(a.state.pets+a.state.bank)
         balance = a.state.count('700002')
         self.click('draw_2_Button')
         self.assertEqual(a.state.count('700002'), balance-25)
         self.assertEqual(len(a.state.pets+a.state.bank), total+1)
+        movie = a.lottery_animation
+        self.assertEqual(a.original_page.specs[0][0], 'LuckyDrawEffectUI')
+        movie.tick(elapsed=movie.info_at+.1, schedule=False)
         self.assertEqual(a.original_page.specs[0][0], 'LuckyDrawPetInfoUI')
         self.save_panel('global-lottery-result')
         self.click('confirm_Button')
@@ -135,6 +140,8 @@ class GlobalChecks(unittest.TestCase):
         self.click('draw_3_1_Button')
         self.assertEqual(a.state.count('700002'), balance-50)
         for index in range(3):
+            movie = a.lottery_animation
+            movie.tick(elapsed=movie.info_at+.1, schedule=False)
             self.assertEqual(a.original_page.specs[0][0], 'LuckyDrawPetInfoUI')
             self.click('confirm_Button')
         self.assertEqual(a.original_page.specs[0][0], 'LuckyDrawUI')
@@ -144,13 +151,17 @@ class GlobalChecks(unittest.TestCase):
         self.click('draw_1_Button')
         self.assertEqual(a.state.count('700002'), balance)
         self.assertGreater(a.state.activities['lucky_free_at'], 0)
+        movie = a.lottery_animation
+        movie.tick(elapsed=movie.info_at+.1, schedule=False)
         self.click('confirm_Button')
         self.click('draw_1_Button')
         self.assertEqual(a.state.count('700002'), balance-10)
 
     def test_full_lottery_rejects_without_consuming_currency_or_random_state(self):
         s = self.app.state
-        s.inventory['700004'], s.inventory['700005'] = len(s.pets), 0
+        while len(s.pets) < s.pet_capacity():
+            s.add_preset(1)
+        s.inventory['700005'] = 0
         before, random_state = dict(s.inventory), s.rng.getstate()
         with self.assertRaises(ValueError): Activities(s).draw_pets(3)
         self.assertEqual(before, s.inventory)
@@ -184,7 +195,9 @@ class GlobalChecks(unittest.TestCase):
 
     def test_full_storage_cannot_strand_a_caught_result_or_consume_ball(self):
         a = self.app
-        a.state.inventory.update({'700004': len(a.state.pets), '700005': 0, '220006': 1})
+        while len(a.state.pets) < a.state.pet_capacity():
+            a.state.add_preset(1)
+        a.state.inventory.update({'700005': 0, '220006': 1})
         b = make_wild_battle(a.data.tables, a.state.pets, next(iter(a.data.tables['VillageEnemy'])), a.state.rng)
         ui = BattleUI(a, b)
         ui.selected = {'id': '220006', 'kind': 'ball'}

@@ -8,12 +8,13 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
-parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.71')
+parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.72')
 parser.add_argument('--dist-dir', type=Path, default=root/'outputs')
 args = parser.parse_args()
 name = args.name
 if Path(name).name != name or '/' in name or '\\' in name:
     raise ValueError('Build name must be a single directory name')
+subprocess.run([sys.executable, str(root/'tools/bake_lottery_animation.py')], cwd=root, check=True)
 command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed', '--onedir',
            '--name', name, '--distpath', str(args.dist_dir),
            '--workpath', str(root/'build'),
@@ -33,8 +34,9 @@ if data.exists() and data.resolve() != (root/'original-1.20.4').resolve():
         raise ValueError('Refusing to replace a data directory outside the build package')
     shutil.rmtree(data)
 shutil.copytree(root/'original-1.20.4', data, dirs_exist_ok=True)
+shutil.copytree(root/'generated-assets/lottery', data/'cache/lottery', dirs_exist_ok=True)
 for filename in ['README.md', 'docs/DEEPSEEK_HANDOVER.md', 'docs/MECHANICS_EVIDENCE.md',
-                 'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.61.md', 'docs/VERIFICATION_0.2.62.md', 'docs/VERIFICATION_0.2.63.md', 'docs/VERIFICATION_0.2.66.md', 'docs/VERIFICATION_0.2.67.md', 'docs/VERIFICATION_0.2.68.md', 'docs/VERIFICATION_0.2.71.md']:
+                 'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.61.md', 'docs/VERIFICATION_0.2.62.md', 'docs/VERIFICATION_0.2.63.md', 'docs/VERIFICATION_0.2.66.md', 'docs/VERIFICATION_0.2.67.md', 'docs/VERIFICATION_0.2.68.md', 'docs/VERIFICATION_0.2.69.md', 'docs/VERIFICATION_0.2.70.md', 'docs/VERIFICATION_0.2.71.md', 'docs/VERIFICATION_0.2.72.md']:
     source = root/filename
     if source.exists():
         shutil.copy2(source, output/('使用说明.md' if filename == 'README.md' else source.name))

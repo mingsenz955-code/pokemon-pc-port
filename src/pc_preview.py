@@ -337,7 +337,7 @@ class Preview:
                 max(0, min(focus[1]*self.SCALE-self.HEIGHT/2, self.background.height-self.HEIGHT)))
 
     def tick(self):
-        frame_started = time.perf_counter()
+        frame_started = getattr(self, "_frame_started", time.perf_counter())
         now = time.monotonic()
         dt, self.last_time = min(.06, now-self.last_time), now
         if self.dialogue is None and not self.steps:
@@ -365,7 +365,7 @@ class Preview:
         self.status.set(self.event_issue or ('WASD/方向键移动 · 空格/E对话 · M地图 · F5保存 · Esc结束脚本'
                                             + (' · F3穿墙核验开启' if self.noclip else '')
                                             + '   |   开发验证版：战斗、养成、任务流程尚未完成'))
-        delay = max(8, round(1000/getattr(self, 'TARGET_FPS', 25)-(time.perf_counter()-frame_started)*1000))
+        delay = max(3, round(1000/getattr(self, 'TARGET_FPS', 25)-(time.perf_counter()-frame_started)*1000))
         self.root.after(delay, self.tick)
 
     def move_to(self, x, y):
