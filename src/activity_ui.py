@@ -1159,7 +1159,10 @@ class ActivityUI:
         refresh()
 
     def lottery_ui(self, force=False):
-        if not force and (self.battle or self.runtime.running or self.ui_open):
+        request = self.display_request
+        guided = bool(request and request.kind == 'button'
+                      and request.data.get('nodekey') == 'draw_Button')
+        if not force and (self.battle or self.ui_open or (self.runtime.running and not guided)):
             return
         self.open_ui(Request('openui', 'lottery', 1, {'parameters': {'uiid': 68}}))
 
