@@ -22,6 +22,7 @@ try:
     state = GameState(data.tables, seed=73)
     app = NativeGame(root, data)
     app.state = state
+    app.runtime.state = state
     state.inventory['210001'] = 1
     state.inventory['240001'] = 3
     app.open_ui(Request('openui', 'chest', 1, {'parameters': {'uiid': 55}}))
@@ -30,8 +31,8 @@ try:
     app.ui_actions['confirm_Button']()
     assert state.count('210001') == 0
     assert state.count('240001') == 2
-    assert app.ui_render_args['name'] == 'GetItemUI'
-    assert app.ui_info.get()
+    assert app.original_page.specs[0][0] == 'GetItemUI'
+    assert '宝箱' in app.ui_info.get(), app.ui_info.get()
     app.ui_actions['confirm_Button']()
     assert not app.ui_open
     print('OpenChestConfirmUI checks passed')

@@ -25,6 +25,9 @@ class NpcMotion:
         for obj in getattr(app.map, 'objects', []):
             if obj['group'] != 'spriteLayer' or not obj.get('gid'):
                 continue
+            sid = str(app.map.tile_properties(int(obj['gid'])).get('spriteId'))
+            if sid == '30001':
+                continue  # VillageChestControler is not a walking NPC.
             area = int(obj.get('props', {}).get('move', 0))
             if area > 0:
                 self.controllers[str(obj['name'])] = {'area': area, 'wait': self.rng.randint(3, 7), 'clock': 0.0}

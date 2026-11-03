@@ -52,6 +52,7 @@ root = tk.Tk()
 app = NativeGame(root, data)
 app.runtime.sequence, app.runtime.file, app.runtime.pending = [], '', None
 app.display_request, app.dialogue = None, None
+app.state.bank.clear()
 for level, quality in ((10, 1), (10, 1)):
     p = app.state.add_generated_pet('100028', level)
     p.quality = quality

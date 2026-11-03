@@ -100,7 +100,8 @@ class StoryMotion:
             if key in app.state.positions:
                 return list(app.state.positions[key])
             obj = next((o for o in app.map.objects if o['group'] == 'spriteLayer'
-                        and o.get('gid') and str(o.get('name')) == str(identifier)), None)
+                        and o.get('gid') and str(o.get('name')) == str(identifier)
+                        and str(app.map.tile_properties(int(o['gid'])).get('spriteId')) != '30001'), None)
             if obj:
                 return [float(obj['x'])+app.map.tw/2, float(obj['y'])]
         raise PendingMechanic(f'当前原版地图没有人物 {kind}:{identifier}')

@@ -60,19 +60,29 @@ class TaskPage:
         if not self.rows:
             return
         key, row, status, counts = self.rows[self.selected]
-        if status != 4:
-            return
         if self.page != 'daily':
-            # Main/branch rewards are submitted by the original NPC event.
-            # Expose a useful claim entry without bypassing that conversation.
-            target = self.app.guide.resolver.from_task(self.page, key, row, status)
-            if target:
-                self.app.close_ui('no')
-                self.app.guide.start(target)
+            # Main/branch tasks are submitted by their original NPC talk
+            # event. Keep the task page open and explain it instead of
+            # silently teleporting or issuing a fabricated reward.
+            if getattr(self.app, 'ui_info', None):
+                state = '已完成，等待原版NPC结算。' if status == 4 else '尚未完成。'
+                self.app.ui_info.set(
+                    f'{row["name"]}：{state}请与任务对应的原版NPC对话完成，'
+                    '页面不会伪造或直接发放奖励。')
+            return
+        if status != 4:
             return
         result = DailyTasks(self.app.state).claim(key)
         self.sync()
         self.frame = None
+        names = []
+        for item_id, count in result['rewards']:
+            source = (self.app.data.tables['Item'].get(str(item_id))
+                      or self.app.data.tables['Money'].get(str(item_id))
+                      or self.app.data.tables['Pet'].get(str(item_id)) or {})
+            names.append(f'{source.get("name", item_id)}×{count}')
+        if getattr(self.app, 'ui_info', None):
+            self.app.ui_info.set('领取成功：' + ('、'.join(names) or '每日任务奖励'))
         self.app.show_reward('每日任务奖励', result['rewards'])
 
     def info(self):
@@ -81,7 +91,13 @@ class TaskPage:
         key, row, status, counts = self.rows[self.selected]
         progress = ' / '.join(f'{counts[i] if i < len(counts) else 0}/{n}'
                               for i, n in enumerate(numbers(row['counts'])))
-        return f'{row["name"]}\n{row["des"]}\n{progress}'
+        text = f'{row["name"]}\n{row["des"]}\n{progress}'
+        if not any(numbers(row.get('rewardIds', '0'))):
+            # BranchTask 2801/6201 really have no reward rows.  Do not invent
+            # an icon or amount: their payout is resolved by the original NPC
+            # dialogue event.
+            text += '\n（原版任务表未配置奖励；完成条件仍由对应NPC对话结算。）'
+        return text
 
     def render(self):
         self.sync()
@@ -101,8 +117,11 @@ class TaskPage:
             text['progress_BitmapFontLabel'] = f'{len(self.app.state.completed_branch)}/{len(self.app.state.tables["BranchTask"])}'
         else:
             text['progress_BitmapFontLabel'] = f'{DailyTasks(self.app.state).normal_completed()}/7'
-        visible['receive_Button'] = bool(self.rows and (self.rows[self.selected][2] == 4 or
-                                          self.page == 'daily' and self.rows[self.selected][2] != 5))
+        # Only daily tasks are claimed in TaskUI. Main/branch completion is
+        # resolved by their original NPC conversation, so no receive node is
+        # exposed there (even when the original status is "ready").
+        visible['receive_Button'] = bool(
+            self.rows and self.page == 'daily' and self.rows[self.selected][2] == 4)
         if self.rows:
             key, row, status, counts = self.rows[self.selected]
             for i, required in enumerate(numbers(row['counts'])[:4], 1):

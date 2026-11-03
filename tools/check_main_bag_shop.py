@@ -52,7 +52,9 @@ with tempfile.TemporaryDirectory() as saves:
     root.update()
     assert app.ui_open and app.ui_window is not None
     assert app.ui_base_layer is not None and app.ui_base_layer.size == (800, 480)
-    assert '背包' in app.ui_window.title()
+    assert app.ui_parameters.get('uiid') == 46
+    assert any(name.endswith('/item_ListView') for name in app.ui_hits), (
+        'bag page did not publish its original item list')
     app.close_transient_ui()
 
     # Collapsing 功能 restores the original four-arrow HUD toggle.

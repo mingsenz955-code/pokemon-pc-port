@@ -1,13 +1,15 @@
 """DailyTask table, daily reset, claim/atomic rewards, hooks and TaskUI."""
 import sys
 import json
+import os
 import tempfile
 import tkinter as tk
 from pathlib import Path
-from PIL import ImageGrab
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT/'src'))
+# Never read or overwrite the player's real slot1.json in this check.
+os.environ['POCKET_NATIVE_SAVE_DIR'] = tempfile.mkdtemp(prefix='pocket-daily-')
 if sys.platform == 'win32':
     import ctypes
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -160,7 +162,9 @@ try:
     app_talk.display_request, app_talk.dialogue = None, None
     app_talk.runtime.start('_daily_talk_test.json')
     app_talk.drive()
-    assert app_talk.dialogue == '路人:今天也要完成每日任务。'
+    assert app_talk.dialogue == '路人:今天也要完成每日任务。', (
+        repr(app_talk.dialogue), app_talk.runtime_error, app_talk.runtime.file,
+        app_talk.ui_open, app_talk.display_request)
     assert DailyTasks(state3).counter('4') == 1
 finally:
     for job in root_talk.tk.call('after', 'info'):
@@ -186,16 +190,13 @@ try:
     app.open_ui(Request('openui', 'daily-check', 1,
                         {'parameters': {'uiid': 44, 'page': 'daily'}}))
     assert app.ui_open
-    win = app.ui_window
-    win.geometry('+20+20')
-    win.lift()
-    win.attributes('-topmost', True)
+    # TaskUI is painted on the game canvas; there is deliberately no extra
+    # top-level window to screenshot or focus.
+    assert app.ui_window is None
     root.update()
-    area = (win.winfo_rootx(), win.winfo_rooty(),
-            win.winfo_rootx()+win.winfo_width(), win.winfo_rooty()+win.winfo_height())
     shot = ROOT/'outputs/verification/daily-tasks.png'
     shot.parent.mkdir(parents=True, exist_ok=True)
-    ImageGrab.grab(bbox=area).save(shot)
+    app.task_page.render().save(shot)
     assert 'receive_Button' in app.ui_actions
     assert 'tag_1_Button' in app.ui_actions
     assert 'tag_2_Button' in app.ui_actions
@@ -207,14 +208,20 @@ try:
     gold_before = app.state.count('700001')
     app.ui_actions['receive_Button']()
     assert app.state.count('700001') == gold_before
-    assert '不会伪造' in app.ui_info.get()
+    assert '不会伪造' in app.ui_info.get(), app.ui_info.get()
     app.ui_actions['tag_2_Button']()
     assert '支线' not in app.ui_info.get() or '当前页' in app.ui_info.get()
     app.ui_actions['tag_3_Button']()
     assert '全能训练' in app.ui_info.get()
     app.ui_actions['receive_Button']()
-    assert '领取成功' in app.ui_info.get()
+    # The real GetItemUI reward page covers TaskUI; confirming it returns
+    # to the same daily page.
+    assert app.task_page is None
     assert app.state.count('240015') == 5 and app.state.count('240018') == 1
+    app.ui_actions['confirm_Button']()
+    assert app.task_page is not None and app.task_page.page == 'daily'
+    assert DailyTasks(app.state).claimed('8')
+    assert '领取成功' in app.ui_info.get() or '全能训练' in app.ui_info.get()
     app.ui_actions['close_Button']()
     assert not app.ui_open
 finally:

@@ -28,13 +28,21 @@ class GameOverlay(tk.Frame):
         return 'break'
 
     def destroy(self):
+        if getattr(self, '_destroyed', False):
+            return
+        self._destroyed = True
         if self in getattr(self.app, '_game_overlays', []):
             self.app._game_overlays.remove(self)
         super().destroy()
 
     def geometry(self, value):
         # Legacy debug selectors can request a size, but stay inside the game.
-        width, height = map(int, value.split('+')[0].split('x'))
+        # Position-only geometry ("+20+20") is accepted for old test helpers;
+        # this child overlay remains centered in the game canvas.
+        head = str(value).split('+')[0]
+        if 'x' not in head:
+            return
+        width, height = map(int, head.split('x'))
         self.place_configure(width=min(800, width), height=min(480, height))
 
     def title(self, value=None):

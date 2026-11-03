@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import tkinter as tk
+from collections import OrderedDict
 from game_overlay import GameOverlay
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -277,7 +278,21 @@ class Preview:
             left, top = sx-anchor[0]*self.SCALE, sy-anchor[1]*self.SCALE
             if left >= self.WIDTH or top >= self.HEIGHT or left+size[0] <= 0 or top+size[1] <= 0:
                 continue
-            sprite = sprite.resize(size, Image.Resampling.LANCZOS)
+            # Static scenery and repeated poses retain image identity. Resize
+            # each once instead of resampling every building on every frame.
+            if not hasattr(self, '_scaled_sprites'):
+                self._scaled_sprites = OrderedDict()
+            cache_key = (id(sprite), size)
+            cached = self._scaled_sprites.get(cache_key)
+            if cached is not None and cached[0] is sprite:
+                self._scaled_sprites.move_to_end(cache_key)
+                sprite = cached[1]
+            else:
+                source = sprite
+                sprite = sprite.resize(size, Image.Resampling.LANCZOS)
+                self._scaled_sprites[cache_key] = (source, sprite)
+                while len(self._scaled_sprites) > 512:
+                    self._scaled_sprites.popitem(last=False)
             frame.alpha_composite(sprite, (round(sx-anchor[0]*self.SCALE), round(sy-anchor[1]*self.SCALE)))
             if oid is not None:
                 self.render_actor_overlay(frame, oid, sid, sx, sy, sprite, anchor)

@@ -97,6 +97,8 @@ class Page:
         app.ui_base_layer = self.pet_frame(self.layer.copy(), 0)
         self.display_frame = app.ui_base_layer
         app.ui_hits, app.ui_buttons, app.ui_rects = self.hits, self.buttons, self.rects
+        if hasattr(app, '_decorate_ui_tutorial'):
+            app.ui_base_layer = app._decorate_ui_tutorial(app.ui_base_layer)
         # Public short rects support existing host callers/tests, while callbacks
         # and hit testing retain unique full paths for each repeated card.
         for key, rect in list(self.rects.items()):
@@ -162,14 +164,54 @@ class OriginalPages(PetPages):
         page.actions.update({'confirm_Button': yes, 'cancel_Button': no, 'close_Button': no})
         page.publish()
 
+    def _add_page_close(self, page, at=(742, 16)):
+        # ShopUI/MysteriousShopUI do not carry a close node in their CSB,
+        # although the original layer responds to the tutorial close_Button.
+        # Use the original button_close.png rather than drawing a host button.
+        art = self.data.image('UI/button_close.png').resize((40, 40), Image.Resampling.LANCZOS)
+        page.layer.alpha_composite(art, tuple(at))
+        page.hit('close_Button', (at[0], at[1], at[0]+40, at[1]+40), self.close_ui)
+
     def _gold_store_page(self, body, info):
         body.pack_forget()
+        # The platform -1 free exp stone is a real Store row, but it belongs to
+        # the pEvent101006 tutorial shop. Exposing it in the normal gold shop
+        # would displace the first paid pack and make the tutorial alias point
+        # at the wrong card, so include it only while that event is active.
+        tutorial_shop = self.runtime.file == 'pEvent101006.json'
         goods = [(k, r) for k, r in sorted(self.data.tables['Store'].items(), key=lambda p: int(p[0]))
-                 if r['platform'] == '0' and r['shopType'] in ('1', '2', '7')
+                 if (r['platform'] == '0' or
+                     (tutorial_shop and r['platform'] == '-1' and int(r['costCount']) == 0))
+                 and r['shopType'] in ('1', '2', '7')
                  and not (r['costMoneyType'] == '700001' and r['gotItemKid'] == '700001')]
         offset, selected = [0], [0]
+
+        def free_buy(key):
+            # Store key 1 is the original platform -1 / cost 0 tutorial
+            # experience stone. It is a real Store row and a real grant, but
+            # the repeat flag is not used to mint extra stones.
+            claimed = self.state.activities.setdefault('tutorial_free_store', {})
+            if claimed.get(str(key)):
+                if self.ui_info:
+                    self.ui_info.set('这份引导奖励已经领取过了。')
+                paint()
+                return
+            try:
+                rewards = self.state.buy_store(key)
+            except (ValueError, KeyError) as error:
+                self._page_tip(str(error), paint)
+                return
+            claimed[str(key)] = 1
+            # Keep the shop page open: the original tutorial's next step
+            # clicks close_Button on the shop itself, not a reward modal.
+            names = '、'.join(f'{self._item_data(k)[0]}×{n}' for k, n in rewards)
+            if self.ui_info:
+                self.ui_info.set(f'已领取：{names}')
+            paint()
+
         def paint():
             row = goods[selected[0]][1]
+            info.set(f'商店 · {row["name"]}\n{row["des"]}')
             page = Page(self, 'ShopUI', text={'info_Text': row['des'], **self._money_text()},
                         resources=self._money_icons(), sizes={'info_Text': (335, 60)})
             area = page.rects['Layer/root_Panel/goods_ListView']
@@ -177,20 +219,31 @@ class OriginalPages(PetPages):
                 x, y = round(area[0]+i*163-offset[0]), round(area[1])
                 if x+153 <= area[0] or x >= area[2]:
                     continue
-                money = self.data.tables['Money'][row['costMoneyType']]
+                money = self.data.tables['Money'].get(row['costMoneyType'], {})
+                free = int(row['costCount']) == 0
                 page.add('ShopGoodsUI', (x, y), prefix=f'gold_store_{i}/', clip=area,
                     sizes={'cost_BitmapFontLabel': (64, 22)},
                     text={'name_Text': row['name'], 'cost_BitmapFontLabel': row['costCount'],
                           'count_BitmapFontLabel': f"x{row['gotCount']}" if row['gotItemKid'] != '0' else ''},
                     resources={'icon_Image': 'ItemIcon/'+row['texture'],
-                               'moneyIcon_Image': 'UI/'+money['littleIconTexture']},
+                               'moneyIcon_Image': 'UI/'+money.get('littleIconTexture', 'money_little_icon_gold.png')},
                     native_resources=('icon_Image',),
-                    visible={'selected_Image': i == selected[0], 'free_Image': False,
+                    visible={'selected_Image': i == selected[0], 'free_Image': free,
                              'yuan_Image': False, 'addSend_Image': False, 'discount_Panel': False,
                              'timesLimitedSale_Image': False},
-                    actions={'buy_Button': lambda k=key: choose_buy(k)})
+                    actions={'buy_Button': (lambda k=key: free_buy(k)) if free
+                             else (lambda k=key: choose_buy(k))})
                 page.hit(f'gold_store_card_{i}', (x, y, x+153, y+180), lambda n=i: select(n), area)
+                if free:
+                    button = next((rect for name, rect in page.hits.items()
+                                   if name.startswith(f'gold_store_{i}/') and name.endswith('/buy_Button')), None)
+                    if button:
+                        # pEvent101006 addresses the first tutorial goods
+                        # button as buy_Button_1 in the original UI tree.
+                        page.hit(f'buy_Button_{i+1}', button,
+                                 lambda k=key: free_buy(k), area)
             page.actions['close_Button'] = self.close_ui
+            self._add_page_close(page)
             page.publish()
         def select(index):
             selected[0] = index
@@ -731,6 +784,10 @@ class OriginalPages(PetPages):
                          native_resources=('icon_Image',),
                          sizes={'itemName_Text': (140, 24)}, visible={'selected_Image': kid == selected[0]})
                 page.hit(f'bag_row_{i}', (x, y, x+300, y+89), lambda key=kid: choose(key), area)
+                # pEvent101006 selects the tutorial item by its original
+                # item id (chooseItem_230011), not by the host row index.
+                page.hit(f'chooseItem_{kid}', (x, y, x+300, y+89),
+                         lambda key=kid: choose(key), area)
             page.actions['close_Button'] = back or self.close_ui
             page.actions['use_Button'] = use
             page.actions['heCheng_Button'] = synthesize
@@ -848,6 +905,11 @@ class OriginalPages(PetPages):
                          resources={'kind_Image': 'UI/'+self.data.tables['PetKindEnum'][str(row['kind'])]['iconTexture']},
                          visible={'selected_Image': False})
                 page.hit(f'pet_select_{i}', (x, y, x+309, y+74), lambda p=pet: callback(p), area)
+                # pEvent101006 uses the original prefab node name
+                # petSelectItem_1 for the first selectable pet.
+                if i == 0:
+                    page.hit('petSelectItem_1', (x, y, x+309, y+74),
+                             lambda p=pet: callback(p), area)
             page.actions['close_Button'] = back
             page.publish()
 

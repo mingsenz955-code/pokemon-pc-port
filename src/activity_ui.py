@@ -304,28 +304,134 @@ class ActivityUI:
 
             paint()
 
+    def _breakthrough_cost(self, row):
+        money = (self.data.tables['Money'].get(str(row['costMoneyType']))
+                 or self.data.tables['Item'].get(str(row['costMoneyType'])) or {})
+        stuff = (self.data.tables['Item'].get(str(row['stuffId']))
+                 or self.data.tables['Money'].get(str(row['stuffId'])) or {})
+        return (f'{row["costMoneyCount"]} {money.get("name", row["costMoneyType"])} + '
+                f'{row["stuffCount"]} {stuff.get("name", row["stuffId"])}')
+
     def _breakthrough_body(self, body, info):
+        from original_pages import Page
         pets = list(self.state.pets+self.state.bank)
         body.pack_forget()
-        box = tk.Listbox(body, width=60, height=6)
-        box.pack(fill='x')
-        for pet in pets:
-            row = self.data.tables['PetTuPo'].get(str(pet.breakthrough+1))
-            cost = f'{row["costMoneyCount"]} 金币 + {row["stuffCount"]} 突破材料' if row else '已满阶'
-            box.insert('end', f'{self.data.tables["Pet"][pet.species]["name"]} +{pet.breakthrough} → {cost}')
-        if pets:
-            box.selection_set(0)
+        selected, offset = [0], [0]
+        max_tier = max(int(k) for k in self.data.tables['PetTuPo'])
+
+        def item_data(kid):
+            key = str(kid)
+            for table in ('Item', 'Money', 'Pet'):
+                row = self.data.tables.get(table, {}).get(key)
+                if not row:
+                    continue
+                if table == 'Item':
+                    icon = 'ItemIcon/'+row.get('texture', '')
+                elif table == 'Money':
+                    icon = 'UI/'+row.get('texture', row.get('littleIconTexture', ''))
+                else:
+                    icon = 'PetHead/head_'+row.get('filePath', '')+'.png'
+                return row.get('name', key), icon
+            return key, ''
+
+        def paint():
+            top = max(0, len(pets)*110-327)
+            offset[0] = max(0, min(offset[0], top))
+            pet = pets[selected[0]] if pets else None
+            text, visible, resources = {}, {
+                'trialTimes_Panel': False, 'Particle_1': False, 'Particle_2': False,
+                'tuPo_Button': bool(pet)}, {}
+            if pet:
+                row = self.data.tables['PetTuPo'].get(str(pet.breakthrough+1))
+                stats = pet.stats(self.data.tables)
+                text.update({
+                    'progress_BitmapFontLabel': f'{pet.breakthrough}/{max_tier}',
+                    'fromName_Text': f'+{pet.breakthrough}',
+                    'toName_Text': f'+{pet.breakthrough+1}' if row else '满阶',
+                    'pro_hp_BitmapFontLabel': f'{pet.hp}/{stats[0]}',
+                    'pro_energy_BitmapFontLabel': f'{pet.energy}/{stats[1]}',
+                    'pro_power_BitmapFontLabel': str(stats[2]),
+                    'pro_defence_BitmapFontLabel': str(stats[3]),
+                    'pro_speed_BitmapFontLabel': str(stats[4])})
+                bonus = numbers(row.get('attUp')) if row else [0]*5
+                for i, name in enumerate(('hp', 'energy', 'power', 'defence', 'speed')):
+                    text[f'proAdd_{name}_BitmapFontLabel'] = (f'+{bonus[i]}'
+                                                             if i < len(bonus) and bonus[i] else '')
+                for index in (1, 2):
+                    kid = row.get('costMoneyType') if index == 1 and row else (
+                        row.get('stuffId') if row else None)
+                    need = int(row.get('costMoneyCount', 0)) if index == 1 and row else (
+                        int(row.get('stuffCount', 0)) if row else 0)
+                    if kid:
+                        name, icon = item_data(kid)
+                        have = self.state.count(kid)
+                        text[f'name_{index}_Text'] = name
+                        text[f'stuffCount_have_{index}_BitmapFontLabel'] = str(have)
+                        text[f'stuffCount_need_{index}_BitmapFontLabel'] = str(need)
+                        text[f'stuffCount_slash_{index}_BitmapFontLabel'] = '/'
+                        resources[f'stuffIcon_{index}_Image'] = icon
+                    else:
+                        visible[f'proBg{index}_Image'] = False
+                cost_text = self._breakthrough_cost(row) if row else '没有更高阶配方'
+                info.set(f'{self.data.tables["Pet"][pet.species]["name"]} 突破 '
+                         f'+{pet.breakthrough} → {("+"+str(pet.breakthrough+1)) if row else "已满阶"} · '
+                         f'{cost_text}')
+            else:
+                info.set('携带栏和银行都没有可突破的宠物。')
+            page = Page(self, 'PetTuPoUI', text=text, visible=visible,
+                        resources=resources, timeline_frame=60)
+            area = next((r for k, r in page.rects.items() if k.endswith('/item_ListView')), None)
+            if area:
+                for i, member in enumerate(pets):
+                    x, y = round(area[0]+8), round(area[1]+i*110-offset[0])
+                    if y+110 <= area[1] or y >= area[3]:
+                        continue
+                    row = self.data.tables['Pet'][member.species]
+                    stats = member.stats(self.data.tables)
+                    page.add('PetListItemUI', (x, y), prefix=f'tu_po_pet_{i}/', clip=area,
+                             text={'name_Text': row['name'], 'lv_BitmapFontLabel': str(member.level),
+                                   'hpHave_BitmapFontLabel': str(member.hp),
+                                   'hpMax_BitmapFontLabel': str(stats[0]),
+                                   'enHave_BitmapFontLabel': str(member.energy),
+                                   'enMax_BitmapFontLabel': str(stats[1]),
+                                   'friendly_BitmapFontLabel': str(member.friendly)},
+                             visible={'add_Panel': False, 'selected_Image': i == selected[0]})
+                    page.hit(f'tu_po_pet_{i}', (x, y, x+320, y+110),
+                             lambda n=i: choose(n), area)
+                if pet:
+                    point = next((r for k, r in page.rects.items() if k.endswith('/petPos_Node')), None)
+                    base = next((r for k, r in page.rects.items()
+                                 if k.endswith('/baseInfo_Panel')), None)
+                    if point and base:
+                        page.animated_pets.append((pet.species, point, base, 145))
+            page.actions.update({'tuPo_Button': apply, 'close_Button': self.close_ui})
+            self._add_page_close(page)
+            page.publish()
+
+        def choose(index):
+            selected[0] = index
+            paint()
+
+        def wheel(event):
+            offset[0] += -110 if event.delta > 0 else 110
+            paint()
+
         def apply():
-            if not box.curselection():
+            if not pets:
+                info.set('没有可突破的宠物。')
                 return
-            pet = pets[box.curselection()[0]]
+            pet = pets[selected[0]]
             try:
                 self.state.breakthrough_pet(pet.uid)
-                info.set(f'突破成功：{self.data.tables["Pet"][pet.species]["name"]} +{pet.breakthrough}')
             except (ValueError, KeyError) as error:
                 info.set(str(error))
-        tk.Button(body, text='突破所选宠物', command=apply).pack(pady=4)
-        self.ui_actions['tuPo_Button'] = apply
+                return
+            name = self.data.tables['Pet'][pet.species]['name']
+            paint()
+            info.set(f'突破成功：{name} +{pet.breakthrough}')
+
+        self._page_wheel(wheel)
+        paint()
 
     def _fuse_body(self, body, info):
         pets = list(self.state.bank)
@@ -1432,36 +1538,95 @@ class ActivityUI:
             self.ui_art_label.image = photo
     
     def _roulette_body(self, body, info):
+        from original_pages import Page
         activity = Activities(self.state)
         body.pack_forget()
-        box = tk.Listbox(body, width=65, height=6)
-        box.pack(fill='x')
+        board = []
+        highlight = [None]
+
+        def item_data(kid):
+            key = str(kid)
+            for table in ('Item', 'Money', 'Pet'):
+                row = self.data.tables.get(table, {}).get(key)
+                if not row:
+                    continue
+                if table == 'Item':
+                    icon = 'ItemIcon/'+row.get('texture', '')
+                elif table == 'Money':
+                    icon = 'UI/'+row.get('texture', row.get('littleIconTexture', ''))
+                else:
+                    icon = 'PetHead/head_'+row.get('filePath', '')+'.png'
+                return row.get('name', key), icon
+            return key, ''
+
+        def paint():
+            page = Page(self, 'RouletteUI', timeline_frame=60,
+                        text={'have_ticket_Text': f'x{self.state.count("220009")}',
+                              'cost_ticket_Text': 'x1',
+                              'refreshCostTip_Text': '刷新消耗 1 徽章'})
+            area = page.rects.get('Layer/root_Panel/items_Panel')
+            for i, reward in enumerate(board[:12]):
+                rect = page.rects.get(f'Layer/root_Panel/items_Panel/item_{i+1}_ProjectNode')
+                if not rect:
+                    continue
+                name, icon = item_data(reward['item'])
+                page.add('RouletteItemUI', (round(rect[0]), round(rect[1])),
+                         prefix=f'roulette_{i}/', clip=area,
+                         text={'count_BitmapFontLabel': f'x{reward["count"]}'},
+                         resources={'icon_Image': icon},
+                         visible={'Particle_1': highlight[0] == i})
+                page.hit(f'roulette_slot_{i}', rect,
+                         lambda n=i: info.set(f'{item_data(board[n]["item"])[0]} × {board[n]["count"]}'))
+            page.actions.update({'start_Button': spin, 'refresh_Button': lambda: refresh(True),
+                                 'close_Button': self.close_ui})
+            self._add_page_close(page)
+            page.publish()
+
         def refresh(paid=False):
+            nonlocal board
+            if paid and self.state.count('700002') < 1:
+                info.set(f'徽章不足：刷新需要 1 枚，当前 {self.state.count("700002")} 枚。')
+                return
             try:
                 board = activity.roulette_board(paid_refresh=paid)
-                box.delete(0, 'end')
-                for index, reward in enumerate(board, 1):
-                    row = (self.data.tables['Pet'].get(reward['item']) or self.data.tables['Item'].get(reward['item'])
-                           or self.data.tables['Money'].get(reward['item'], {}))
-                    box.insert('end', f'{index}. {row.get("name", reward["item"])} × {reward["count"]}')
-                info.set(f'轮盘券 {self.state.count("220009")} · 徽章 {self.state.count("700002")}')
             except (ValueError, KeyError) as error:
                 info.set(str(error))
+                return
+            highlight[0] = None
+            info.set(f'轮盘券 {self.state.count("220009")} · 徽章 {self.state.count("700002")} · '
+                     f'{len(board)} 格原版奖励')
+            paint()
+
         def spin():
+            nonlocal board
+            if self.state.count('220009') < 1:
+                info.set(f'轮盘券不足：需要 1 张，当前 {self.state.count("220009")} 张。')
+                return
             try:
                 index, reward = activity.spin_roulette()
-                box.selection_clear(0, 'end')
-                box.selection_set(index)
-                box.see(index)
-                info.set(f'获得 {box.get(index)} · 剩余轮盘券 {self.state.count("220009")}')
-                self.show_reward('轮盘奖励', [(reward['item'], reward['count'])])
             except (ValueError, KeyError) as error:
                 info.set(str(error))
-        tk.Button(body, text='开始（1 张轮盘券）', command=spin).pack(side='left', pady=4)
-        tk.Button(body, text='刷新（1 枚徽章）', command=lambda: refresh(True)).pack(side='left', padx=8)
-        self.ui_actions['start_Button'] = spin
-        self.ui_actions['refresh_Button'] = lambda: refresh(True)
-        self.ui_actions['close_Button'] = self.close_ui
+                return
+            board = list(self.state.activities.get('roulette_board', board))
+            if not board:
+                return
+            name, _ = item_data(reward['item'])
+            # Short original-style highlight sweep; the reward is already
+            # committed once by spin_roulette, never by the animation.
+            def step(count=0):
+                if not self.ui_open:
+                    return
+                if count < 7:
+                    highlight[0] = count % len(board)
+                    paint()
+                    self.root.after(55, lambda: step(count+1))
+                    return
+                highlight[0] = index if index < len(board) else 0
+                paint()
+                info.set(f'获得 {name} × {reward["count"]} · 剩余轮盘券 '
+                         f'{self.state.count("220009")}')
+                self.show_reward('轮盘奖励', [(reward['item'], reward['count'])])
+            step()
         refresh()
 
     def lottery_ui(self, force=False):

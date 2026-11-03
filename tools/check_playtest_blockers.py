@@ -183,6 +183,13 @@ class PlaytestBlockers(unittest.TestCase):
             {'id': 3, 'type': 'talk', 'text': '尼尔:该去商店了。'}]
         a.runtime.index = 0
         a.drive()
+        self.assertEqual('button', a.display_request.kind)
+        self.assertIn('nonexistent_Button', a.event_issue)
+        # A missing real tutorial node must not silently advance the story;
+        # obsolete mainUp was skipped, but this request remains visible.
+        a.display_request = None
+        a.runtime.resume()
+        a.drive()
         self.assertEqual('talk', a.display_request.kind)
         self.assertIn('该去商店', a.dialogue)
 

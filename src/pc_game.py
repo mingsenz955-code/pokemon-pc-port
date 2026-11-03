@@ -47,6 +47,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.booting = True
         self.runtime_error = ''
         self.display_request = None
+        self.event_notice = ''
         self.wait_until = 0
         self.camera_focus = None
         self.camera_action = None
@@ -80,6 +81,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.ui_close_result = None
         self.ui_info = None
         self.ui_parameters = {}
+        self.ui_tutorial_active = False
         self.accept_task_window = None
         self.accept_task_buttons = {}
         self.arena_summary = None
@@ -255,17 +257,18 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.encounter_distance = 0.0
         self.reset_encounter()
         try:
-            self.start_battle(enemy_id, 'wild')
+            started = self.start_battle(enemy_id, 'wild')
         except PendingMechanic as error:
             self.runtime_error = str(error)
             return False
-        return True
+        return bool(started)
 
     def play_event(self, filename):
         if self.booting:
             return
         if self.runtime.running:
             return
+        self.event_notice = ''
         self.runtime.start(filename)
         self.drive()
 
@@ -277,12 +280,15 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             if obj['group'] != 'spriteLayer' or not obj.get('gid'):
                 continue
             oid = obj.get('name', '')
-            key = f'{self.map_id}:2:{oid}'
-            visible = self.state.visible.get(key, int(obj['props'].get('state', '1')) != 0)
-            if not visible:
-                continue
             sid = self.map.tile_properties(int(obj['gid'])).get('spriteId')
             if not sid:
+                continue
+            # TMX NPC and chest groups reuse numeric names (e.g. 10502).
+            # They are separate native controller types, never the same actor.
+            kind = 3 if str(sid) == '30001' else 2
+            key = f'{self.map_id}:{kind}:{oid}'
+            visible = self.state.visible.get(key, int(obj['props'].get('state', '1')) != 0)
+            if not visible:
                 continue
             x, y = self.state.positions.get(key, (float(obj['x'])+32, float(obj['y'])))
             result.append((oid, sid, x, y))
@@ -630,6 +636,17 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             info.set('F11 / Alt+Enter 切换全屏，Esc 返回窗口；音乐和音效开关立即生效。')
             self.ui_actions['close_Button'] = self.close_ui
             self.ui_actions['about_Button'] = self.about
+            def control_mode(mode):
+                # SystemUI's original click/direct toggle changes the mobile
+                # movement input.  PC keyboard movement is always available;
+                # persist the choice so a reopened page reports the same mode.
+                self.state.presentation['input_mode'] = mode
+                self.state.presentation['input_mode_note'] = (
+                    '点击移动' if mode == 'click' else '方向控制')
+                info.set(f'操作方式：{self.state.presentation["input_mode_note"]}。'
+                         '电脑版方向键/WASD 与鼠标点击移动均可使用。')
+            self.ui_actions['control_click_Button'] = lambda: control_mode('click')
+            self.ui_actions['control_direct_Button'] = lambda: control_mode('direct')
             def sound_setting(kind, enabled):
                 self.audio.set_enabled(kind, enabled)
                 self.state.presentation[kind+'_enabled'] = enabled
@@ -787,6 +804,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         name, label = hit
         base = name.rsplit('/', 1)[-1]
         callback = self.ui_action_for(name)
+        tutorial = False
+        if self.display_request and self.display_request.kind == 'button' and self.ui_open:
+            target = self._ui_tutorial_target(self.display_request.data.get('nodekey', ''))
+            rect = self.ui_hits.get(target) if target else None
+            tutorial = bool(rect and rect[0] <= event.x <= rect[2]
+                            and rect[1] <= event.y <= rect[3])
         if callback:
             try:
                 callback()
@@ -795,6 +818,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     self.ui_info.set(str(error))
                 if getattr(self, 'original_page', None) is not None:
                     self._page_tip(str(error), self.original_page.publish)
+                return
+            if tutorial:
+                self.advance_button_tip()
             return
         if base in {'close_Button', 'closeButton', 'leave_Button', 'cancel_Button',
                     'cancelButton', 'giveUp_Button', 'takeBack_Button'}:
@@ -974,10 +1000,18 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
 
 
     def close_ui(self, result=None):
+        self.ui_tutorial_active = False
         job = getattr(self, 'ui_effect_job', None)
         if job and self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.after_cancel(job)
         self.ui_effect_job = None
+        wait_job = getattr(self, 'ui_wait_job', None)
+        if wait_job:
+            try:
+                self.root.after_cancel(wait_job)
+            except tk.TclError:
+                pass
+        self.ui_wait_job = None
         self.task_page = None
         choice = result if result in ('yes', 'no') else (self.ui_close_result or 'no')
         if self.ui_window and self.ui_window.winfo_exists():
@@ -1119,11 +1153,22 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     def interact(self, npc_id=None, sprite_id=None):
         if self.booting:
             return
-        if self.display_request and self.display_request.kind in ['talk', 'aside', 'airtalk', 'tapscreen', 'button']:
+        if self.display_request and self.display_request.kind in ['talk', 'aside', 'airtalk', 'tapscreen']:
+            request = self.display_request
             self.dialogue = None
             self.display_request = None
-            self.runtime.resume()
-            self.drive()
+            if self.runtime.pending is request:
+                self.runtime.resume()
+                self.drive()
+            return
+        if self.pending_wait:
+            request = self.pending_wait
+            wait_type = int(request.data.get('parameters', {}).get('type', 0) or 0)
+            if wait_type == 3 or (wait_type == 2 and not self.ui_open):
+                self.pending_wait = None
+                if self.runtime.pending is request:
+                    self.runtime.resume()
+                self.drive()
             return
         if self.runtime.running or self.runtime_error:
             return
@@ -1302,12 +1347,69 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             return
         self.click_walk(event.x, event.y)
 
+    def _ui_tutorial_target(self, key):
+        """Resolve the original tutorial node key against the open page.
+
+        Page actions retain full node paths because prefab cards repeat. The
+        event files address a stable leaf name (for example use_Button,
+        chooseItem_230011 or petSelectItem_1), so prefer exact aliases and then
+        a unique visible leaf match.
+        """
+        if not self.ui_open:
+            return None
+        if key in self.ui_actions and key in self.ui_hits:
+            return key
+        matches = [name for name in self.ui_hits
+                   if name.rsplit('/', 1)[-1] == key and self.ui_action_for(name)]
+        return matches[0] if len(matches) == 1 else None
+
+    def _button_target(self, key):
+        if not key:
+            return None
+        if self.main_ui_visible and key in self.scene_ui.hits:
+            return key
+        return self._ui_tutorial_target(key)
+
+    def _schedule_ui_wait(self, request, delay=220):
+        # wait type 2 is the original UI opening/settling wait.  It must not
+        # wait for the page to close: pEvent101006 buys inside the still-open
+        # shop, chooses inside the still-open bag, etc.
+        self.ui_tutorial_active = True
+        job = getattr(self, 'ui_wait_job', None)
+        if job:
+            try:
+                self.root.after_cancel(job)
+            except tk.TclError:
+                pass
+        self.ui_wait_job = None
+
+        def poll():
+            if self.pending_wait is not request or self.runtime.pending is not request:
+                return
+            # type 2 is a fixed UI/menu transition wait in the original
+            # events (shop opening, MainUI expansion), not a wait for close.
+            self.ui_wait_job = None
+            self.pending_wait = None
+            try:
+                self.runtime.resume()
+            except (RuntimeError, ValueError) as error:
+                self.event_issue = str(error)
+                return
+            self.drive()
+
+        self.ui_wait_job = self.root.after(delay, poll)
+
     def advance_button_tip(self):
         if not self.display_request or self.display_request.kind != 'button':
             return
+        request = self.display_request
         self.display_request = None
         self.dialogue = None
-        self.runtime.resume()
+        if self.runtime.pending is request:
+            self.runtime.resume()
+        if self.ui_open:
+            # The click may have opened the tutorial's next page.
+            self.ui_tutorial_active = True
         self.drive()
 
     def on_canvas_wheel(self, event):
@@ -1358,11 +1460,28 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
 
     def start_battle(self, npcid, kind=None):
         if self.battle:
-            return
+            return False
         if not self.state.pets:
-            raise PendingMechanic('原战斗要求至少一只宠物，当前队伍为空')
+            self.runtime_error = ''
+            self.event_issue = '原战斗要求至少一只宠物；当前队伍为空。'
+            self.event_notice = self.event_issue
+            if self.runtime.running:
+                self.runtime.abort('battle-with-empty-party')
+            return False
         if not any(p.hp > 0 for p in self.state.pets):
-            raise PendingMechanic('队伍已全灭；原版恢复点/白屏传送尚未接入，不能伪造复活')
+            # A fainted party must not enter a normal battle. Release the
+            # original pending fight instead of leaving runtime_error set,
+            # which used to lock movement/NPC interaction forever. No
+            # victory, reward, healing, or task progress is fabricated.
+            self.runtime_error = ''
+            self.pending_wait = None
+            self.event_issue = ('队伍已全灭，本次挑战未开始。请去治疗或使用复活石复活宠物，'
+                                '再回来重新挑战。')
+            self.event_notice = self.event_issue
+            if self.runtime.running:
+                self.runtime.abort('all-pets-fainted')
+            self.state.audit.append({'battle': str(npcid), 'aborted': 'all-pets-fainted'})
+            return False
         if kind == 'wild' or str(npcid) in self.data.tables.get('VillageEnemy', {}):
             battle = make_wild_battle(self.data.tables, self.state.pets, npcid, self.state.rng)
         elif kind == 'arena':
@@ -1391,6 +1510,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if battle.enemy_active:
             self.state.record_seen_pet(battle.enemy_active.pet.species)
         self.battle, self.battle_ui = battle, BattleUI(self, battle)
+        self.event_notice = ''
         battle.source_id = str(npcid)
         self.battle_tips = []
         self.keys.clear()
@@ -1400,6 +1520,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if battle.kind == 'wild':
             self.runtime.notify('fight', type=1)
             self.drive()
+        return True
 
     def finish_battle(self):
         battle = self.battle
@@ -1539,8 +1660,15 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             return
         if self.battle and not self.runtime.running:
             return
-        if self.pending_wait or self.ui_open:
+        if self.pending_wait:
             return
+        if self.ui_open and not getattr(self, 'ui_tutorial_active', False):
+            # A tutorial page is allowed to advance to its next button/wait
+            # request while the page stays open. Other story commands wait
+            # until close_ui resumes the original openui request.
+            pending = self.runtime.pending
+            if not pending or pending.kind not in ('button', 'wait', 'closeui'):
+                return
         if time.monotonic() < self.wait_until:
             return
         for _ in range(100):
@@ -1570,12 +1698,23 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                         continue
                     if request.kind == 'button':
                         key = request.data.get('nodekey', '')
-                        # mainUp now performs task navigation, not the old shop
-                        # list; never show the obsolete shop tutorial there.
-                        self.scene_ui.render(Image.new('RGBA', (self.WIDTH, self.HEIGHT)))
-                        if key == 'mainUp_Button' or not self.main_ui_visible or getattr(self, 'screen_black', False) or key not in self.scene_ui.hits:
+                        if key == 'mainUp_Button':
+                            # MainUI mainUp now performs task navigation, not
+                            # the obsolete shop-list tutorial.
                             self.runtime.resume()
                             continue
+                        self.scene_ui.render(Image.new('RGBA', (self.WIDTH, self.HEIGHT)))
+                        target = self._button_target(key)
+                        if not target:
+                            # Never silently skip an original tutorial step.
+                            # Keep the request visible and explain which node
+                            # is missing; a later page refresh can resolve it.
+                            self.display_request = request
+                            self.dialogue = None
+                            self.event_issue = f'等待原版引导按钮：{key or "(未命名节点)"}。'
+                            return
+                        if self.ui_open and target not in self.scene_ui.hits:
+                            self.ui_tutorial_active = True
                         self.display_request = request
                         self.dialogue = None
                         return
@@ -1592,7 +1731,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                         self.confirm_battle(request, npcid, int(parameters.get('type', 0) or 0))
                         return
                     fight_type = int(parameters.get('type', 0) or 0)
-                    self.start_battle(npcid, kind={3: 'arena', 4: 'budokan', 5: 'infinite_arena'}.get(fight_type))
+                    if not self.start_battle(npcid, kind={3: 'arena', 4: 'budokan', 5: 'infinite_arena'}.get(fight_type)):
+                        return
                     self.runtime.resume('start')
                     self.drive()
                     return
@@ -1617,6 +1757,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                         return
                     if wait_type == 2 and self.ui_open:
                         self.pending_wait = request
+                        self._schedule_ui_wait(request)
+                        return
+                    if wait_type == 2:
+                        self.pending_wait = request
+                        self._schedule_ui_wait(request)
                         return
                     if wait_type == 3:
                         self.pending_wait = request
@@ -1739,7 +1884,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
         if not any(a['kind'] == 1 for a in self.story_motion.actions):
             self.process_player_areas()
-        self.event_issue = self.runtime_error
+        self.event_issue = self.runtime_error or self.event_notice
         guide_note = ''
         if self.guide.target:
             guide_note = f' | 指引：{self.guide.target.label}'
@@ -1749,6 +1894,38 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 guide_note += f'（{self.guide.message}）'
         self.status.set(self.runtime_error or ('方向键/WASD移动 · 空格/E对话 · F5保存 · F9读取 · G指引'
                                                ' | 原剧情状态机、战斗核心与原版战斗UI已接入' + guide_note))
+
+    def _decorate_ui_tutorial(self, frame):
+        request = self.display_request
+        if not request or request.kind != 'button' or not self.ui_open:
+            return frame
+        key = request.data.get('nodekey', '')
+        name = self._ui_tutorial_target(key)
+        if not name:
+            return frame
+        rect = self.ui_hits.get(name)
+        if not rect:
+            return frame
+        frame = frame.copy()
+        draw = ImageDraw.Draw(frame, 'RGBA')
+        issued = request.data.get('text') or request.data.get('nodekey', '')
+        # The original TeachUI arrow/hand assets remain the pointing artwork;
+        # this banner only carries the event's own tutorial sentence.
+        arrow = self.data.image('UI/teach_arrow.png')
+        arrow = arrow.resize((max(1, round(arrow.width*.65)), max(1, round(arrow.height*.65))),
+                             Image.Resampling.LANCZOS)
+        ax = round((rect[0]+rect[2])/2-arrow.width/2)
+        ay = max(0, round(rect[1]-arrow.height-4))
+        frame.alpha_composite(arrow, (ax, ay))
+        if issued:
+            font = self.cocos_ui.font('', 17)
+            box = draw.textbbox((0, 0), issued, font=font)
+            width = min(720, box[2]-box[0]+34)
+            left = max(8, (800-width)//2)
+            draw.rounded_rectangle((left, 438, left+width, 474), radius=8,
+                                   fill=(20, 24, 28, 220), outline=(255, 226, 120, 230), width=2)
+            draw.text((400, 456), issued, font=font, fill='#fff4cf', anchor='mm')
+        return frame
 
     def _draw_button_tutorial(self, frame):
         request = self.display_request
@@ -2215,7 +2392,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             'parameters': {'uiid': 50, 'text': '要开始这场战斗吗？'}}))
         def yes():
             self.close_ui()
-            self.start_battle(npcid, kind={3: 'arena', 4: 'budokan', 5: 'infinite_arena'}.get(fight_type))
+            if not self.start_battle(npcid, kind={3: 'arena', 4: 'budokan', 5: 'infinite_arena'}.get(fight_type)):
+                self.drive()
+                return
             self.runtime.resume('start')
             self.drive()
         def no():
@@ -2311,6 +2490,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             except (ValueError, KeyError) as error:
                 self._page_tip(str(error), paint)
                 return
+            info.set('宝箱已开启：' + '、'.join(
+                f'{self._item_data(k)[0]}×{n}' for k, n in rewards))
             self.reward_overlay(rewards, self.close_ui, '宝箱获得')
         paint()
 

@@ -33,6 +33,12 @@ try:
     app.ui_actions['trainValue_Button']()
     app.ui_actions['joinBattle_Button']()
     assert state.active_pet == 0
+    # Selecting the second party member and joining really changes the lead
+    # and reports it, instead of only repainting the same row.
+    app.ui_actions['pet_row_1']()
+    app.ui_actions['joinBattle_Button']()
+    assert state.active_pet == 1
+    assert '参战' in app.ui_info.get(), app.ui_info.get()
     # One free click only arms confirmation; it must not delete the active pet.
     before = len(state.pets)
     app.ui_actions['free_Button']()

@@ -1,6 +1,7 @@
 """Compose the original pet cards and bounded skill/talent descriptions."""
 from PIL import Image, ImageDraw
 from event_runtime import Request
+from economy import EVOLUTION_GOLD_COST
 
 
 def text_box(page, rect, value, font, offset=0):
@@ -121,9 +122,9 @@ class PetPages:
             page.actions.update({'evolution_Button': evolve, 'close_Button': back})
             rect = (490, 430, 700, 467)
             ImageDraw.Draw(page.layer).rounded_rectangle(rect, radius=12, fill='#06b7df', outline='#fff2bd', width=2)
-            ImageDraw.Draw(page.layer).text((595, 448), '金币进化 50000', font=self.cocos_ui.font('', 18), anchor='mm', fill='white')
+            ImageDraw.Draw(page.layer).text((595, 448), f'金币进化 {EVOLUTION_GOLD_COST}', font=self.cocos_ui.font('', 18), anchor='mm', fill='white')
             page.hit('gold_evolution', rect, lambda: self._choice_page(
-                '花费 50000 金币进化？仍需达到等级，不消耗进化材料。', lambda: evolve(True), paint))
+                f'花费 {EVOLUTION_GOLD_COST} 金币进化？仍需达到等级，不消耗进化材料。', lambda: evolve(True), paint))
             page.publish()
         def evolve(use_gold=False):
             before = pet.stats(self.data.tables)
@@ -290,7 +291,9 @@ class PetPages:
                                'hpHave_BitmapFontLabel': str(member.hp), 'hpMax_BitmapFontLabel': str(stats[0]),
                                'enHave_BitmapFontLabel': str(member.energy), 'enMax_BitmapFontLabel': str(stats[1]),
                                'friendly_BitmapFontLabel': str(member.friendly)},
-                         visible={'add_Panel': False, 'selected_Image': i == selected[0]})
+                         visible={'add_Panel': False, 'selected_Image': i == selected[0],
+                                   'joinBattleSign_Image': i == self.state.active_pet,
+                                   'signTrial_Image': bool(member.trial_id)})
                 page.hit(f'pet_row_{i}', (x, y, x+320, y+110), lambda v=i: choose(v), area)
             if pet:
                 if not train[0]:
@@ -315,6 +318,8 @@ class PetPages:
                 self._page_tip('试用次数已用完，请到宠物使者处归还。', paint)
                 return
             self.state.active_pet = value
+            name = self.data.tables['Pet'][self.state.pets[value].species]['name']
+            info.set(f'已设置 {name} 为参战宠物。')
             paint()
         def item(pet):
             def apply(kid):

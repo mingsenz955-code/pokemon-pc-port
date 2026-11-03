@@ -248,8 +248,12 @@ class OriginalData:
             skin = disp.get('skin_data', [{}])[0]
             m = multiply(transform(name_), matrix(skin))
             tex = texture.get(disp['name'], {})
-            tw = float(tex.get('width', sprite.width))
-            th = float(tex.get('height', sprite.height))
+            # Some original exports (notably npc20) omit texture_data. Their
+            # atlas is content-scaled but bones/skins remain in authored units.
+            # Treating atlas pixels as bone units shrinks and separates limbs.
+            texture_scale = float(data.get('content_scale', .5) or .5)
+            tw = float(tex.get('width', sprite.width/texture_scale))
+            th = float(tex.get('height', sprite.height/texture_scale))
             px, py = float(tex.get('pX', .5)), float(tex.get('pY', .5))
             m = multiply(m, (tw/sprite.width, 0, 0, -th/sprite.height, -tw*px, th*(1-py)))
             parts.append((bone.get('z', 0)+f.get('z', 0), sprite, m))

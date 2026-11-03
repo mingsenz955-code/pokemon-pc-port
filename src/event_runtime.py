@@ -287,6 +287,28 @@ class EventRuntime:
             self.jump(target)
         self.persist()
 
+    def abort(self, reason=''):
+        """Release an event whose real first step cannot start.
+
+        Do not mark the trigger complete and do not invent a battle result:
+        only clear the host-side pending request so the player can heal and
+        retry the original NPC/task later.
+        """
+        if not self.running:
+            return False
+        self.state.audit.append({'event': self.file, 'index': self.index,
+                                 'aborted': str(reason)})
+        queued, self.queue = self.queue, []
+        self.file, self.sequence, self.index = '', [], 0
+        self.pending, self.active_trigger, self.trigger_npc_id = None, None, 0
+        self.persist()
+        for index, event in enumerate(queued):
+            if self.notify(event['kind'], **event['parameters']):
+                self.queue.extend(queued[index+1:])
+                break
+        self.persist()
+        return True
+
     def finish(self):
         if self.file and self.active_trigger and self.save_event:
             self.state.events[str(self.active_trigger['id'])] = 1
