@@ -211,6 +211,7 @@ class GameState:
         self.player_name = '尼尔' if int(key) == 1 else '皮尔'
         self.sprite_id = row['spriteId']
         self.inventory = {str(k): n for k, n in zip(numbers(row['itemIds']), numbers(row['itemCounts']))}
+        self.inventory['700004'] = 6
         self.pets = [self.preset_pet(k) for k in numbers(row['petIds'])]
         for p in self.pets:
             self.record_pet(p.species)
@@ -270,7 +271,7 @@ class GameState:
             return
         if item_id not in self.tables['Item'] and item_id not in self.tables['Money']:
             raise KeyError(f'Unknown original item {item_id}')
-        self.inventory[item_id] = self.count(item_id)+amount
+        self.inventory[item_id] = min(6, self.count(item_id)+amount) if item_id == '700004' else self.count(item_id)+amount
 
     def add_generated_pet(self, species, level=1):
         """Original random attributes, generated from the Pet probability columns."""
@@ -310,7 +311,7 @@ class GameState:
 
     def pet_capacity(self, bank=False):
         key = '700005' if bank else '700004'
-        return self.count(key) if key in self.inventory else (200 if bank else 6)
+        return (self.count(key) if key in self.inventory else 200) if bank else 6
 
     def pet_free_slots(self):
         return max(0, self.pet_capacity()-len(self.pets))+max(0, self.pet_capacity(True)-len(self.bank))
@@ -327,10 +328,36 @@ class GameState:
         else:
             self.record_pet(pet.species)
 
+    def trial_pet_purchased(self, key):
+        key = str(key)
+        if key in self.activities.get('trial_purchased', {}):
+            return True
+        # Old releases cleared trial_id on purchase without keeping a receipt.
+        # Recover those pets from the messenger's fixed attributes, not merely
+        # from the species (a normally captured pet must not count as a purchase).
+        row = self.tables['TrialPet'].get(key)
+        if not row:
+            return False
+        species = str(row['petId'])
+        lineage = {species}
+        while species in self.tables['Evolution']:
+            species = str(self.tables['Evolution'][species]['petId'])
+            if species in lineage:
+                break
+            lineage.add(species)
+        return any(not p.trial_id and p.species in lineage
+                   and p.level >= int(row['level'])
+                   and p.variation == json.loads(row['attVar'])
+                   and p.growth == json.loads(row['attUp'])
+                   and p.talents == [str(v) for v in numbers(row['talents'])]
+                   for p in self.pets+self.bank)
+
     @atomic_mutation
     def receive_trial_pet(self, key):
         key = str(key)
         row = self.tables['TrialPet'].get(key)
+        if self.trial_pet_purchased(key):
+            raise ValueError('这只使者宠物已经永久购买，无需再次试用。')
         if not row or int(row['trialCount']) <= 0:
             raise ValueError('这只宠物没有免费试用次数。')
         if any(p.trial_id for p in self.pets+self.bank):
@@ -374,9 +401,11 @@ class GameState:
     @atomic_mutation
     def buy_trial_pet(self, key):
         key = str(key)
+        if self.trial_pet_purchased(key):
+            raise ValueError('这只使者宠物已经永久购买，不能重复购买。')
         row = self.tables['TrialPet'][key]
         store = self.tables['Store'][row['storeId']]
-        current = next((p for p in self.pets if p.trial_id == key), None)
+        current = next((p for p in self.pets+self.bank if p.trial_id == key), None)
         if not current and self.pet_free_slots() < 1:
             raise ValueError('宠物背包和银行都已满。')
         self.consume([store['costMoneyType']], [int(store['costCount'])])
@@ -387,6 +416,9 @@ class GameState:
         else:
             pet = self.preset_pet(key, 'TrialPet')
             self.receive_pet(pet)
+        self.activities.setdefault('trial_purchased', {})[key] = pet.uid
+        if key not in self.activities.setdefault('trial_received', []):
+            self.activities['trial_received'].append(key)
         return pet
 
     def move_pet(self, uid, *, to_bank):
@@ -830,8 +862,12 @@ class GameState:
             result.arena_titles.setdefault(key, 0)
             result.arena_wins.setdefault(key, 0)
             result.arena_streak.setdefault(key, 0)
+        result.inventory['700004'] = 6
         result.pets = [Pet(**p) for p in payload['pets']]
         result.bank = [Pet(**p) for p in payload['bank']]
+        for key in tables['TrialPet']:
+            if result.trial_pet_purchased(key):
+                result.activities.setdefault('trial_purchased', {}).setdefault(key, 'legacy')
         # Older saves never tracked sightings. Recover owned species only;
         # constructor presets and unseen opponents must not become sightings.
         result.seen_species = list(dict.fromkeys(str(k) for k in payload['state'].get('seen_species', result.encyclopedia)))
