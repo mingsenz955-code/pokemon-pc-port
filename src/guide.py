@@ -488,21 +488,13 @@ class Guide:
             return (tx, ty) in occupied or world.blocked((tx+.5)*world.tw, (ty+.5)*world.th, mounts)
         start = (app.x, app.y)
         if self.target.kind == 'npc':
-            areas = self.npc_areas()
-            if areas:
-                return walk_path(world, start, (self.target.x, self.target.y),
-                                 self._npc_reached, mounts=mounts,
-                                 occupied=occupied | self.other_exit_cells())
-            tx, ty = int(self.target.x//world.tw), int(self.target.y//world.th)
-            choices = []
-            for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
-                goal = ((tx+dx+.5)*world.tw, (ty+dy+.5)*world.th)
-                if not 0 <= tx+dx < world.width or not 0 <= ty+dy < world.height or blocked(tx+dx, ty+dy):
-                    continue
-                path = shortest_path(world, start, goal, blocked, limit=300)
-                if path and tuple(path[-1]) == goal:
-                    choices.append(path)
-            return min(choices, key=len) if choices else []
+            path = walk_path(world, start, (self.target.x, self.target.y),
+                             self._npc_reached, mounts=mounts,
+                             occupied=occupied | self.other_exit_cells())
+            center = ((int(app.x//world.tw)+.5)*world.tw, (int(app.y//world.th)+.5)*world.th)
+            if not path and self._npc_reached(*center) and not blocked(int(app.x//world.tw), int(app.y//world.th)):
+                return [center]
+            return path
         if (int(app.x//world.tw), int(app.y//world.th)) == (
                 int(self.target.x//world.tw), int(self.target.y//world.th)) and not blocked(
                     int(self.target.x//world.tw), int(self.target.y//world.th)):
@@ -648,6 +640,10 @@ class Guide:
         return dx+dy == 1 and centered
 
     def npc_areas(self):
+        # Chest numeric IDs are reused by NPCs, especially inside shops.
+        sprite = str(self.target.sprite_id)
+        if sprite.isdigit() and int(sprite) >= 30000:
+            return []
         return [o for o in self.app.map.objects if o.get('group') == 'eventLayer'
                 and str(o.get('props', {}).get('npcId', '')) == self.target.npc_id]
 

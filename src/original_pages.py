@@ -18,6 +18,7 @@ from continuous_login import ContinuousLogin
 from pet_pages import PetPages
 from hatch_pages import HatchPages
 from service_pages import ServicePages
+from merge_pages import MergePages
 
 
 def intersect(a, b):
@@ -169,7 +170,7 @@ class Page:
         app.ui_effect_job = app.ui_window.after(delay, self.animate)
 
 
-class OriginalPages(PetPages, HatchPages, ServicePages):
+class OriginalPages(PetPages, HatchPages, ServicePages, MergePages):
     def _choice_page(self, message, yes, no):
         previous = self.ui_base_layer.copy()
         page = Page(self, 'SecondConfirmUI', text={'tip_Text': message})

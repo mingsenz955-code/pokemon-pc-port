@@ -1273,6 +1273,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 self.show_reward('宝箱获得', rewards)
             except (ValueError, KeyError) as error:
                 self.event_issue = str(error)
+                self.scene_ui.show_tip(str(error))
             return
         self.advance_main_condition('talk', oid)
         self.state.activities['talk_total'] = int(self.state.activities.get('talk_total', 0))+1

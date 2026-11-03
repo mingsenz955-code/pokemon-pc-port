@@ -113,6 +113,11 @@ class HatchPages:
             page.add('ConditionItemUI', (area[0], area[1]+i*25), size=(336, 21),
                      prefix=f'condition_{i}/', clip=area,
                      text={'name_Text': name, 'have_BitmapFontLabel': str(have), 'need_BitmapFontLabel': str(need)})
+        from pet_pages import text_box
+        money_name = self.data.tables['Money'][row['moneyId']]['name']
+        text_box(page, (area[0], area[3]-46, area[2], area[3]),
+                 f'材料孵化：需要上面的经验和材料。\n金币直孵：{row["moneyCount"]}{money_name}，免经验和材料。',
+                 self.cocos_ui.font('', 13))
         self._page_wheel(None)
         self.ui_window.protocol('WM_DELETE_WINDOW', lambda: self._hatch_room_page(info, index, getattr(self, 'hatch_offset', 0)))
         page.publish()

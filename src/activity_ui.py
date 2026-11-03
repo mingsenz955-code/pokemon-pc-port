@@ -278,117 +278,8 @@ class ActivityUI:
         paint()
 
     def _merge_body(self, body, info):
-        pets = list(self.state.bank)
         body.pack_forget()
-        if not pets:
-            info.set('银行中没有可融合的宠物；参战宠物不能融合。')
-            message = lambda: info.set('先到银行放入可融合的宠物。')
-            for key in ('add_Button', 'autoAdd_Button', 'merge_Button'):
-                self.ui_actions[key] = message
-            for index in range(6):
-                full = (f'Layer/root_Panel/mergePetNodes_Panel/mergedPetNode_{index+1}'
-                        f'/Layer/root_Panel/add_Button')
-                self.ui_actions[full] = message
-            return
-        frame = tk.Frame(body)
-        frame.pack(fill='both', expand=True)
-        tk.Label(frame, text='银行宠物（选择基础宠物 / 材料）').pack()
-        box = tk.Listbox(frame, width=44, height=7, exportselection=False)
-        box.pack(fill='x')
-        slots = [None]*6
-        state = {'base': None}
-        slot_text = tk.StringVar()
-        def refresh():
-            names = [f'{self.data.tables["Pet"][p.species]["name"]} Lv.{p.level} 品质{p.quality}'
-                     for p in pets]
-            selected = box.curselection()
-            box.delete(0, 'end')
-            for text in names:
-                box.insert('end', text)
-            if selected:
-                box.selection_set(selected[0])
-            elif pets:
-                box.selection_set(0)
-            slot_text.set('材料：' + '、'.join(
-                f'{i+1}.{self.data.tables["Pet"][p.species]["name"]}' if p else f'{i+1}.空'
-                for i, p in enumerate(slots)))
-            preview()
-        def preview():
-            base = state['base']
-            if not base:
-                info.set('先选择基础宠物。')
-                return
-            recipe = next((r for r in self.data.tables['PetMerge'].values()
-                           if int(r['petQuality']) == int(base.quality)), None)
-            if not recipe:
-                info.set('当前品质没有原版融合配方。')
-                return
-            info.set(f'基础：{self.data.tables["Pet"][base.species]["name"]} 品质{base.quality} · '
-                     f'需要 {recipe["petCount"]} 只 Lv.{recipe["petLevel"]}+ 同品质材料 · '
-                     f'货币 {recipe["moneyCount"]}')
-        def choose_base():
-            if not box.curselection():
-                return
-            state['base'] = pets[box.curselection()[0]]
-            refresh()
-        def choose_slot(index):
-            if not box.curselection():
-                return
-            pet = pets[box.curselection()[0]]
-            if pet is state['base'] or pet in slots:
-                info.set('材料不能是基础宠物或已选材料。')
-                return
-            slots[index] = pet
-            refresh()
-        def auto_add():
-            base = state['base']
-            if not base:
-                info.set('先选择基础宠物。')
-                return
-            recipe = next((r for r in self.data.tables['PetMerge'].values()
-                           if int(r['petQuality']) == int(base.quality)), None)
-            if not recipe:
-                info.set('当前品质没有原版融合配方。')
-                return
-            slots[:] = [None]*6
-            chosen = [p for p in pets if p is not base and int(p.quality) == int(base.quality)
-                      and p.level >= int(recipe['petLevel'])]
-            for i, pet in enumerate(chosen[:int(recipe['petCount'])]):
-                slots[i] = pet
-            refresh()
-        def merge():
-            base = state['base']
-            if not base:
-                info.set('先选择基础宠物。')
-                return
-            chosen = [p for p in slots if p]
-            try:
-                result = self.state.merge_pets(base.uid, [p.uid for p in chosen])
-                pets[:] = list(self.state.bank)
-                slots[:] = [None]*6
-                state['base'] = None
-                refresh()
-                info.set(f'融合成功：{self.data.tables["Pet"][result.species]["name"]} '
-                         f'品质{result.quality}，全属性成长 +0.5。')
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-        tk.Label(body, textvariable=slot_text, justify='left').pack(pady=4)
-        controls = tk.Frame(body)
-        controls.pack(pady=4)
-        tk.Button(controls, text='设为基础', command=choose_base).pack(side='left', padx=3)
-        tk.Button(controls, text='自动填充材料', command=auto_add).pack(side='left', padx=3)
-        tk.Button(controls, text='融合', command=merge).pack(side='left', padx=3)
-        self.ui_actions['add_Button'] = choose_base
-        self.ui_actions['autoAdd_Button'] = auto_add
-        self.ui_actions['merge_Button'] = merge
-        self.ui_actions['close_Button'] = self.close_ui
-        for index in range(6):
-            full = (f'Layer/root_Panel/mergePetNodes_Panel/mergedPetNode_{index+1}'
-                    f'/Layer/root_Panel/add_Button')
-            self.ui_actions[full] = lambda index=index: choose_slot(index)
-        refresh()
-
-
+        self._merge_page(info)
 
     def _arena_body(self, body, info, arena_id=None, phase=1):
         body.pack_forget()
@@ -1175,92 +1066,94 @@ class ActivityUI:
     
     def _roulette_body(self, body, info):
         from original_pages import Page
+        from game_state import numbers
         activity = Activities(self.state)
         body.pack_forget()
-        board = []
-        highlight = [None]
+        board, highlight, busy, scroll = [], [None], [False], [0]
+        owner = self.ui_window
+        probe = Page(self, 'RouletteUI', timeline_frame=60)
+        slots = [probe.rects[f'Layer/root_Panel/items_Panel/item_{i+1}_ProjectNode'] for i in range(12)]
+        reward_area = probe.rects['Layer/root_Panel/reward_ListView']
+        hidden = {f'item_{i+1}_ProjectNode': False for i in range(12)}
+        hidden['kuang_Image'] = False
+        # Native initRewardListView reads LuckyRoulette row 1's entire prize pool.
+        pool = self.data.tables['LuckyRoulette']['1']
+        prizes = list(zip(numbers(pool['itemIds']), numbers(pool['itemCounts'])))
 
-        def item_data(kid):
-            key = str(kid)
-            for table in ('Item', 'Money', 'Pet'):
-                row = self.data.tables.get(table, {}).get(key)
-                if not row:
-                    continue
-                if table == 'Item':
-                    icon = 'ItemIcon/'+row.get('texture', '')
-                elif table == 'Money':
-                    icon = 'UI/'+row.get('texture', row.get('littleIconTexture', ''))
-                else:
-                    icon = 'PetHead/head_'+row.get('filePath', '')+'.png'
-                return row.get('name', key), icon
-            return key, ''
+        def live():
+            return self.ui_open and self.ui_window is owner
 
         def paint():
-            page = Page(self, 'RouletteUI', timeline_frame=60,
-                        text={'have_ticket_Text': f'x{self.state.count("220009")}',
-                              'cost_ticket_Text': 'x1',
-                              'refreshCostTip_Text': '刷新消耗 1 徽章'})
-            area = page.rects.get('Layer/root_Panel/items_Panel')
-            for i, reward in enumerate(board[:12]):
-                rect = page.rects.get(f'Layer/root_Panel/items_Panel/item_{i+1}_ProjectNode')
-                if not rect:
-                    continue
-                name, icon = item_data(reward['item'])
-                page.add('RouletteItemUI', (round(rect[0]), round(rect[1])),
-                         prefix=f'roulette_{i}/', clip=area,
+            self._page_wheel(wheel)
+            page = Page(self, 'RouletteUI', timeline_frame=60, visible=hidden,
+                        text={'have_ticket_Text': '当前拥有：', 'cost_ticket_Text': '每次将消耗：',
+                              'have_ticket_BitmapFontLabel': f'x{self.state.count("220009")}',
+                              'cost_ticket_BitmapFontLabel': 'x1', 'refreshCostTip_Text': '消耗：'})
+            for i, (reward, rect) in enumerate(zip(board, slots)):
+                name, icon = self._item_data(reward['item'])
+                page.add('RouletteItemUI', (round(rect[0]), round(rect[1])), prefix=f'roulette_{i}/',
                          text={'count_BitmapFontLabel': f'x{reward["count"]}'},
-                         resources={'icon_Image': icon},
-                         visible={'Particle_1': highlight[0] == i})
+                         resources={'icon_Image': icon}, visible={'Particle_1': False})
                 page.hit(f'roulette_slot_{i}', rect,
-                         lambda n=i: info.set(f'{item_data(board[n]["item"])[0]} × {board[n]["count"]}'))
+                         lambda n=i: None if busy[0] else self._page_tip(
+                             f'{self._item_data(board[n]["item"])[0]} × {board[n]["count"]}', paint))
+            if highlight[0] is not None:
+                rect = slots[highlight[0]]
+                from PIL import Image
+                frame = self.data.image('UI/Roulette/roulette_itemKuang.png').resize((82, 82), Image.Resampling.LANCZOS)
+                page.layer.alpha_composite(frame, (round(rect[0]-3), round(rect[1]-3)))
+            for i, (kid, count) in enumerate(prizes):
+                name, icon = self._item_data(kid)
+                page.add('RouletteRewardListItemUI', (round(reward_area[0]), round(reward_area[1]+i*67-scroll[0])),
+                         prefix=f'grand_{i}/', clip=reward_area,
+                         text={'itemName_Text': name, 'itemCount_BitmapFontLabel': f'x{count}'},
+                         resources={'icon_Image': icon}, visible={'selected_Image': False, 'Particle_1': False})
             page.actions.update({'start_Button': spin, 'refresh_Button': lambda: refresh(True),
                                  'close_Button': self.close_ui})
-            self._add_page_close(page)
+            if not any(k.endswith('/close_Button') for k in page.hits):
+                self._add_page_close(page)
             page.publish()
+
+        def wheel(event):
+            if busy[0]: return 'break'
+            scroll[0] = max(0, min(max(0, len(prizes)*67-(reward_area[3]-reward_area[1])),
+                                  scroll[0] + (-67 if event.delta > 0 else 67)))
+            paint()
+            return 'break'
 
         def refresh(paid=False):
             nonlocal board
-            if paid and self.state.count('700002') < 1:
-                info.set(f'徽章不足：刷新需要 1 枚，当前 {self.state.count("700002")} 枚。')
-                return
+            if busy[0]: return
             try:
                 board = activity.roulette_board(paid_refresh=paid)
             except (ValueError, KeyError) as error:
-                info.set(str(error))
+                self._page_tip(str(error), paint)
                 return
-            highlight[0] = None
-            info.set(f'轮盘券 {self.state.count("220009")} · 徽章 {self.state.count("700002")} · '
-                     f'{len(board)} 格原版奖励')
+            highlight[0] = 0
+            self.save()
             paint()
 
         def spin():
             nonlocal board
-            if self.state.count('220009') < 1:
-                info.set(f'轮盘券不足：需要 1 张，当前 {self.state.count("220009")} 张。')
-                return
+            if busy[0]: return
             try:
                 index, reward = activity.spin_roulette()
             except (ValueError, KeyError) as error:
-                info.set(str(error))
+                self._page_tip(str(error), paint)
                 return
-            board = list(self.state.activities.get('roulette_board', board))
-            if not board:
-                return
-            name, _ = item_data(reward['item'])
-            # Short original-style highlight sweep; the reward is already
-            # committed once by spin_roulette, never by the animation.
+            board = list(self.state.activities['roulette_board'])
+            busy[0] = True
+            self.save()  # Commit once, including if the window closes mid-animation.
+            # Two complete laps, then decelerate to the already committed result.
+            total = 24 + index
             def step(count=0):
-                if not self.ui_open:
-                    return
-                if count < 7:
-                    highlight[0] = count % len(board)
-                    paint()
-                    self.root.after(55, lambda: step(count+1))
-                    return
-                highlight[0] = index if index < len(board) else 0
+                if not live(): return
+                highlight[0] = count % len(board)
                 paint()
-                info.set(f'获得 {name} × {reward["count"]} · 剩余轮盘券 '
-                         f'{self.state.count("220009")}')
+                if count < total:
+                    owner.after(35 + max(0, count-18)*12, lambda: step(count+1))
+                    return
+                busy[0] = False
                 self.show_reward('轮盘奖励', [(reward['item'], reward['count'])])
             step()
         refresh()
