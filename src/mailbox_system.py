@@ -11,10 +11,14 @@ def validate(feed,tables):
     if not isinstance(mails,list) or len(mails)>500:raise ValueError('邮件数量无效。')
     result=[];seen=set()
     for row in mails:
+        if not isinstance(row,dict):raise ValueError('邮件条目无效。')
         kid=str(row['id']);title=str(row['title']);body=str(row.get('body',''))
         if not kid or kid in seen or len(kid)>128 or len(title)>100 or len(body)>12000:raise ValueError('邮件字段无效。')
         seen.add(kid);rewards=[]
-        for reward in row.get('rewards',[]):
+        attachments=row.get('rewards',[])
+        if not isinstance(attachments,list) or len(attachments)>20:raise ValueError('邮件附件无效。')
+        for reward in attachments:
+            if not isinstance(reward,dict):raise ValueError('邮件附件无效。')
             key=str(reward['item']);count=reward['count']
             if type(count) is not int or not 0<count<=100000000 or not any(key in tables.get(t,{}) for t in ('Money','Item','Pet')):raise ValueError('邮件附件无效。')
             if key in tables.get('Pet',{}) and count>6:raise ValueError('单封邮件宠物附件最多六只。')
@@ -24,6 +28,7 @@ def validate(feed,tables):
         if target!='all' and (not isinstance(target,list) or not all(isinstance(x,str) for x in target)):raise ValueError('收件人无效。')
         expires=row.get('expires_at')
         if expires:
+            if not isinstance(expires,str):raise ValueError('邮件截止时间无效。')
             parsed=datetime.fromisoformat(expires.replace('Z','+00:00'))
             if parsed.tzinfo is None:raise ValueError('邮件截止时间必须包含时区。')
         result.append({'id':kid,'title':title,'body':body,'sender':str(row.get('sender','游戏管理员'))[:80],
