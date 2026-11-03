@@ -1,3 +1,7 @@
+## 0.2.72 接续
+
+先读 VERIFICATION_0.2.72.md。抽宠必须走 LotteryAnimation，不能再单独显示透明 LuckyDrawPetInfoUI。三连后两只只重播 Animation4_2；演出不再发宠扣费。build_windows 自动生成并复制无损帧缓存，源码运行先执行 tools/bake_lottery_animation.py。刷新目标 60Hz，繁忙帧最低让出 3ms；不要恢复 1ms 忙帧循环导致全屏 Tk update 饥饿。
+
 ## 0.2.67 接续
 
 先读 VERIFICATION_0.2.67.md。基于 main/52e7eec。柜员以 eventLayer.npcId 区域为准，不能退回只走 NPC 邻格或全局加大对话距离；保持孵化剧情开放条件。HatchPages 用原三类 UI 和 PetHatchEffectUI 的 60/200 帧事件。子页返回不能调用 close_ui 提前推进柜员剧情。新增 check_counter_hatching.py 八项，已更新旧孵化用例。

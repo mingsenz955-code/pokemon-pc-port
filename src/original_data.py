@@ -78,32 +78,40 @@ class OriginalData:
             if movement.get('lp') and movement.get('dr', 0) > 0:
                 frame %= movement['dr']
             if animation.endswith('right'):
-                result = self.armature(filename, animation.replace('right', 'left'), frame)
-                if result is None:
-                    return None
-                image = result.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-                if 'origin' in result.info:
-                    x, y = result.info['origin']
-                    image.info['origin'] = (result.width-x, y)
-                return image
+                return self._village_right_frame(filename, clip, frame)
             return self.armature(filename, animation, frame)
         if row['fileType'] == '3':
-            from spine_renderer import render_setup
-            path = self.assets/'Sprite/Spine'/(filename+'.json')
-            if path.exists():
-                im = render_setup(str(path)).copy()
-                scale = float(row.get('scale', 1))
-                result = im.resize((max(1, round(im.width*scale)), max(1, round(im.height*scale))), Image.Resampling.LANCZOS)
-                if 'origin' in im.info:
-                    result.info['origin'] = tuple(v*scale for v in im.info['origin'])
-                return result
-            return None
+            return self._village_setup_frame(filename, float(row.get('scale', 1)))
+
         filename = filename if Path(filename).suffix else filename+'.png'
         if filename not in self.image_paths:
             return None
         im = self.image('Sprite/'+filename)
         scale = float(row.get('scale', 1))
         return im.resize((max(1, round(im.width*scale)), max(1, round(im.height*scale))), Image.Resampling.LANCZOS)
+
+    @lru_cache(maxsize=128)
+    def _village_setup_frame(self, filename, scale):
+        from spine_renderer import render_setup
+        path = self.assets/'Sprite/Spine'/(filename+'.json')
+        if not path.exists():
+            return None
+        im = render_setup(str(path))
+        result = im.resize((max(1, round(im.width*scale)), max(1, round(im.height*scale))), Image.Resampling.LANCZOS)
+        if 'origin' in im.info:
+            result.info['origin'] = tuple(v*scale for v in im.info['origin'])
+        return result
+
+    @lru_cache(maxsize=512)
+    def _village_right_frame(self, filename, clip, frame):
+        result = self.armature(filename, clip, frame)
+        if result is None:
+            return None
+        image = result.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        if 'origin' in result.info:
+            x, y = result.info['origin']
+            image.info['origin'] = (result.width-x, y)
+        return image
 
     @lru_cache(maxsize=128)
     def pet_image(self, species):
@@ -187,8 +195,27 @@ class OriginalData:
                     frames[k] = im
         return frames
 
+    def armature(self, name, animation='standdown', frame=0, *, viewport=None):
+        if name in ('niudanji', 'ndchongwubeijingguang') and getattr(self, 'enable_baked', True):
+            from animation_cache import load_manifest, read_frame
+            if not hasattr(self, '_lottery_cache_manifest'):
+                self._lottery_cache_manifest = load_manifest(self)
+            if self._lottery_cache_manifest:
+                root, manifest = self._lottery_cache_manifest
+                clip = manifest['clips'].get(name+'/'+animation)
+                if clip and (not clip.get('viewport') or tuple(clip['viewport']) == viewport):
+                    index = int(frame) % clip['duration'] if clip['loop'] else min(max(0, int(frame)), clip['duration']-1)
+                    origin = clip['origins'][index]
+                    if origin is None:
+                        return None
+                    try:
+                        return read_frame(str(root), name, animation, index, tuple(origin))
+                    except OSError:
+                        pass
+        return self._render_armature(name, animation, frame)
+
     @lru_cache(maxsize=1024)
-    def armature(self, name, animation='standdown', frame=0):
+    def _render_armature(self, name, animation='standdown', frame=0):
         """Software preview of Cocos Studio bones, including original texture pivots."""
         _, data = self.armature_source(name)
         frames = self.armature_frames(name)
@@ -281,9 +308,20 @@ class OriginalData:
                 continue
             inv = (d/det, -c/det, (c*ty-d*tx)/det,
                    -b/det, a/det, (b*tx-a*ty)/det)
-            layer = sprite.transform(out.size, Image.Transform.AFFINE, inv,
+            # Warp only this skin's bounds, not the entire armature canvas for
+            # every bone. The same affine matrix and painter order are retained.
+            pad = math.ceil(2*max(abs(a)+abs(c), abs(b)+abs(d)))+1
+            xs = [tx, a*sprite.width+tx, c*sprite.height+tx, a*sprite.width+c*sprite.height+tx]
+            ys = [ty, b*sprite.width+ty, d*sprite.height+ty, b*sprite.width+d*sprite.height+ty]
+            x0, y0 = max(0, math.floor(min(xs))-pad), max(0, math.floor(min(ys))-pad)
+            x1, y1 = min(out.width, math.ceil(max(xs))+pad), min(out.height, math.ceil(max(ys))+pad)
+            if x0 >= x1 or y0 >= y1:
+                continue
+            local = (inv[0], inv[1], inv[2]+inv[0]*x0+inv[1]*y0,
+                     inv[3], inv[4], inv[5]+inv[3]*x0+inv[4]*y0)
+            layer = sprite.transform((x1-x0, y1-y0), Image.Transform.AFFINE, local,
                                      resample=Image.Resampling.BICUBIC)
-            out.alpha_composite(layer)
+            out.alpha_composite(layer, (x0, y0))
         box = out.getbbox()
         if not box:
             return None

@@ -406,7 +406,7 @@ class BattleUI:
             origin = (image.width-origin[0], origin[1])
         points = {key: (p[0]-center[0], p[1]-center[1]) for key, p in self.pet_bones[side].items()}
         self._pose_cache[pose_key] = (image, origin, points)
-        if len(self._pose_cache) > 64:
+        if len(self._pose_cache) > 128:
             self._pose_cache.popitem(last=False)
         if flash:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))

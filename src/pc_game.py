@@ -106,7 +106,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.69（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.72（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -313,7 +313,13 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if str(oid) == 'fx:treasure':
             return 'opened'
         kind, identifier = (7, str(oid)[5:]) if str(oid).startswith('temp:') else (2, oid)
-        obj = next((o for o in self.map.objects if o.get('gid') and str(o.get('name')) == str(oid)), {})
+        if getattr(self, '_actor_lookup_map', None) is not self.map:
+            self._actor_lookup_map = self.map
+            self._actor_lookup = {}
+            for obj in self.map.objects:
+                if obj.get('gid'):
+                    self._actor_lookup.setdefault(str(obj.get('name')), obj)
+        obj = self._actor_lookup.get(str(oid), {})
         fallback = FACES.get(int(obj.get('props', {}).get('face', 2)), 'standdown')
         ambient = getattr(self, 'npc_motion', None)
         if ambient and any(str(a['id']) == str(identifier) for a in ambient.motion.actions):
@@ -1000,6 +1006,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
 
 
     def close_ui(self, result=None):
+        lottery = getattr(self, 'lottery_animation', None)
+        if lottery is not None:
+            lottery.close()
+            self.lottery_animation = None
         self.ui_tutorial_active = False
         job = getattr(self, 'ui_effect_job', None)
         if job and self.ui_window and self.ui_window.winfo_exists():
@@ -1103,7 +1113,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.69')
+        win.title('任务指引 · 原生 0.2.72')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1831,6 +1841,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             return
 
     def tick(self):
+        self._frame_started = time.perf_counter()
         now = time.monotonic()
         if hasattr(self, 'audio'):
             for kind, flag in [('music', 'music_enabled'), ('effect', 'effects_enabled')]:
@@ -2214,6 +2225,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     queue.append(neighbor)
 
     def close_transient_ui(self):
+        lottery = getattr(self, 'lottery_animation', None)
+        if lottery is not None:
+            lottery.close()
+            self.lottery_animation = None
         self.task_page = None
         # Loading must not acknowledge an old event through close_ui().
         if self.ui_window and self.ui_window.winfo_exists():
@@ -2681,25 +2696,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if pet is None:
             self._page_tip('找不到抽宠记录。', self.close_ui)
             return
-        stats = pet.stats(self.data.tables)
-        text, visible, resources = self._pet_base_fields(pet)
-        visible['weixin_Button'] = False
-        for name, value in zip(('Life', 'Energy', 'Strength', 'Defense', 'Speed'), stats):
-            text[f'arrt{name}_BitmapFontLabel'] = str(value)
-        page = Page(self, 'LuckyDrawPetInfoUI', text=text, visible=visible,
-                    resources=resources, timeline_frame=60)
-        point = next((r for k, r in page.rects.items() if k.endswith('/petPos_Node')), (400, 300, 400, 300))
-        page.animated_pets.append((pet.species, point, (200, 70, 600, 360), 190))
-        def finish():
-            self.close_ui()
-            if back == 'lottery':
-                remaining = getattr(self, 'lucky_result_queue', [])
-                if remaining:
-                    self.open_lucky_pet_info(remaining.pop(0), back='lottery')
-                else:
-                    self.lottery_ui(force=True)
-        page.actions.update({'confirm_Button': finish, 'close_Button': finish})
-        page.publish()
+        from lottery_animation import LotteryAnimation
+        self.lottery_animation = LotteryAnimation(self, [pet], int(self.ui_parameters.get('kind', 1)), back)
+        self.lottery_animation.start()
 
 
     def open_pet_property(self, uid):

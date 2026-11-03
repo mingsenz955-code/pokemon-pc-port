@@ -55,6 +55,13 @@ class GameAudio:
 
     play = effect
 
+    def pause_music(self):
+        self.queue.put(('pause', None, False))
+
+    def resume_music(self):
+        if self.music_enabled:
+            self.queue.put(('resume', None, False))
+
     def set_enabled(self, kind, enabled):
         if kind == 'music':
             self.music_enabled = bool(enabled)
@@ -73,6 +80,10 @@ class GameAudio:
                         self._command('close '+alias)
                     return
                 kind, path, loop = item
+                if kind in ('pause', 'resume'):
+                    if self.current is not None:
+                        self._command(kind+' pocket_bgm')
+                    continue
                 alias = 'pocket_bgm' if kind == 'music' else 'pocket_effect'
                 self._command('close '+alias)
                 if path and not self._command(f'open "{path}" type mpegvideo alias {alias}'):

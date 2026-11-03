@@ -10,6 +10,14 @@ class GameViewport:
         self.offset = (0, 0)
         self.fullscreen = False
         self.window_geometry = None
+        # Request 1 ms scheduling while the game is alive, and pair the call.
+        import os
+        if os.name == 'nt':
+            import ctypes
+            api = ctypes.windll.winmm
+            if api.timeBeginPeriod(1) == 0:
+                app.root.bind('<Destroy>', lambda event: api.timeEndPeriod(1)
+                              if event.widget is app.root else None, add='+')
         app.root.resizable(True, True)
         app.root.minsize(640, 384)
         app.canvas.pack_configure(fill='both', expand=True)
@@ -57,10 +65,25 @@ class GameViewport:
 
     def present(self, frame):
         size = (max(1, round(self.app.WIDTH*self.scale)), max(1, round(self.app.HEIGHT*self.scale)))
-        shown = frame if frame.size == size else frame.resize(size, Image.Resampling.BILINEAR)
-        self.app.tk_image = ImageTk.PhotoImage(shown)
+        battle_ui = getattr(self.app, 'battle_ui', None)
+        immutable_battle_frame = battle_ui is not None and frame is battle_ui.frame
+        if immutable_battle_frame and frame is getattr(self, '_last_source', None) and size == getattr(self, '_last_size', None):
+            self.app.canvas.coords(self.app.canvas_image, *self.offset)
+            return
+        # The final game frame is opaque: avoid RGBA premultiplication during fullscreen scaling.
+        rgb = frame.convert('RGB')
+        shown = rgb if rgb.size == size else rgb.resize(size, Image.Resampling.BILINEAR)
+        old = getattr(self.app, 'tk_image', None)
+        if old is not None and old.width() == shown.width and old.height() == shown.height:
+            old.paste(shown)
+            replaced = False
+        else:
+            self.app.tk_image = ImageTk.PhotoImage(shown)
+            replaced = True
         if not hasattr(self.app, 'canvas_image'):
             self.app.canvas_image = self.app.canvas.create_image(*self.offset, anchor='nw', image=self.app.tk_image)
         else:
-            self.app.canvas.itemconfigure(self.app.canvas_image, image=self.app.tk_image)
+            if replaced:
+                self.app.canvas.itemconfigure(self.app.canvas_image, image=self.app.tk_image)
             self.app.canvas.coords(self.app.canvas_image, *self.offset)
+        self._last_source, self._last_size = frame, size

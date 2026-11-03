@@ -108,9 +108,14 @@ class GameArtLabel(tk.Label):
         from PIL import Image
         self.logical_frame = frame
         scale = getattr(getattr(self.master.app, 'viewport', None), 'scale', 1)
+        frame = frame.convert('RGB')
         if scale != 1:
             frame = frame.resize((max(1, round(frame.width*scale)), max(1, round(frame.height*scale))), Image.Resampling.BILINEAR)
-        self.composited_image = ImageTk.PhotoImage(frame)
+        old = getattr(self, 'composited_image', None)
+        if old is not None and old.width() == frame.width and old.height() == frame.height:
+            old.paste(frame)
+        else:
+            self.composited_image = ImageTk.PhotoImage(frame)
         return self.composited_image
 
     def show_frame(self, frame):

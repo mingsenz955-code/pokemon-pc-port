@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import re
 import time
+from collections import OrderedDict
 from PIL import Image, ImageTk, ImageDraw
 from event_runtime import Request
 from game_state import numbers
@@ -30,6 +31,7 @@ class Page:
         self.specs = []
         self.particles = []
         self.animated_pets = []
+        self._pet_pose_cache = OrderedDict()
         self.hits, self.buttons, self.rects, self.actions = {}, {}, {}, {}
         self.layer = self.add(name, (0, 0), **args)
 
@@ -121,18 +123,30 @@ class Page:
             return frame
         for species, point, area, limit in self.animated_pets:
             duration = self.app.data.pet_clip_duration(species, 'stand')
-            index = int((elapsed % duration if duration else elapsed)*25)
-            art = self.app.data.pet_frame(species, 'stand', index, True, fps=25, limit=max(220, limit))
-            setup = self.app.data.pet_image(species)
-            if art is None or setup is None:
-                continue
-            ratio = min(limit/setup.width, limit/setup.height)*setup.info.get('pixels_per_unit', 1)/art.info.get('pixels_per_unit', 1)
-            origin = art.info.get('origin', (art.width/2, art.height))
-            art = art.resize((max(1, round(art.width*ratio)), max(1, round(art.height*ratio))), Image.Resampling.LANCZOS)
-            layer = Image.new('RGBA', frame.size)
-            layer.alpha_composite(art, (round(point[0]-origin[0]*ratio), round(point[1]-origin[1]*ratio)))
-            x, y, right, bottom = map(round, area)
-            frame.alpha_composite(layer.crop((x, y, right, bottom)), (x, y))
+            index = int((elapsed % duration if duration else elapsed)*30)
+            key = (species, index, limit)
+            cached = self._pet_pose_cache.get(key)
+            if cached is None:
+                art = self.app.data.pet_frame(species, 'stand', index, True, fps=30, limit=max(220, limit))
+                setup = self.app.data.pet_image(species)
+                if art is None or setup is None:
+                    continue
+                ratio = min(limit/setup.width, limit/setup.height)*setup.info.get('pixels_per_unit', 1)/art.info.get('pixels_per_unit', 1)
+                origin = art.info.get('origin', (art.width/2, art.height))
+                art = art.resize((max(1, round(art.width*ratio)), max(1, round(art.height*ratio))), Image.Resampling.LANCZOS)
+                cached = art, (origin[0]*ratio, origin[1]*ratio)
+                self._pet_pose_cache[key] = cached
+                if len(self._pet_pose_cache) > 96:
+                    self._pet_pose_cache.popitem(last=False)
+            else:
+                self._pet_pose_cache.move_to_end(key)
+            art, origin = cached
+            x, y = round(point[0]-origin[0]), round(point[1]-origin[1])
+            box = intersect((x, y, x+art.width, y+art.height), area)
+            box = intersect(box, (0, 0, frame.width, frame.height)) if box else None
+            if box:
+                left, top, right, bottom = map(round, box)
+                frame.alpha_composite(art.crop((left-x, top-y, right-x, bottom-y)), (left, top))
         return frame
 
     def animate(self):
@@ -150,7 +164,7 @@ class Page:
         self.display_frame = frame
         app.ui_base_layer = frame
         app.ui_art_label.set_layer(frame)
-        delay = max(8, round(1000/30-(time.perf_counter()-started)*1000))
+        delay = max(3, round(1000/60-(time.perf_counter()-started)*1000))
         app.ui_effect_job = app.ui_window.after(delay, self.animate)
 
 
@@ -310,8 +324,9 @@ class OriginalPages(PetPages, HatchPages):
                 self._page_tip(str(error), paint)
                 return
             if pets:
-                self.lucky_result_queue = [p.uid for p in pets[1:]]
-                self.open_lucky_pet_info(pets[0].uid, back='lottery')
+                from lottery_animation import LotteryAnimation
+                self.lottery_animation = LotteryAnimation(self, pets, kind)
+                self.lottery_animation.start()
         paint()
 
     def _treasure_page(self, body, info, par1=None):

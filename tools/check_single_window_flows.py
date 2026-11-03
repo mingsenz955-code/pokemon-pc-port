@@ -96,7 +96,8 @@ class SingleWindowChecks(unittest.TestCase):
 
     def test_lottery_full_party_uses_bank_and_true_full_rolls_back(self):
         s = self.app.state
-        s.inventory['700004'] = 1
+        while len(s.pets) < s.pet_capacity():
+            s.add_preset(1)
         s.inventory['700005'] = 3
         before = s.count('700002')
         pets = Activities(s).draw_pets(3)

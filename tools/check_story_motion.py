@@ -36,6 +36,8 @@ def host(parameters, walls=()):
     app.story_motion = StoryMotion(app)
     app.booting, app.battle, app.camera_action, app.camera_focus = False, None, None, None
     app.runtime_error, app.wait_until, app.ui_open, app.ui_window = '', 0, False, None
+    app.ui_info = None
+    app.audio = SimpleNamespace(effect=lambda *args: None)
     app.display_request, app.pending_wait, app.dialogue = None, None, None
     app.player_visible, app.main_ui_visible = True, True
     app.teach_nodes, app.keys = [], set()
