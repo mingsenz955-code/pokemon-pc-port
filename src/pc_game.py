@@ -107,7 +107,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.75（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.76（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -312,7 +312,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 if obj.get('gid'):
                     self._actor_lookup.setdefault(str(obj.get('name')), obj)
         obj = self._actor_lookup.get(str(oid), {})
-        fallback = FACES.get(int(obj.get('props', {}).get('face', 2)), 'standdown')
+        # Some original TMX actors explicitly contain face="". Treat that as
+        # the same default as a missing field, rather than stopping Tk redraw.
+        fallback = FACES.get(int(obj.get('props', {}).get('face') or 2), 'standdown')
         ambient = getattr(self, 'npc_motion', None)
         if ambient and any(str(a['id']) == str(identifier) for a in ambient.motion.actions):
             return ambient.motion.animation(kind, identifier, fallback)
@@ -1161,7 +1163,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.75')
+        win.title('任务指引 · 原生 0.2.76')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1311,8 +1313,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         obj = found[0]
         x, y = self.exit_spawn(destination, obj)
         self.load_map(mid, x, y)
-        self.advance_main_condition('map', int(mid))
+        # PlotEventManager checks the arrival against the pre-arrival task
+        # state. Otherwise task 14 becomes ready before pEvent115001 can start.
         self.runtime.notify('tomap', map=int(mid))
+        self.advance_main_condition('map', int(mid))
         self.inside_areas = set()
 
     def try_exit(self):
@@ -2191,12 +2195,26 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.npc_motion.reset()
             self.npc_motion.restore(state.presentation.get('npc_motion'))
             self.repair_legacy_sprite_collision()
+            self.repair_legacy_sunshine_arrival()
             self._play_clock = time.monotonic()
             self.drive()
             return True
         except (ValueError, KeyError, OSError) as error:
             self.game_tip(str(error))
             return False
+
+    def repair_legacy_sunshine_arrival(self):
+        # Old request_map advanced task 14 before checking the town plot's
+        # state-3 trigger. Resume that exact missed arrival, keeping its actual
+        # counter and letting the original script submit/grant just once.
+        if (self.map_id != 115 or self.state.main_task != 14 or self.state.main_state != 4
+                or self.runtime.running or self.story_motion.actions
+                or self.state.events.get('115001', 0)
+                or self.state.events.get('5901002', 0) != 1):
+            return
+        trigger = next(row for row in self.runtime.triggers if row['id'] == 115001)
+        self.runtime.start('pEvent115001.json', trigger)
+        self.state.audit.append({'repair': 'sunshine-arrival-before-task-ready', 'event': 115001})
 
     def repair_legacy_obstacle_coordinates(self, state):
         if int(state.presentation.get('obstacle_coordinates_version', 0)) >= 2:
