@@ -7,6 +7,7 @@ import time
 from tkinter import messagebox
 from event_runtime import Request
 from mounts import Mounts
+from offline_tutorials import REMOVED_SCENE_BUTTONS
 from guide import exit_map_id
 
 
@@ -121,6 +122,7 @@ class SceneUI:
                    'giftReceive_Button': False, 'giftReceive_Particle': False,
                    'petCatchState_Panel': False, 'playerState_ListView': False,
                    'mapName_ProjectNode': False}
+        visible.update({key: False for key in REMOVED_SCENE_BUTTONS})
         for index, kind in enumerate(self.SHOP_TYPES, 1):
             visible[f'up_left_{index}_Button'] = kind in shops
         # These embedded notification nodes contain editor sample numbers.

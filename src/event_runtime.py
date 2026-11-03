@@ -9,6 +9,7 @@ import copy
 from dataclasses import dataclass
 
 from game_state import numbers
+from offline_tutorials import removed_tutorial_step
 
 
 class PendingMechanic(RuntimeError):
@@ -143,6 +144,13 @@ class EventRuntime:
         return all(checks)
 
     def next(self):
+        # Apply before returning a restored pending request and before voiceover.
+        # Only explicitly removed feature tutorials are skipped; task, reward and
+        # ordinary NPC dialogue commands still execute in their original order.
+        while self.running and self.index < len(self.sequence) and removed_tutorial_step(self.file, self.sequence[self.index]):
+            self.pending = None
+            self.index += 1
+            self.persist()
         if self.pending:
             return self.pending
         budget = 0
@@ -154,6 +162,10 @@ class EventRuntime:
                 self.finish()
                 continue
             step = self.sequence[self.index]
+            if removed_tutorial_step(self.file, step):
+                self.index += 1
+                self.persist()
+                continue
             kind, parameter = step['type'], step.get('parameters', {})
             if isinstance(step.get('sound'), (int, str)) and getattr(self, 'play_sound', None):
                 self.play_sound(step['sound'])
