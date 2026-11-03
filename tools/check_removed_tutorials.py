@@ -31,7 +31,7 @@ class RemovedTutorialChecks(unittest.TestCase):
         # Quest commands preceding the removed tail have not been deleted.
         self.assertTrue(any(s['type']=='submittask' for s in a.data.event('pEvent101003.json')))
 
-    def test_no_hidden_button_tutorial_remains_and_hatch_guides_survive(self):
+    def test_forced_hatch_guides_removed_but_story_and_rewards_survive(self):
         d=self.app.data
         for path in (d.root/'events').glob('*.json'):
             sequence=json.loads(path.read_text('utf8'))
@@ -41,6 +41,10 @@ class RemovedTutorialChecks(unittest.TestCase):
                     self.assertTrue(removed_tutorial_step(path.name,step))
         normal=[s for s in d.event('pEvent5905001.json') if s['type']=='button']
         self.assertTrue(normal)
-        self.assertFalse(any(removed_tutorial_step('pEvent5905001.json',s) for s in normal))
+        self.assertTrue(all(removed_tutorial_step('pEvent5905001.json',s) for s in normal))
+        substantive=[s for s in d.event('pEvent5905001.json')
+                     if s['type'] in ('talk','giveitem','submittask','openui','eventstate')]
+        self.assertTrue(substantive)
+        self.assertFalse(any(removed_tutorial_step('pEvent5905001.json',s) for s in substantive))
 
 if __name__=='__main__':unittest.main(verbosity=2)
