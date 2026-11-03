@@ -17,6 +17,7 @@ from achievements import Achievements
 from continuous_login import ContinuousLogin
 from pet_pages import PetPages
 from hatch_pages import HatchPages
+from service_pages import ServicePages
 
 
 def intersect(a, b):
@@ -168,7 +169,7 @@ class Page:
         app.ui_effect_job = app.ui_window.after(delay, self.animate)
 
 
-class OriginalPages(PetPages, HatchPages):
+class OriginalPages(PetPages, HatchPages, ServicePages):
     def _choice_page(self, message, yes, no):
         previous = self.ui_base_layer.copy()
         page = Page(self, 'SecondConfirmUI', text={'tip_Text': message})
@@ -975,7 +976,7 @@ class OriginalPages(PetPages, HatchPages):
         layout = {1: 'ShopUI', 2: 'EvolutionShopUI', 3: 'SkillShopUI',
                   22: 'InfiniteArenaShopUI', 28: 'MedalShopUI', 69: 'BattleShopUI'}[uiid]
         clerk = {1: '1', 2: '3', 3: '4'}.get(uiid)
-        if clerk:
+        if clerk and not self.ui_parameters.get('shop_return'):
             talks = self.state.activities.setdefault('shop_talks', {})
             talks[clerk] = int(talks.get(clerk, 0))+1
         goods = [(k, r) for k, r in sorted(self.data.tables[table].items(), key=lambda p: int(p[0]))
