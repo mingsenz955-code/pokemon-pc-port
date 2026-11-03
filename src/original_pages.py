@@ -15,6 +15,7 @@ from game_state import numbers
 from achievements import Achievements
 from continuous_login import ContinuousLogin
 from pet_pages import PetPages
+from hatch_pages import HatchPages
 
 
 def intersect(a, b):
@@ -94,7 +95,7 @@ class Page:
         app = self.app
         app.original_page = self
         self.effect_start = time.monotonic()
-        app.ui_base_layer = self.pet_frame(self.layer.copy(), 0)
+        app.ui_base_layer = self.pet_frame(self.frame_at(0) if hasattr(self, 'frame_at') else self.layer.copy(), 0)
         self.display_frame = app.ui_base_layer
         app.ui_hits, app.ui_buttons, app.ui_rects = self.hits, self.buttons, self.rects
         if hasattr(app, '_decorate_ui_tutorial'):
@@ -116,6 +117,8 @@ class Page:
             app.ui_effect_job = app.ui_window.after(40, self.animate)
 
     def pet_frame(self, frame, elapsed):
+        if elapsed < getattr(self, 'pet_visible_after', 0):
+            return frame
         for species, point, area, limit in self.animated_pets:
             duration = self.app.data.pet_clip_duration(species, 'stand')
             index = int((elapsed % duration if duration else elapsed)*25)
@@ -138,7 +141,8 @@ class Page:
         if getattr(app, 'original_page', None) is not self or not app.ui_window or not app.ui_window.winfo_exists():
             return
         from particles import draw_emitter
-        frame = self.pet_frame(self.layer.copy(), time.monotonic()-self.effect_start)
+        age = time.monotonic()-self.effect_start
+        frame = self.pet_frame(self.frame_at(age) if hasattr(self, 'frame_at') else self.layer.copy(), age)
         for resource, position, scale, alpha, clip in self.particles:
             path = app.data.assets/'res'/resource
             if path.exists():
@@ -150,7 +154,7 @@ class Page:
         app.ui_effect_job = app.ui_window.after(delay, self.animate)
 
 
-class OriginalPages(PetPages):
+class OriginalPages(PetPages, HatchPages):
     def _choice_page(self, message, yes, no):
         previous = self.ui_base_layer.copy()
         page = Page(self, 'SecondConfirmUI', text={'tip_Text': message})

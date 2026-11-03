@@ -161,11 +161,11 @@ def read_csb(path):
             frames = []
             prop = track.text(0)
             for wrapper in track.tables(2):
-                slot = {'Position': 0, 'Scale': 1, 'Alpha': 5, 'VisibleForFrame': 6}.get(prop)
+                slot = {'Position': 0, 'Scale': 1, 'FrameEvent': 4, 'Alpha': 5, 'VisibleForFrame': 6}.get(prop)
                 frame = wrapper.table(slot) if slot is not None else None
                 if not frame:
                     continue
-                value = (frame.struct(2, '<ff', [0, 0]) if slot in (0, 1) else
+                value = (frame.text(2) if slot == 4 else frame.struct(2, '<ff', [0, 0]) if slot in (0, 1) else
                          frame.scalar(2, '<?', True) if slot == 6 else frame.scalar(2))
                 frames.append({'frame': frame.scalar(0), 'tween': bool(frame.scalar(1, '<?', True)), 'value': value})
             if frames:

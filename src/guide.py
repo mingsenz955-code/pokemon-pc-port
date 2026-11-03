@@ -488,6 +488,11 @@ class Guide:
             return (tx, ty) in occupied or world.blocked((tx+.5)*world.tw, (ty+.5)*world.th, mounts)
         start = (app.x, app.y)
         if self.target.kind == 'npc':
+            areas = self.npc_areas()
+            if areas:
+                return walk_path(world, start, (self.target.x, self.target.y),
+                                 self._npc_reached, mounts=mounts,
+                                 occupied=occupied | self.other_exit_cells())
             tx, ty = int(self.target.x//world.tw), int(self.target.y//world.th)
             choices = []
             for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
@@ -628,6 +633,12 @@ class Guide:
         return path
 
     def _npc_reached(self, x, y):
+        areas = self.npc_areas()
+        if areas:
+            world = self.app.map
+            px, py = (int(x//world.tw)+.5)*world.tw, (int(y//world.th)+.5)*world.th
+            return any(float(o['x']) <= px < float(o['x'])+float(o.get('width', world.tw))
+                       and float(o['y']) <= py < float(o['y'])+float(o.get('height', world.th)) for o in areas)
         target = self.target
         world = self.app.map
         dx = abs(int(x//world.tw)-int(target.x//world.tw))
@@ -635,6 +646,10 @@ class Guide:
         centered = (abs(x-(int(x//world.tw)+.5)*world.tw) <= 2
                     and abs(y-(int(y//world.th)+.5)*world.th) <= 2)
         return dx+dy == 1 and centered
+
+    def npc_areas(self):
+        return [o for o in self.app.map.objects if o.get('group') == 'eventLayer'
+                and str(o.get('props', {}).get('npcId', '')) == self.target.npc_id]
 
     def _arrived(self):
         target = self.target
