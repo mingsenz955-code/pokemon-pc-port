@@ -70,3 +70,9 @@ class GameArtLabel(tk.Label):
                 self.composited_image = ImageTk.PhotoImage(frame)
                 options['image'] = self.composited_image
         return super().configure(cnf, **options)
+
+    def set_layer(self, layer):
+        frame = self.backdrop.copy()
+        frame.alpha_composite(layer)
+        self.composited_image = ImageTk.PhotoImage(frame)
+        super().configure(image=self.composited_image)

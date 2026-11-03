@@ -23,6 +23,30 @@ def emitter(path_string):
     return data, texture
 
 
+@lru_cache(maxsize=256)
+def tint_table(factor):
+    return tuple(round(p*factor/255) for p in range(256))
+
+
+@lru_cache(maxsize=512)
+def tinted_texture(path, rgba):
+    texture = emitter(path)[1]
+    return texture.point(tuple(value for factor in rgba for value in tint_table(factor)))
+
+
+@lru_cache(maxsize=4096)
+def gravity_trajectory(x, y, vx, vy, gx, gy, radial, tangent, lifetime):
+    result = [(x, y, vx, vy)]
+    for _ in range(math.ceil(lifetime*60)):
+        length = math.hypot(x, y)
+        nx, ny = (x/length, y/length) if length > 1e-6 else (0, 0)
+        vx += (gx+nx*radial-ny*tangent)/60
+        vy += (gy+ny*radial+nx*tangent)/60
+        x, y = x+vx/60, y+vy/60
+        result.append((x, y, vx, vy))
+    return result
+
+
 def draw_emitter(frame, path, position, scale, elapsed, alpha=1, clip=None):
     data, texture = emitter(str(path))
     def val(key, default=0):
@@ -60,6 +84,21 @@ def draw_emitter(frame, path, position, scale, elapsed, alpha=1, clip=None):
             vx, vy = math.cos(angle)*speed, math.sin(angle)*speed
             radial, tangent = varied('radialAcceleration', 'radialAccelVariance'), varied('tangentialAcceleration', 'tangentialAccelVariance')
             remaining = age
+            if radial == 0 and tangent == 0:
+                # Exactly sum the 1/60 Euler steps instead of replaying the
+                # entire particle lifetime at every display frame.
+                n = int(age*60)
+                dt = 1/60
+                gx, gy = val('gravityx'), val('gravityy')
+                x += vx*n*dt+gx*dt*dt*n*(n+1)/2
+                y += vy*n*dt+gy*dt*dt*n*(n+1)/2
+                vx, vy = vx+gx*n*dt, vy+gy*n*dt
+                remaining = max(0, age-n*dt)
+            else:
+                n = int(age*60)
+                x, y, vx, vy = gravity_trajectory(x, y, vx, vy, val('gravityx'), val('gravityy'),
+                                                 radial, tangent, lifetime)[n]
+                remaining = max(0, age-n/60)
             while remaining > 1e-6:
                 step = min(1/60, remaining)
                 length = math.hypot(x, y)
@@ -76,8 +115,7 @@ def draw_emitter(frame, path, position, scale, elapsed, alpha=1, clip=None):
             a = varied('startColor'+key, 'startColorVariance'+key, 1)
             b = varied('finishColor'+key, 'finishColorVariance'+key, 1)
             rgba.append(max(0, min(1, a+(b-a)*percent))*(alpha if key == 'Alpha' else 1))
-        tile = Image.merge('RGBA', tuple(c.point(lambda p, f=factor: round(p*f))
-                                       for c, factor in zip(texture.split(), rgba)))
+        tile = tinted_texture(str(path), tuple(round(f*255) for f in rgba))
         tile = tile.resize((max(1, round(size*abs(scale[0]))), max(1, round(size*abs(scale[1])))), Image.Resampling.BILINEAR)
         start_rotation, end_rotation = varied('rotationStart'), varied('rotationEnd')
         rotation = start_rotation+(end_rotation-start_rotation)*percent
@@ -92,8 +130,12 @@ def draw_emitter(frame, path, position, scale, elapsed, alpha=1, clip=None):
         layer = cropped
     if int(val('blendFuncDestination', 771)) == 1:
         # Particle textures are premultiplied for ONE/ONE additive blending.
-        colored = ImageChops.multiply(layer.convert('RGB'), Image.merge('RGB', (layer.getchannel('A'),)*3))
-        merged = ImageChops.add(frame.convert('RGB'), colored)
-        frame.paste(Image.merge('RGBA', (*merged.split(), ImageChops.lighter(frame.getchannel('A'), layer.getchannel('A')))))
+        bounds = layer.getchannel('A').getbbox()
+        if bounds is None:
+            return
+        region, background = layer.crop(bounds), frame.crop(bounds)
+        colored = ImageChops.multiply(region.convert('RGB'), Image.merge('RGB', (region.getchannel('A'),)*3))
+        merged = ImageChops.add(background.convert('RGB'), colored)
+        frame.paste(Image.merge('RGBA', (*merged.split(), ImageChops.lighter(background.getchannel('A'), region.getchannel('A')))), bounds[:2])
     else:
         frame.alpha_composite(layer)

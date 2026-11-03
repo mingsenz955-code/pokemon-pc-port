@@ -675,3 +675,18 @@ check_traversal_update.py 4 项验证原塔楼碰撞、飞行例外、门口空�
 原版按 speedscale 创建 MoveTo/DelayTime/完成回调，移植目前仍直接切换焦点。
 只缓存静态画面不会修好这些语义；下一步应恢复这些动作和脚本等待关系，再对照序章录像。
 全部页面恢复、原音频与过场动画仍需要独立核对，不能把这次按钮修复写成“完全一样”。
+
+## 0.2.59 骑宠菜单与地形 0 修复（2026-11-02）
+
+原版证据来自 research/original-core.so 与 MainUI.csb；反汇编审计输出保存在本地
+research/ride-menu-original.txt、research/ride-tips-original.txt。
+
+- MainUILayer::setLeftButtonsFunctionState 0x3795e0：初始化 left_right 子按钮为不可见、opacity=255。原始 CSB 五按钮 alpha=0；移植此前未覆盖，造成透明图标仍有点击区域。
+- MainUILayer::leftButtonsDisperse 0x376eb4：isRideGot 决定 setBright；以按钮宽度 * 序号做 0.2 秒 MoveTo。leftButtonsFold 0x376fd8 同时禁用触摸，移动结束隐藏。
+- MainUILayer::leftButtonsRespond 0x378024：只处理 ENDED，先 fold，再读取 Widget tag 作为 RideId。已拥有发骑乘事件；未拥有且 storeId=0 显示描述确认。storeId 非零则调用 SaleBagUILayer::show(70000+storeId,RideId)，该付费推广流程仍未完整接入，当前保留描述提示，不能据此声称坐骑商店已还原。
+- VillageMapControler::onRideProcess 0x2da8e0：再次点击当前坐骑 offRide(true)，其他坐骑先 compareRideAble；不适用时 TipsUiLayer::showTips(text,1.0)，不创建确认对话框。
+- PlayerDataManager::compareRideAble 0x32d3a0 使用 onRideTip1/2/3；assets/Data/Text.json 保留原文。VillagePlayerControler::offRide 0x2e0fec 拒绝 SpriteTile 和非零 Collide，使用 onRideTip4「此处不能收回坐骑」。
+- TipsUiLayer::showTips 0x3c032c 使用 TipsUiNode，DelayTime(传入时长)，FadeOut(1.0)。恢复短提示时不占用 ui_open，不改写场景按钮命中区域。
+- Ride.collidesAble 中单独的字符串 0 是普通地面；公共 numbers() 的空值语义不适用。坐骑专用解析保留 0，避免陆行鸟/护城龙选中即失败或移动自动下骑。
+
+验证：tools/check_ride_menu.py 覆盖真实 CSB 命中与透明图标、快速开合、再次展开、选择后收起、再次选择收回、未拥有单次提示、地形/地图短提示、建筑上收回、两种地面坐骑移动保持。使用临时/内存状态，不读写玩家存档；不代表完整付费坐骑商店或所有原版流程已完成。

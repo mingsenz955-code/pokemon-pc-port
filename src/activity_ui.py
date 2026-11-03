@@ -1120,25 +1120,8 @@ class ActivityUI:
         paint()
 
     def _treasure_buy_body(self, body, info, par1=None):
-        rows = self.data.tables.get('Treasure', {})
-        row = rows.get(str(par1)) or next(iter(rows.values()), None)
-        if not row:
-            info.set('原版 Treasure 表为空。')
-            return
-        clue = TreasureHunt(self.state).clue(row)
-        money = self.data.tables.get('Money', {}).get(clue['money'], {})
-        info.set(f'{clue["text"]}\n需花费 {clue["price"]} {money.get("name", clue["money"])}；'
-                 '购买后获得原版行配置的放大镜。')
-        def buy():
-            try:
-                entry = TreasureHunt(self.state).buy(row['keyId'])
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            self.close_ui('yes')
-        self.ui_actions['buy_Button'] = buy
-        self.ui_actions['close_Button'] = lambda: self.close_ui('no')
-        tk.Button(body, text='购买藏宝图', command=buy).pack(pady=3)
+        body.pack_forget()
+        self._treasure_buy_page(info, par1)
 
     def _treasure_tip_body(self, body, info):
         hunt = TreasureHunt(self.state)
