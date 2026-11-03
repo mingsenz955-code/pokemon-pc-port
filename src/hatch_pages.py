@@ -5,6 +5,44 @@ import time
 
 
 class HatchPages:
+    def _hatch_tutorial_close(self, callback):
+        request = self.display_request
+        if (request and request.event == 'pEvent5905001.json' and request.kind == 'button'
+                and request.data.get('nodekey') != 'close_Button'):
+            return False
+        return callback()
+
+    def _restore_hatch_tutorial_page(self, request):
+        """Resume an interrupted native lesson from actual egg/claim state."""
+        if request.event != 'pEvent5905001.json' or not 7 <= request.step <= 16:
+            return False
+        egg = self.state.activities.get('eggs', {}).get('0')
+        egg = egg if egg and egg['item'] == '250001' else None
+        target = request.step
+        if egg:
+            effect_open = (self.ui_open and self.original_page is not None
+                           and self.original_page.specs[0][0] == 'PetHatchEffectUI')
+            if egg.get('pet') and (request.step < 14 or request.step == 14 and not effect_open):
+                target = 15
+            elif not egg.get('pet') and request.step < 10:
+                target = 10
+        elif request.step <= 15 and self.state.activities.get('hatch_tutorial_claimed_uid'):
+            target = 16
+        if target != request.step:
+            self.runtime.pending = None
+            self.runtime.jump(target)
+            self.runtime.persist()
+            return True
+        if not self.ui_open:
+            from event_runtime import Request
+            self.open_ui(Request('openui', 'hatch-tutorial-restore', 0, {'parameters': {'uiid': 5}}))
+            self.ui_tutorial_active = True
+            if request.step == 9:
+                self._hatch_choose_egg(self.ui_info, 0)
+            elif request.step == 12 and egg and not egg.get('pet'):
+                self._hatch_check_page(self.ui_info, 0)
+        return False
+
     def _hatch_room_page(self, info, selected=0, offset=0):
         from original_pages import Page
         activity = Activities(self.state)
@@ -48,8 +86,8 @@ class HatchPages:
             if pet:
                 page.animated_pets.append((pet.species, (x+76.5, y+140),
                     (max(area[0], x+5), y+5, min(area[2], x+148), y+145), 63))
-        page.actions['close_Button'] = self.close_ui
-        self.ui_window.protocol('WM_DELETE_WINDOW', self.close_ui)
+        page.actions['close_Button'] = lambda: self._hatch_tutorial_close(self.close_ui)
+        self.ui_window.protocol('WM_DELETE_WINDOW', page.actions['close_Button'])
         def wheel(event):
             self._hatch_room_page(info, selected, offset+(-stride if event.delta > 0 else stride))
         self._page_wheel(wheel)
@@ -76,7 +114,7 @@ class HatchPages:
                 self._page_tip(str(error), back)
                 return
             back()
-        self._bag_page(info, allowed_keys=keys, select_item=put, back=back)
+        self._bag_page(info, allowed_keys=keys, select_item=put, back=back, select_on_click=True)
 
     def _hatch_check_page(self, info, index):
         from original_pages import Page
@@ -114,18 +152,27 @@ class HatchPages:
                      prefix=f'condition_{i}/', clip=area,
                      text={'name_Text': name, 'have_BitmapFontLabel': str(have), 'need_BitmapFontLabel': str(need)})
         self._page_wheel(None)
-        self.ui_window.protocol('WM_DELETE_WINDOW', lambda: self._hatch_room_page(info, index, getattr(self, 'hatch_offset', 0)))
+        self.ui_window.protocol('WM_DELETE_WINDOW', lambda: self._hatch_tutorial_close(
+            lambda: self._hatch_room_page(info, index, getattr(self, 'hatch_offset', 0))))
         page.publish()
 
     def _hatch_do(self, info, index, use_money):
+        request = self.display_request
+        free_tutorial = bool(request and request.event == 'pEvent5905001.json'
+            and request.step == 12 and request.data.get('nodekey') == 'hatch_Button'
+            and self.state.activities.get('eggs', {}).get(str(index), {}).get('item') == '250001'
+            and not self.state.activities.get('hatch_tutorial_free_used'))
         try:
-            pet = Activities(self.state).hatch(index, use_money=use_money)
+            pet = Activities(self.state).hatch(index, use_money=use_money, free_tutorial=free_tutorial)
         except ValueError as error:
             self._page_tip(str(error), lambda: self._hatch_check_page(info, index))
             return
         self._hatch_effect_page(info, index, pet)
 
     def _hatch_take(self, info, index):
+        egg = self.state.activities.get('eggs', {}).get(str(index))
+        tutorial_egg = bool(egg and egg['item'] == '250001'
+                            and self.runtime.file == 'pEvent5905001.json')
         try:
             result = Activities(self.state).take_egg(index)
         except ValueError as error:
@@ -133,6 +180,8 @@ class HatchPages:
             return
         back = lambda: self._hatch_room_page(info, index, getattr(self, 'hatch_offset', 0))
         if result:
+            if tutorial_egg:
+                self.state.activities['hatch_tutorial_claimed_uid'] = result.uid
             self.reward_overlay([(result.species, 1)], back, underlay=False)
         else:
             back()
@@ -158,6 +207,6 @@ class HatchPages:
                                         timeline_frame=min(200, int(age*60)))
         page.frame_at = frame_at
         page.actions['confirm_Button'] = lambda: (self._hatch_room_page(info, index, getattr(self, 'hatch_offset', 0))
-                                                  if time.monotonic()-page.effect_start >= info_after else None)
+                                                  if time.monotonic()-page.effect_start >= info_after else False)
         self._page_wheel(None)
         page.publish()

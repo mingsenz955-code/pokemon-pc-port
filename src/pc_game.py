@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import os
 import time
 import tkinter as tk
@@ -106,7 +107,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.73（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.74（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -855,16 +856,18 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             rect = self.ui_hits.get(target) if target else None
             tutorial = bool(rect and rect[0] <= event.x <= rect[2]
                             and rect[1] <= event.y <= rect[3])
+            if rect and not tutorial and self.display_request.event == 'pEvent5905001.json':
+                return
         if callback:
             try:
-                callback()
+                completed = callback()
             except (ValueError, KeyError, PendingMechanic) as error:
                 if self.ui_info:
                     self.ui_info.set(str(error))
                 if getattr(self, 'original_page', None) is not None:
                     self._page_tip(str(error), self.original_page.publish)
                 return
-            if tutorial:
+            if tutorial and completed is not False:
                 self.advance_button_tip()
             return
         if base in {'close_Button', 'closeButton', 'leave_Button', 'cancel_Button',
@@ -1158,7 +1161,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.73')
+        win.title('任务指引 · 原生 0.2.74')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1420,6 +1423,19 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         """
         if not self.ui_open:
             return None
+        # HatchRoomUI repeats a prefab; native story keys use one-based slots.
+        match = re.fullmatch(r'(putIn|check|takeBack)_Button_(\d+)', key)
+        if match:
+            prefix = f'hatch_{int(match[2])-1}/'
+            matches = [name for name in self.ui_hits if name.startswith(prefix)
+                       and name.endswith('/'+match[1]+'_Button') and self.ui_action_for(name)]
+            return matches[0] if len(matches) == 1 else None
+        if key.startswith('hatchRoomChooseItem_'):
+            key = 'chooseItem_'+key[len('hatchRoomChooseItem_'):]
+        if (key == 'hatch_Button' and self.runtime.file == 'pEvent5905001.json'
+                and getattr(self, 'original_page', None)
+                and any(name == 'HatchCheckUI' for name, *_ in self.original_page.specs)):
+            key = 'hatch_Button' if self._hatch_ready(self.hatch_selection) else 'moneyHatch_Button'
         if key in self.ui_actions and key in self.ui_hits:
             return key
         matches = [name for name in self.ui_hits
@@ -1755,6 +1771,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     self.show_reward('获得奖励', request.data['items'])
                     return
                 if request.kind in ['button', 'tapscreen']:
+                    if request.kind == 'button' and self._restore_hatch_tutorial_page(request):
+                        continue
                     if request.event == 'pEvent102001.json' and not self.battle and self.runtime.battle_result:
                         # This script targets the BattleMainUI that just ended.
                         # Its absent controls must not block the capture follow-up.
@@ -1810,6 +1828,14 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     return
                 if request.kind == 'openui':
                     self.open_ui(request)
+                    # Native openui starts the page, then a following button
+                    # tutorial operates inside it; waiting for close here stalls
+                    # the entire hatch lesson before its first instruction.
+                    following = self.runtime.sequence[self.runtime.index+1:self.runtime.index+2]
+                    if following and following[0]['type'] == 'button':
+                        self.runtime.resume()
+                        self.ui_tutorial_active = True
+                        continue
                     return
                 if request.kind == 'closeui':
                     self.close_ui()

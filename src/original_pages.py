@@ -754,7 +754,7 @@ class OriginalPages(PetPages, HatchPages, ServicePages):
             description += '\n\n'+re.sub(r'#[0-9]', '', letter)
         return description
 
-    def _bag_page(self, info, allowed_keys=None, select_item=None, back=None):
+    def _bag_page(self, info, allowed_keys=None, select_item=None, back=None, select_on_click=False):
         tabs = {1: {1, 2, 3}, 2: {5}, 3: {6}, 4: {4, 7}, 5: {8}}
         kind, offset, selected = [2 if allowed_keys is not None else 1], [0], [None]
         description_scroll, description_limit, description_area = [0], [0], [None]
@@ -822,7 +822,10 @@ class OriginalPages(PetPages, HatchPages, ServicePages):
         def choose(key):
             selected[0] = key
             description_scroll[0] = 0
-            paint()
+            if select_on_click and select_item:
+                select_item(key)
+            else:
+                paint()
 
         def tab(value):
             kind[0], offset[0], selected[0] = value, 0, None
