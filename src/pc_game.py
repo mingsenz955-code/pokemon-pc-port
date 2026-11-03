@@ -35,9 +35,10 @@ from story_motion import StoryMotion, FACES
 from scene_ui import SceneUI
 from npc_motion import NpcMotion
 from exit_markers import ExitMarkers
+from mail_pages import MailPages
 
 
-class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
+class NativeGame(MailPages, OriginalPages, ActivityUI, ExitMarkers, Preview):
     TARGET_FPS = 60
     WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
     DYNAMIC_SCENERY = True
@@ -109,7 +110,7 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.79（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.80（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -638,12 +639,12 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             currency, cost = self.state.cure_cost()
             from original_pages import Page
             page = Page(self, 'CureConfirmUI', timeline_frame=60,
-                        text={'times_BitmapFontLabel': str(self.state.count('700006')),
+                        text={'tips2_Text': '永久免费治疗全部携带宠物', 'times_BitmapFontLabel': '',
                               'cost_BitmapFontLabel': f'x{cost}'},
                         visible={'costTip_Text': currency == '700001',
                                  'cost_BitmapFontLabel': currency == '700001',
                                  'tips2_Text': currency != '700001',
-                                 'times_BitmapFontLabel': currency != '700001'})
+                                 'times_BitmapFontLabel': False})
             page.publish()
             info.set(f'治疗全部携带宠物：{cost} {self.data.tables["Money"][currency]["name"]}' if currency else '医疗卡治疗免费。')
             def cure():
@@ -676,6 +677,8 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             self._gold_store_page(body, info)
         elif uiid == 68:
             self._lottery_page(body, info)
+        elif uiid == 64 and parameters.get('mailbox'):
+            self._mail_page(body,info)
         elif uiid == 64:
             info.set('原版公告页。单机版没有联网公告服务，'
                      '这里不伪造运营公告；关闭后可继续游戏。')
@@ -1174,7 +1177,7 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.79')
+        win.title('任务指引 · 原生 0.2.80')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()

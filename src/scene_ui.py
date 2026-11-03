@@ -89,7 +89,10 @@ class SceneUI:
         left, right, up = (self.value(key) for key in ('left', 'right', 'up'))
         shops = self.shop_exits()
         owned = tuple(int(key) for key in getattr(getattr(app, 'state', None), 'rides', ()))
-        signature = (left, right, up, self.hidden, app.WIDTH, app.HEIGHT, tuple(shops), owned)
+        maildata=app.state.activities.get('mailbox',{})
+        unread=sum(m['id'] not in maildata.get('read',[]) for m in maildata.get('messages',[])
+                   if m.get('to')=='all' or maildata.get('player_id') in m.get('to',[]))
+        signature = (unread,left, right, up, self.hidden, app.WIDTH, app.HEIGHT, tuple(shops), owned)
         if self.cached_key == signature and self.cached_layer is not None:
             frame.alpha_composite(self.cached_layer)
             return
@@ -148,6 +151,16 @@ class SceneUI:
                      and visible.get(key, True) is not False
                      and alphas.get(key, 255) > 0
                      and (key not in self.ride_buttons or self.groups['left']['target'] == 1)}
+        if right==0 and not self.hidden:
+            from PIL import ImageDraw
+            scale=app.WIDTH/800;d=ImageDraw.Draw(layer)
+            box=tuple(round(v*scale) for v in (565,394,637,472))
+            d.ellipse(box,fill='#236c72',outline='#f3e2ba',width=3)
+            d.rounded_rectangle(tuple(round(v*scale) for v in (577,408,625,439)),radius=4,fill='#f6dfab',outline='#9d662e',width=2)
+            d.line([(round(x*scale),round(y*scale)) for x,y in [(578,409),(601,427),(624,409)]],fill='#9d662e',width=2)
+            d.text((601*scale,454*scale),'邮箱',font=app.cocos_ui.font('',round(16*scale)),fill='#ffe65c',anchor='mm',stroke_width=1,stroke_fill='#734200')
+            if unread:d.ellipse(tuple(round(v*scale) for v in (620,395,635,410)),fill='#f43e47')
+            self.hits['mailbox_Button']=box
         self.cached_key, self.cached_layer = signature, layer
         frame.alpha_composite(layer)
 
@@ -165,7 +178,7 @@ class SceneUI:
         if key in toggles:
             self.toggle(toggles[key])
             return
-        callbacks = {'save_Button': app.save_ui, 'task_Button': app.tasks_ui,
+        callbacks = {'mailbox_Button': lambda: app.mailbox_ui(), 'save_Button': app.save_ui, 'task_Button': app.tasks_ui,
                      'mainUp_Button': app.guide_toggle,
                      'draw_Button': app.lottery_ui, 'store_Button': app.store_ui,
                      'rechargeReward_Button': app.recharge_ui,

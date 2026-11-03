@@ -631,9 +631,7 @@ class GameState:
         return pet
 
     def cure_cost(self):
-        if self.shop_purchases.get('Store:70201', 0):
-            return None, 0
-        return ('700006', 1) if self.count('700006') > 0 else ('700001', 100)
+        return None, 0  # PC edition: nurse care is permanently free.
 
     @atomic_mutation
     def cure_party(self):

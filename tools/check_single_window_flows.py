@@ -111,7 +111,7 @@ class SingleWindowChecks(unittest.TestCase):
         self.open(68)
         self.save_panel('single-window-lottery')
 
-    def test_treatment_updates_hp_mp_and_consumes_one_free_use(self):
+    def test_treatment_updates_hp_mp_without_consuming_free_uses(self):
         a = self.app
         pet = a.state.pets[0]
         pet.hp = pet.energy = 1
@@ -121,7 +121,7 @@ class SingleWindowChecks(unittest.TestCase):
         self.click('confirm_Button')
         stats = pet.stats(a.data.tables)
         self.assertEqual((pet.hp, pet.energy), tuple(stats[:2]))
-        self.assertEqual(a.state.count('700006'), 7)
+        self.assertEqual(a.state.count('700006'), 8)
         self.assertIn('已恢复', a.ui_info.get())
         self.click('confirm_Button')
         self.assertFalse(a.ui_open)

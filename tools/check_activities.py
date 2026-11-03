@@ -157,24 +157,13 @@ class EconomicChecks(unittest.TestCase):
             self.state.use_item('230014', pet)
         self.assertEqual(before, self.state.payload())
 
-    def test_nurse_free_uses_then_gold_then_medical_card(self):
-        pet = self.state.add_preset(1)
-        pet.hp = 0
-        self.state.inventory['700006'] = 1
-        self.assertEqual(('700006', 1), self.state.cure_party())
-        self.assertGreater(pet.hp, 0)
-        self.assertEqual(0, self.state.count('700006'))
-        self.state.inventory['700001'] = 99
-        pet.hp = 0
-        before = self.state.payload()
-        with self.assertRaises(ValueError):
-            self.state.cure_party()
-        self.assertEqual(before, self.state.payload())
-        self.state.inventory['700001'] = 100
-        self.assertEqual(('700001', 100), self.state.cure_party())
-        self.assertEqual(0, self.state.count('700001'))
-        self.state.shop_purchases['Store:70201'] = 1
-        self.assertEqual((None, 0), self.state.cure_party())
+    def test_nurse_always_free_with_or_without_cards(self):
+        state=self.state
+        for times in (0,1,8):
+            state.inventory['700006']=times
+            before=dict(state.inventory)
+            self.assertEqual((None,0),state.cure_party())
+            self.assertEqual(state.inventory,before)
 
     def test_skill_tutor_cost_replacement_and_scroll(self):
         pet = self.state.add_preset(1)
