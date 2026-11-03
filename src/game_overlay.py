@@ -54,6 +54,14 @@ class GameArtLabel(tk.Label):
     def __init__(self, parent, **options):
         app = parent.app
         scene = app.make_frame().convert('RGBA')
+        # The modal animation pauses map redraws. Publish the clean scene
+        # once first, so the previous dialogue/battle cannot remain around it.
+        app.frame = scene
+        app.tk_image = ImageTk.PhotoImage(scene)
+        if hasattr(app, 'canvas_image'):
+            app.canvas.itemconfigure(app.canvas_image, image=app.tk_image)
+        else:
+            app.canvas_image = app.canvas.create_image(0, 0, anchor='nw', image=app.tk_image)
         self.backdrop = scene.crop(((scene.width-800)//2, (scene.height-480)//2,
                                     (scene.width+800)//2, (scene.height+480)//2))
         super().__init__(parent, **options)

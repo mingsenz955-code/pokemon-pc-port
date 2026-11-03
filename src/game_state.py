@@ -48,6 +48,8 @@ class Pet:
     breakthrough: int = 0
     held_item: str = '0'
     quality: int = 1
+    trial_id: str = ''
+    trial_remaining: int = -1
 
     def update_quality(self, tables):
         total = 0.0
@@ -315,13 +317,37 @@ class GameState:
             self.bank.append(pet)
         else:
             raise ValueError('宠物背包和银行都已满。')
-        self.record_pet(pet.species)
+        if pet.trial_id:
+            self.record_seen_pet(pet.species)
+        else:
+            self.record_pet(pet.species)
+
+    @atomic_mutation
+    def receive_trial_pet(self, key):
+        key = str(key)
+        row = self.tables['TrialPet'].get(key)
+        if not row or int(row['trialCount']) <= 0:
+            raise ValueError('这只宠物没有免费试用次数。')
+        if any(p.trial_id for p in self.pets+self.bank):
+            raise ValueError('已经携带试用宠物，请先归还。')
+        if key in self.activities.get('trial_received', []):
+            raise ValueError('这只宠物的免费试用已经领取过。')
+        if len(self.pets) >= self.pet_capacity():
+            raise ValueError('携带宠物栏已满，请先到银行腾出位置。')
+        pet = self.preset_pet(key, 'TrialPet')
+        pet.trial_id, pet.trial_remaining = key, int(row['trialCount'])
+        self.receive_pet(pet)
+        self.active_pet = len(self.pets)-1
+        self.activities.setdefault('trial_received', []).append(key)
+        return pet
 
     def move_pet(self, uid, *, to_bank):
         source, destination = (self.pets, self.bank) if to_bank else (self.bank, self.pets)
         pet = next((p for p in source if p.uid == uid), None)
         if pet is None:
             raise ValueError('找不到这只宠物。')
+        if pet.trial_id:
+            raise ValueError('试用宠物请在宠物使者处归还，不能存入银行。')
         if len(destination) >= self.pet_capacity(to_bank):
             raise ValueError('目标宠物格已满。')
         if to_bank and len(source) <= 1:
@@ -574,6 +600,8 @@ class GameState:
     @atomic_mutation
     def evolve(self, uid):
         pet = next(p for p in self.pets+self.bank if p.uid == uid)
+        if pet.trial_id:
+            raise ValueError('试用宠物不能进化。')
         row = self.tables['Evolution'].get(pet.species)
         if not row or pet.level < int(row['level']):
             raise ValueError('未满足原版进化等级或该宠物不可进化')

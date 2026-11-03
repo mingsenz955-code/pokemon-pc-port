@@ -100,7 +100,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.62（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.63（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1050,7 +1050,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.62')
+        win.title('任务指引 · 原生 0.2.63')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1451,7 +1451,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                                 petid=int(battle.caught_pet.species if battle.caught_pet else battle.enemy_active.pet.species))
         for unit in battle.player:
             unit.pet.hp, unit.pet.energy = unit.hp, unit.energy
+            if unit.pet.trial_id and unit.pet.trial_remaining > 0 and (unit.participated or unit is battle.player_active):
+                unit.pet.trial_remaining -= 1
         self.state.active_pet = min(battle.player_index, max(0, len(self.state.pets)-1))
+        if self.state.pets and self.state.pets[self.state.active_pet].trial_remaining == 0:
+            self.state.active_pet = next((i for i, p in enumerate(self.state.pets) if p.hp > 0 and p.trial_remaining != 0), 0)
         self.runtime.battle_result = 'win' if result in ('win', 'caught') else (
             'escape' if result == 'escape' else 'lose')
         self.battle, self.battle_ui = None, None

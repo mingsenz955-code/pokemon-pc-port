@@ -305,11 +305,15 @@ class OriginalPages(PetPages):
             self._page_wheel(previous_wheel)
             (back or self.close_ui)()
         def paint():
-            page = Page(self, 'GetItemUI', timeline_frame=60)
+            page = Page(self, 'GetItemUI', timeline_frame=60, text={'title_Text': ''},
+                        sizes={'bg_Image': (336, 320)},
+                        positions={'item_ListView': (-134.4237, -65), 'confirm_Button': (0, -95)})
             if previous is not None:
                 art = page.layer
                 page.layer = previous.copy()
                 page.layer.alpha_composite(art)
+            ImageDraw.Draw(page.layer).text((400, 117), '恭喜您获得了：', font=self.cocos_ui.font('', 22),
+                                             fill='#693100', anchor='mm')
             area = page.rects['Layer/root_Panel/item_ListView']
             for index, (kid, count) in enumerate(items):
                 x, y = round(area[0]+index*132-offset[0]), round(area[1])
@@ -318,7 +322,7 @@ class OriginalPages(PetPages):
                 name, icon = self._item_data(kid)
                 page.add('GetItemUIItemUI', (x, y), prefix=f'reward_{index}/', clip=area,
                          text={'item_name_Text': name, 'itemCount_BitmapFontLabel': f'x{count}'},
-                         resources={'icon_Image': icon}, sizes={'item_name_Text': (128, 24)},
+                         resources={'icon_Image': icon},
                          native_resources=('icon_Image',))
             page.actions.update({'confirm_Button': done, 'close_Button': done})
             page.publish()
@@ -666,7 +670,7 @@ class OriginalPages(PetPages):
             page = Page(self, 'BagUI', text={'info_Text': '', **self._money_text()},
                         resources={**self._money_icons(), **{f'tag_{i}_Button':
                             'UI/tag_selected.png' if i == kind[0] else 'UI/tag_unselected.png' for i in range(1, 6)}},
-                        visible=visibility)
+                        visible=visibility, z_orders={f'tag_{i}_Button': 100 if i == kind[0] else 90 for i in range(1, 6)})
             from pet_pages import text_box
             # BagUI's root has an authored entrance timeline. Its Text node
             # bounds can be above the paper; use the actual paper interior.

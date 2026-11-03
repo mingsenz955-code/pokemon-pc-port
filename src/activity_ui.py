@@ -613,27 +613,7 @@ class ActivityUI:
         tk.Button(body, text='离开竞技场', command=leave).pack(pady=3)
 
     def _trial_body(self, body, info):
-        rows = list(self.data.tables['TrialPet'].values())
-        body.pack_forget()
-        if not rows:
-            info.set('原版 TrialPet 表为空。')
-            return
-        box = tk.Listbox(body, width=38, height=7)
-        box.pack(fill='x')
-        for row in rows:
-            pet = self.data.tables['Pet'].get(str(row['petId']), {})
-            box.insert('end', f'{pet.get("name", row["petId"])} Lv.{row["level"]} 次数{row["trialCount"]}')
-        box.selection_set(0)
-        def trial():
-            if not box.curselection():
-                return
-            row = rows[box.curselection()[0]]
-            pet = self.data.tables['Pet'][str(row['petId'])]['name']
-            info.set(f'试炼宠物：{pet} Lv.{row["level"]}；技能/天赋按 TrialPet 原表登记。')
-        self.ui_actions['trial_Button'] = trial
-        self.ui_actions['buy_Button'] = lambda: info.set('试炼宠物购买入口已读取；商店扣费尚未接入。')
-        self.ui_actions['close_Button'] = self.close_ui
-        tk.Button(body, text='查看试炼宠物', command=trial).pack(pady=4)
+        self._trial_pet_page(body, info)
 
 
     def _budokan_body(self, body, info, budokan_id=1):

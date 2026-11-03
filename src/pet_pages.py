@@ -26,6 +26,52 @@ def text_box(page, rect, value, font, offset=0):
 
 
 class PetPages:
+    def _trial_pet_page(self, body, info):
+        from original_pages import Page
+        body.pack_forget()
+        key = str(self.ui_parameters.get('par1', '600001'))
+        row = self.data.tables['TrialPet'].get(key)
+        if row is None:
+            self._page_tip('找不到这位宠物使者对应的宠物。', self.close_ui)
+            return
+        def paint():
+            current = next((p for p in self.state.pets if p.trial_id == key), None)
+            pet = current or self.state.preset_pet(key, 'TrialPet')
+            text, visible, resources = self._pet_base_fields(pet)
+            text['lv_BitmapFontLabel'] = str(pet.level)
+            can_trial = int(row['trialCount']) > 0 and key not in self.state.activities.get('trial_received', [])
+            text['tips_Text'] = (f'剩余试用 {current.trial_remaining} 场战斗。' if current else
+                                 f'可试用 {row["trialCount"]} 场战斗。' if can_trial else '这只宠物没有剩余免费试用次数。')
+            store = self.data.tables['Store'][row['storeId']]
+            text['costTip_Text'] = store.get('des2', '')
+            visible.update({'trial_Button': can_trial or bool(current), 'cost_BitmapFontLabel': False,
+                            'number_BitmapFontLabel': False, 'evolutionTimes_BitmapFontLabel': pet.species in self.data.tables['Evolution'],
+                            'trial_Image': not bool(current)})
+            page = Page(self, 'TrialPetUI', timeline_frame=60, text=text, visible=visible, resources=resources)
+            self._pet_base_art(page, pet)
+            if current:
+                rect = next(r for k, r in page.rects.items() if k.endswith('/trial_Button'))
+                ImageDraw.Draw(page.layer).text(((rect[0]+rect[2])/2, (rect[1]+rect[3])/2),
+                    '归还', font=self.cocos_ui.font('', 20), anchor='mm', fill='#693100')
+            page.actions.update({'trial_Button': take_or_return, 'buy_Button': buy, 'close_Button': self.close_ui})
+            page.publish()
+        def take_or_return():
+            current = next((p for p in self.state.pets if p.trial_id == key), None)
+            if current:
+                self.state.pets.remove(current)
+                self.state.active_pet = min(self.state.active_pet, max(0, len(self.state.pets)-1))
+                self.close_ui('yes')
+                return
+            try:
+                self.state.receive_trial_pet(key)
+            except ValueError as error:
+                self._page_tip(str(error), paint)
+                return
+            self.close_ui('yes')
+        def buy():
+            self._page_tip('此入口需要原版付费服务，当前未接入，未扣费。', paint)
+        paint()
+
     def _evolution_page(self, body, info):
         from original_pages import Page
         from game_state import numbers
@@ -96,6 +142,8 @@ class PetPages:
             visibility[f'star_Sprite_{i}'] = int(row['starLevel']) >= i
         text = {'name_Text': row['name'], 'number_BitmapFontLabel': str(int(pet.species)-100000),
                 'lv_BitmapFontLabel': str(pet.level), 'evolutionTimes_BitmapFontLabel': row['evolutionCount']}
+        if pet.trial_id:
+            text['name_Text'] += f'·试用{pet.trial_remaining}'
         kind = self.data.tables['PetKindEnum'][row['kind']]
         resources = {'kindIcon_Sprite': 'UI/'+kind['iconTexture'], 'kind_Sprite': 'UI/'+kind['texture'],
                      'landType_Sprite': 'UI/'+self.data.tables['PetLandType'][row['landType']]['texture']}
@@ -224,7 +272,7 @@ class PetPages:
                     continue
                 row, stats = self.data.tables['Pet'][member.species], member.stats(self.data.tables)
                 page.add('PetListItemUI', (x, y), prefix=f'pet_list_{i}/', clip=area,
-                         text={'name_Text': row['name'], 'lv_BitmapFontLabel': str(member.level),
+                         text={'name_Text': row['name']+(f'·试用{member.trial_remaining}' if member.trial_id else ''), 'lv_BitmapFontLabel': str(member.level),
                                'hpHave_BitmapFontLabel': str(member.hp), 'hpMax_BitmapFontLabel': str(stats[0]),
                                'enHave_BitmapFontLabel': str(member.energy), 'enMax_BitmapFontLabel': str(stats[1]),
                                'friendly_BitmapFontLabel': str(member.friendly)},
@@ -235,7 +283,7 @@ class PetPages:
                     self._pet_base_art(page, pet)
                 page.actions.update({'skill_Button': lambda: self.open_pet_property(pet.uid),
                                      'trainValue_Button': training,
-                                     'free_Button': lambda: self.open_free_pet(pet.uid),
+                                     'free_Button': lambda: self.open_ui(Request('openui', 'return-trial', 0, {'parameters': {'uiid': 13, 'par1': pet.trial_id}})) if pet.trial_id else self.open_free_pet(pet.uid),
                                      'evolution_Button': lambda: self.open_evolution(pet.uid),
                                      'joinBattle_Button': lambda: join(selected[0]),
                                      'useItem_Button': lambda: item(pet)})
@@ -249,6 +297,9 @@ class PetPages:
             train[0] = not train[0]
             paint()
         def join(value):
+            if self.state.pets[value].trial_remaining == 0:
+                self._page_tip('试用次数已用完，请到宠物使者处归还。', paint)
+                return
             self.state.active_pet = value
             paint()
         def item(pet):

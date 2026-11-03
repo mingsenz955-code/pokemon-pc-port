@@ -275,7 +275,7 @@ class BattleUI:
 
     # -- frame ---------------------------------------------------------------
     def render(self):
-        signature = (self.screen, self.page, self.ball_page, self.notice, self.info,
+        signature = (self.screen, self.page, self.ball_page, self.notice, self.info, self.result_page, getattr(self, 'result_index', 0),
                      int(self.anim_idle*30/25),
                      int(self.anim['age']*60/25) if self.anim else -1,
                      self.item_filter, repr(self.selected), self.battle.result,
@@ -685,6 +685,8 @@ class BattleUI:
             frame.alpha_composite(layer)
         # The original calculation layer advances on a screen tap.
         self.hits['result_continue'] = (0, 0, W, H)
+        if result == 'caught':
+            self.hits['result_continue'] = tuple(self.app.cocos_ui.buttons.get('confirm_Button', (W-150, H-85, W, H)))
 
     def _reward_name(self, item):
         row = (self.app.data.tables['Item'].get(str(item)) or
@@ -705,6 +707,8 @@ class BattleUI:
             return 'refresh'
         if self.battle.result:
             if self._inside(self.hits.get('result_continue'), x, y):
+                if self.battle.result == 'caught':
+                    return 'finish'  # Native captured-pet confirmation closes this result.
                 lines = self._result_lines()
                 if self.result_page == 'outcome' and lines:
                     self.result_page, self.result_index = 'calculation', 0
@@ -791,6 +795,10 @@ class BattleUI:
             if item:
                 if self.app.state.count(item) <= 0:
                     self.notice = '该道具数量不足。'
+                    self.screen = 'main'
+                    return 'refresh'
+                if str(item) in ('220004', '220005', '220006') and self.app.state.pet_free_slots() <= 0:
+                    self.notice = '宠物携带栏和银行都已满，请先腾出位置。'
                     self.screen = 'main'
                     return 'refresh'
                 events = b.choose_item(item)

@@ -103,6 +103,8 @@ class Achievements:
             species, kind, stars, quality, talents, level, unique = values
             pets = []
             for pet in self.state.pets+self.state.bank:
+                if pet.trial_id:
+                    continue
                 data = self.state.tables['Pet'][pet.species]
                 if species != -1 and pet.species != str(species): continue
                 if kind != -1 and int(data['kind']) != kind: continue
