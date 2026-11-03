@@ -1,6 +1,7 @@
 """Compose the original pet cards and bounded skill/talent descriptions."""
 from PIL import Image, ImageDraw
 from event_runtime import Request
+from economy import EVOLUTION_GOLD_COST
 
 
 def text_box(page, rect, value, font, offset=0):
@@ -121,9 +122,9 @@ class PetPages:
             page.actions.update({'evolution_Button': evolve, 'close_Button': back})
             rect = (490, 430, 700, 467)
             ImageDraw.Draw(page.layer).rounded_rectangle(rect, radius=12, fill='#06b7df', outline='#fff2bd', width=2)
-            ImageDraw.Draw(page.layer).text((595, 448), '金币进化 50000', font=self.cocos_ui.font('', 18), anchor='mm', fill='white')
+            ImageDraw.Draw(page.layer).text((595, 448), f'金币进化 {EVOLUTION_GOLD_COST}', font=self.cocos_ui.font('', 18), anchor='mm', fill='white')
             page.hit('gold_evolution', rect, lambda: self._choice_page(
-                '花费 50000 金币进化？仍需达到等级，不消耗进化材料。', lambda: evolve(True), paint))
+                f'花费 {EVOLUTION_GOLD_COST} 金币进化？仍需达到等级，不消耗进化材料。', lambda: evolve(True), paint))
             page.publish()
         def evolve(use_gold=False):
             before = pet.stats(self.data.tables)

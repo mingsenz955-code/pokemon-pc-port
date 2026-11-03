@@ -26,7 +26,7 @@ class EditionChecks(unittest.TestCase):
             actual = a.data.tables['Store'][key]
             if raw['costMoneyType'] == '700003':
                 self.assertEqual(actual['costMoneyType'], '700001')
-                self.assertEqual(int(actual['costCount']), int(raw['costCount'])*100)
+                self.assertEqual(int(actual['costCount']), int(raw['costCount'])*10)
                 self.assertNotIn('元', actual['des2'])
             else:
                 self.assertEqual(actual['costCount'], raw['costCount'])
@@ -34,32 +34,32 @@ class EditionChecks(unittest.TestCase):
 
     def test_alias_costs_aggregate_without_partial_debit_and_save_migration(self):
         state = self.app.state
-        state.inventory['700001'] = 249
+        state.inventory['700001'] = 69
         with self.assertRaises(ValueError):
             state.consume(['700001', '700003'], [50, 2])
-        self.assertEqual(state.count('700001'), 249)
-        state.inventory['700001'] = 250
+        self.assertEqual(state.count('700001'), 69)
+        state.inventory['700001'] = 70
         state.consume(['700001', '700003'], [50, 2])
         self.assertEqual(state.count('700001'), 0)
         state.inventory['700003'] = 600
         state.save(self.app.save_path)
         loaded = GameState.load(state.tables, self.app.save_path)
-        self.assertEqual(loaded.count('700001'), 60000)
+        self.assertEqual(loaded.count('700001'), 6000)
         self.assertNotIn('700003', loaded.inventory)
         loaded.save(self.app.save_path)
-        self.assertEqual(GameState.load(state.tables, self.app.save_path).count('700001'), 60000)
+        self.assertEqual(GameState.load(state.tables, self.app.save_path).count('700001'), 6000)
 
     def test_gold_bundle_confirmation_rewards_limit_and_failure(self):
         a = self.app
         a.state.inventory['700001'] = 1000000
         self.open(63)
         self.assertEqual(a.original_page.specs[0][0], 'ShopUI')
-        # First card is original Store 101: 10 yuan -> 100000 gold.
+        # First card is original Store 101: 10 yuan -> 10000 gold.
         before = a.state.count('230011')
         self.click('gold_store_0/Layer/root_Panel/buy_Button')
         self.assertEqual(a.original_page.specs[0][0], 'SecondConfirmUI')
         self.click('confirm_Button')
-        self.assertEqual(a.state.count('700001'), 900000)
+        self.assertEqual(a.state.count('700001'), 990000)
         self.assertEqual(a.state.count('230011'), before+5)
         self.assertEqual(a.original_page.specs[0][0], 'GetItemUI')
         a.state.buy_store('201')
@@ -76,7 +76,7 @@ class EditionChecks(unittest.TestCase):
 
     def test_trial_can_be_purchased_permanently_for_gold(self):
         a = self.app
-        key = '600001'
+        key = next(iter(a.data.tables['TrialPet']))
         row = a.data.tables['TrialPet'][key]
         price = int(a.data.tables['Store'][row['storeId']]['costCount'])
         trial = a.state.receive_trial_pet(key)
@@ -95,10 +95,10 @@ class EditionChecks(unittest.TestCase):
         pet = a.state.pets[0]
         row = a.data.tables['Evolution'][pet.species]
         pet.level = int(row['level'])-1
-        a.state.inventory['700001'] = 50000
+        a.state.inventory['700001'] = 5000
         with self.assertRaises(ValueError):
             a.state.evolve(pet.uid, use_gold=True)
-        self.assertEqual(a.state.count('700001'), 50000)
+        self.assertEqual(a.state.count('700001'), 5000)
         pet.level += 1
         a.state.evolve(pet.uid, use_gold=True)
         self.assertEqual(pet.species, row['petId'])

@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from game_formulas import add, attribute, level_exp, train_attribute, train_hp, train_mp
+from economy import GOLD_PER_FEN, EVOLUTION_GOLD_COST
 
 
 def numbers(value, cast=int):
@@ -252,13 +253,13 @@ class GameState:
 
     def count(self, item_id):
         if str(item_id) == '700003':
-            return self.inventory.get('700001', 0)//100
+            return self.inventory.get('700001', 0)//GOLD_PER_FEN
         return self.inventory.get(str(item_id), 0)
 
     def grant(self, item_id, amount):
         item_id, amount = str(item_id), int(amount)
         if item_id == '700003':
-            item_id, amount = '700001', amount*100
+            item_id, amount = '700001', amount*GOLD_PER_FEN
         if item_id == '0' or amount == 0:
             return
         if amount < 0:
@@ -474,7 +475,7 @@ class GameState:
         costs = {}
         for key, n in zip(ids, amounts):
             if str(key) == '700003':
-                key, n = '700001', int(n)*100
+                key, n = '700001', int(n)*GOLD_PER_FEN
             if str(key) != '0':
                 if int(n) < 0:
                     raise ValueError('Negative item cost')
@@ -655,7 +656,7 @@ class GameState:
         if not row or pet.level < int(row['level']):
             raise ValueError('未满足原版进化等级或该宠物不可进化')
         if use_gold:
-            self.consume(['700001'], [50000])
+            self.consume(['700001'], [EVOLUTION_GOLD_COST])
         else:
             self.consume(numbers(row['itemIds']), numbers(row['itemCounts']))
         pet.species = str(row['petId'])
@@ -811,7 +812,7 @@ class GameState:
             setattr(result, key, value)
         old_cash = int(result.inventory.pop('700003', 0))
         if old_cash:
-            result.inventory['700001'] = result.inventory.get('700001', 0)+old_cash*100
+            result.inventory['700001'] = result.inventory.get('700001', 0)+old_cash*GOLD_PER_FEN
         # 0.2.3 and older saves do not carry the arena rank/title fields.
         for field in ('arena_ranks', 'arena_titles', 'arena_wins', 'arena_streak'):
             if not hasattr(result, field):

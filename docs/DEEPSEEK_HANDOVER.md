@@ -1,6 +1,6 @@
 ## 0.2.64 接续
 
-先读 VERIFICATION_0.2.64.md。用户明确取消真实充值：1 元＝10000 金币，Store 原金额单位分；禁止金币买金币。背景音乐自动随场景播放，不做音乐商品/音乐欣赏页。新增 game_viewport/economy/game_audio 和十项检查。日常奖励不能继承任务边框或确认框 underlay。
+先读 VERIFICATION_0.2.64.md。用户明确取消真实充值：1 元＝1000 金币，Store 原金额单位分；禁止金币买金币。背景音乐自动随场景播放，不做音乐商品/音乐欣赏页。新增 game_viewport/economy/game_audio 和十项检查。日常奖励不能继承任务边框或确认框 underlay。
 
 ## 0.2.63 接续
 
