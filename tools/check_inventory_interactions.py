@@ -208,6 +208,8 @@ class InventoryChecks(unittest.TestCase):
         self.click(next(k for k in a.ui_buttons if k.endswith('/confirm_Button')))
         self.assertEqual(1, a.state.count(key))
         self.assertIn(str(row['skillId']), a.state.pets[0].skills+a.state.pets[0].talents)
+        self.assertEqual('TipConfirmUI', a.original_page.specs[0][0])
+        self.click(next(k for k in a.ui_buttons if k.endswith('/confirm_Button')))
         self.assertEqual('BagUI', a.original_page.specs[0][0])
 
     def test_perfumes_replace_original_state_instead_of_stacking(self):
