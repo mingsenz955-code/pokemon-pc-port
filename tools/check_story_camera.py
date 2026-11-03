@@ -37,6 +37,8 @@ def host(parameters):
     app.face, app.player_visible, app.main_ui_visible = 'standdown', True, True
     app.teach_nodes, app.keys = [], set()
     app.encounter_distance, app.encounter_threshold = 0, 0
+    app.ui_info = None
+    app.audio = SimpleNamespace(effect=lambda *args: None)
     app.guide = SimpleNamespace(rebind=lambda state: None)
     return app
 
