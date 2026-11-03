@@ -42,6 +42,19 @@ class MailChecks(unittest.TestCase):
   a=self.app;s=a.state;pet=s.pets[0];pet.hp=0;pet.energy=0
   before=dict(s.inventory);self.assertEqual(s.cure_cost(),(None,0));s.cure_party()
   self.assertEqual(s.inventory,before);self.assertGreater(pet.hp,0);self.assertGreater(pet.energy,0)
+ def test_gold_80000_bundle_once_across_aliases_and_legacy_saves(self):
+  a=self.app;s=a.state;s.inventory['700001']=20000
+  s.buy_store('202');self.assertEqual(s.count('700001'),80000)
+  before=s.payload()
+  for key in ('202','2202'):
+   with self.assertRaises(ValueError):s.buy_store(key)
+   self.assertEqual(s.payload(),before)
+  a.save();loaded=GameState.load(a.data.tables,a.save_path)
+  with self.assertRaises(ValueError):loaded.buy_store('202')
+  loaded.shop_purchases={'Store:2202':1}
+  self.assertTrue(loaded.store_bought_out('202'))
+  with self.assertRaises(ValueError):loaded.buy_store('202')
+
  def test_hud_mail_is_left_of_task_and_clickable(self):
   from PIL import Image
   a=self.app;a.scene_ui.render(Image.new('RGBA',(960,576)))

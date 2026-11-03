@@ -244,14 +244,15 @@ class OriginalPages(PetPages, HatchPages, ServicePages, MergePages, TaskHandover
                     continue
                 money = self.data.tables['Money'].get(row['costMoneyType'], {})
                 free = int(row['costCount']) == 0
+                sold=self.state.store_bought_out(key)
                 page.add('ShopGoodsUI', (x, y), prefix=f'gold_store_{i}/', clip=area,
                     sizes={'cost_BitmapFontLabel': (64, 22)},
-                    text={'name_Text': row['name'], 'cost_BitmapFontLabel': row['costCount'],
+                    text={'name_Text': row['name']+('（已购）' if sold else ''), 'cost_BitmapFontLabel': row['costCount'],
                           'count_BitmapFontLabel': f"x{row['gotCount']}" if row['gotItemKid'] != '0' else ''},
                     resources={'icon_Image': 'ItemIcon/'+row['texture'],
                                'moneyIcon_Image': 'UI/'+money.get('littleIconTexture', 'money_little_icon_gold.png')},
                     native_resources=('icon_Image',),
-                    visible={'selected_Image': i == selected[0], 'free_Image': free,
+                    visible={'buy_Button': not sold,'selected_Image': i == selected[0], 'free_Image': free,
                              'yuan_Image': False, 'addSend_Image': False, 'discount_Panel': False,
                              'timesLimitedSale_Image': False},
                     actions={'buy_Button': (lambda k=key: free_buy(k)) if free
@@ -272,11 +273,16 @@ class OriginalPages(PetPages, HatchPages, ServicePages, MergePages, TaskHandover
             selected[0] = index
             paint()
         def choose_buy(key):
+            if self.state.store_bought_out(key):
+                self._page_tip('这份礼包每个存档限购一次，已经购买过了。',paint)
+                return
             row = self.data.tables['Store'][key]
             money = self.data.tables['Money'][row['costMoneyType']]['name']
             def buy():
                 try:
-                    rewards = self.state.buy_store(key)
+                    with self.state.transaction():
+                        rewards = self.state.buy_store(key)
+                        if not self.save():raise ValueError('保存失败，购买未完成。')
                 except (ValueError, KeyError) as error:
                     self._page_tip(str(error), paint)
                     return

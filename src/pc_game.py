@@ -36,9 +36,10 @@ from scene_ui import SceneUI
 from npc_motion import NpcMotion
 from exit_markers import ExitMarkers
 from mail_pages import MailPages
+from skill_pages import SkillPages
 
 
-class NativeGame(MailPages, OriginalPages, ActivityUI, ExitMarkers, Preview):
+class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, Preview):
     TARGET_FPS = 60
     WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
     DYNAMIC_SCENERY = True
@@ -2588,72 +2589,14 @@ class NativeGame(MailPages, OriginalPages, ActivityUI, ExitMarkers, Preview):
         self.ui_actions['cancel_Button'] = no
         self.ui_actions['close_Button'] = no
 
-    def open_skill_replace(self, uid, key, scroll=None):
+    def open_skill_replace(self, uid, key, scroll=None, back=None):
         passive = str(key) in self.data.tables['Talent']
         self.open_ui(Request('openui', 'skill-replace', 1, {
             'parameters': {'uiid': 54, 'uid': uid, 'key': str(key),
-                           'passive': passive, 'scroll': scroll}}))
+                           'passive': passive, 'scroll': scroll, 'back': back}}))
 
-    def _skill_replace_body(self, body, info):
-        parameters = self.ui_parameters
-        uid = parameters.get('uid')
-        if uid is None and self.state.pets:
-            uid = self.state.pets[0].uid
-        uid = str(uid)
-        key = parameters.get('key')
-        if key is None:
-            key = next(iter(self.data.tables['Skill']))
-        key = str(key)
-        passive = bool(parameters.get('passive'))
-        scroll = parameters.get('scroll')
-        pet = next((candidate for candidate in self.state.pets
-                    if str(candidate.uid) == uid), None)
-        if pet is None:
-            info.set('这只宠物不在携带栏。')
-            return
-        table = 'Talent' if passive else 'Skill'
-        keys = ([str(value) for value in pet.talents if 400200 <= int(value) < 400300]
-                if passive else [str(value) for value in pet.skills])
-        new_row = self.data.tables[table].get(key, {})
-        if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('SkillReplaceUI', (800, 480), {
-                'petName_Text': self.data.tables['Pet'][str(pet.species)]['name'],
-                'info_Text': f'新技能：{new_row.get("name", key)}',
-                'mySkillInfo_Text': '选择要替换掉的技能；确认后消耗卷轴/货币。'})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        frame = tk.Frame(self.ui_window, bg='#202b30')
-        rect = self.ui_hits.get('skill_ListView') or self.ui_rects.get('skill_ListView')
-        if rect:
-            frame.place(x=rect[0], y=rect[1], width=max(180, rect[2]-rect[0]),
-                        height=max(120, rect[3]-rect[1]))
-            frame.lift()
-        else:
-            frame.pack(fill='both', expand=True)
-        box = tk.Listbox(frame, font=('Microsoft YaHei UI', 10), exportselection=False)
-        box.pack(fill='both', expand=True)
-        for index, current in enumerate(keys):
-            row = self.data.tables[table].get(str(current), {})
-            box.insert('end', f'{index+1}. {row.get("name", current)}')
-        if not keys:
-            info.set('没有可替换的技能槽。')
-        else:
-            box.selection_set(0)
-            info.set(f'新技能：{new_row.get("name", key)} · 请选择替换槽')
-        def confirm():
-            if not box.curselection():
-                info.set('请选择要替换的技能。')
-                return
-            try:
-                self.state.learn_skill(pet.uid, key, scroll=scroll,
-                                       replace=box.curselection()[0])
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            self.close_ui()
-        self.ui_actions['confirm_Button'] = confirm
-        self.ui_actions['close_Button'] = self.close_ui
+    def _skill_replace_body(self,body,info):
+        self._native_skill_replace(body,info)
 
     def _open_chest_body(self, body, info):
         from original_pages import Page
@@ -2743,6 +2686,12 @@ class NativeGame(MailPages, OriginalPages, ActivityUI, ExitMarkers, Preview):
 
 
     def open_skill_learn_confirm(self, uid, key, scroll=None, replace=None, back=None):
+        pet=next((p for p in self.state.pets if p.uid==str(uid)),None)
+        passive=str(key) in self.data.tables['Talent']
+        known=([k for k in pet.talents if 400200<=int(k)<400300] if passive else pet.skills) if pet else []
+        if pet and str(key) not in [str(k) for k in known] and len(known)>=(2 if passive else 4) and replace is None:
+            self.open_skill_replace(uid,key,scroll=scroll,back=back)
+            return
         self.open_ui(Request('openui', 'skill-learn-confirm', 1, {
             'parameters': {'uiid': 60, 'uid': uid, 'key': str(key),
                            'scroll': scroll, 'replace': replace, 'back': back}}))
@@ -2780,11 +2729,13 @@ class NativeGame(MailPages, OriginalPages, ActivityUI, ExitMarkers, Preview):
             page = Page(self, 'SkillLearnConfirmUI', text={
                 'petName_Text': name, 'lv_BitmapFontLabel': str(pet.level),
                 'skillName_Text': str(row['name']),
-                'skillInfoTitle_Text': '技能学习确认',
-                'info_Text': text,
+                'skillInfoTitle_Text': '技能介绍：',
+                'info_Text': row.get('des',text),
                 'cost_BitmapFontLabel': str(row.get('moneyCount', 1) if scroll is None else 1),
-                'energy_Text': str(row.get('energy', '')),
-                'energy_BitmapFontLabel': str(row.get('energy', ''))})
+                'energy_Text': '能量',
+                'energy_BitmapFontLabel': str(row.get('energyCost', 0))},
+                resources={'cost_Sprite':self._item_data(scroll or row.get('moneyId','700001'))[1]},
+                visible={'energy_Text':table=='Skill','energy_BitmapFontLabel':table=='Skill'})
             page.publish()
         info.set(text)
         def back():
@@ -2795,14 +2746,19 @@ class NativeGame(MailPages, OriginalPages, ActivityUI, ExitMarkers, Preview):
                 self.close_ui()
         def confirm():
             try:
-                self.state.learn_skill(pet.uid, key, scroll=scroll, replace=replace)
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
+                with self.state.transaction():
+                    self.state.learn_skill(pet.uid,key,scroll=scroll,replace=replace)
+                    if not self.save():raise ValueError('保存失败，技能学习未完成。')
+            except (ValueError,KeyError) as error:
+                self._page_tip(str(error),page.publish)
                 return
             back()
+            if self.ui_open:self._page_tip('技能学习成功。',self.original_page.publish)
+            else:self.scene_ui.show_tip('技能学习成功。')
         self.ui_actions['confirm_Button'] = confirm
         self.ui_actions['close_Button'] = back
         self.ui_window.bind('<Escape>', lambda _event: back())
+        self.ui_window.protocol('WM_DELETE_WINDOW',back)
 
     def _about_body(self, body, info):
         text = self.ui_parameters.get('text') or (

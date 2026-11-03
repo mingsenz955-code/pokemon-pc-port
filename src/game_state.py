@@ -373,6 +373,15 @@ class GameState:
         self.activities.setdefault('trial_received', []).append(key)
         return pet
 
+    def store_bought_out(self,key):
+        from economy import store_limit_group
+        row=self.tables['Store'][str(key)];group=store_limit_group(row)
+        if group:
+            return bool(self.shop_purchases.get('StoreLimit:'+group) or any(
+                self.shop_purchases.get('Store:'+str(k),0)>0 and store_limit_group(r)==group
+                for k,r in self.tables['Store'].items()))
+        return row['repeat']=='0' and bool(self.shop_purchases.get('Store:'+str(key),0))
+
     @atomic_mutation
     def buy_store(self, key):
         row = self.tables['Store'][str(key)]
@@ -381,7 +390,7 @@ class GameState:
         if row['costMoneyType'] == '700001' and row['gotItemKid'] == '700001':
             raise ValueError('金币充值商品已移除，不能用金币购买金币。')
         purchase = 'Store:'+str(key)
-        if row['repeat'] == '0' and self.shop_purchases.get(purchase, 0):
+        if self.store_bought_out(key):
             raise ValueError('这件限购商品已经购买过了。')
         rewards = (json.loads(row['items']) if row['items'] != '[]' else
                    [[row['gotItemKid'], int(row['gotCount'])]])
@@ -393,6 +402,9 @@ class GameState:
         for key_id, count in rewards:
             self.grant(key_id, count)
         self.shop_purchases[purchase] = self.shop_purchases.get(purchase, 0)+1
+        from economy import store_limit_group
+        group=store_limit_group(row)
+        if group:self.shop_purchases['StoreLimit:'+group]=1
         spent = self.activities.setdefault('shop_spent', {})
         money = row['costMoneyType']
         spent[money] = int(spent.get(money, 0))+int(row['costCount'])
