@@ -45,7 +45,8 @@ class MergePages:
                      materials[i], f'merge_mat_{i}/', lambda index=i: choose_material(index))
             page.actions.update({'add_Button': choose_base, 'autoAdd_Button': auto_add,
                                  'merge_Button': merge, 'close_Button': self.close_ui})
-            self._add_page_close(page)
+            if not any(k.endswith("/close_Button") for k in page.hits):
+                self._add_page_close(page)
             page.publish()
             info.set('选择银行中的基础宠物与同品质材料。' if not row else
                      f'需要{row["petCount"]}只同品质、Lv.{row["petLevel"]}以上材料宠物，消耗{row["moneyCount"]}徽章。')

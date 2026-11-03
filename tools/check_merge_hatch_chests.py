@@ -47,6 +47,53 @@ class MergeHatchChestChecks(unittest.TestCase):
         self.assertEqual(a.original_page.specs[0][0],'TipConfirmUI')
         self.assertEqual(a.state.payload(),before)
 
+    def test_roulette_real_cards_and_prizes_no_template_or_duplicate_close(self):
+        a=self.app;a.state.inventory['220009']=7
+        self.open(29)
+        page=a.original_page
+        cards=[x for x in page.specs if x[0]=='RouletteItemUI']
+        self.assertEqual(len(cards),12)
+        self.assertTrue(all(x[5] is None for x in cards))
+        self.assertTrue(all(x[2]['resources']['icon_Image']!='UI/heart_red.png' for x in cards))
+        self.assertEqual(page.specs[0][2]['text']['have_ticket_BitmapFontLabel'],'x7')
+        self.assertEqual(len([k for k in page.hits if k.endswith('/close_Button') or k=='close_Button']),1)
+        self.assertTrue(any(x[0]=='RouletteRewardListItemUI' for x in page.specs))
+        a.ui_base_layer.save(fixtures.fixtures.OUT/'roulette-real-rewards.png')
+        before=a.state.count('700002');self.click('refresh_Button')
+        self.assertEqual(a.state.count('700002'),before-1)
+        self.assertEqual(a.state.count('220009'),7)
+
+    def test_roulette_busy_guard_and_visible_insufficient_ticket(self):
+        a=self.app;a.state.inventory['220009']=0;self.open(29)
+        before=a.state.payload();self.click('start_Button')
+        self.assertEqual(a.original_page.specs[0][0],'TipConfirmUI')
+        self.assertEqual(a.state.payload(),before)
+        self.click('confirm_Button')
+        a.state.inventory['220009']=2
+        self.click('start_Button');self.click('start_Button');self.click('refresh_Button')
+        self.assertEqual(a.state.count('220009'),1)
+        self.assertEqual(a.state.activities['roulette_count'],1)
+        loaded=GameState.load(a.data.tables,a.save_path)
+        self.assertEqual(loaded.activities['roulette_count'],1)
+        self.assertEqual(loaded.count('220009'),1)
+        # Closing during the sweep cannot trigger another grant on reopening.
+        self.click('close_Button');self.open(29)
+        self.assertEqual(a.state.activities['roulette_count'],1)
+
+    def test_roulette_animation_finishes_at_awarded_slot_and_returns(self):
+        import time
+        a=self.app;a.state.inventory['220009']=2;self.open(29)
+        self.click('start_Button')
+        deadline=time.monotonic()+9
+        while time.monotonic()<deadline and a.original_page.specs[0][0]!='GetItemUI':
+            self.root.update();time.sleep(.01)
+        self.assertEqual(a.original_page.specs[0][0],'GetItemUI')
+        self.assertEqual(a.state.activities['roulette_count'],1)
+        self.click('confirm_Button')
+        self.assertEqual(a.original_page.specs[0][0],'RouletteUI')
+        self.assertEqual(a.original_page.specs[0][2]['text']['have_ticket_BitmapFontLabel'],'x1')
+        self.assertEqual(a.state.activities['roulette_count'],1)
+
     def test_material_hatching_requires_experience_and_materials(self):
         s=self.app.state;act=Activities(s);s.grant('250006',1);act.put_egg(0,'250006')
         row=s.tables['HatchItem']['250006']
