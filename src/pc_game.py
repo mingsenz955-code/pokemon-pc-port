@@ -35,6 +35,7 @@ from npc_motion import NpcMotion
 
 
 class NativeGame(OriginalPages, ActivityUI, Preview):
+    TARGET_FPS = 60
     WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
     DYNAMIC_SCENERY = True
     def __init__(self, root, data):
@@ -97,7 +98,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.canvas.bind('<ButtonRelease-1>', lambda e: self.task_page_event('release', e))
         self.canvas.bind('<B1-Motion>', lambda e: self.task_page_event('motion', e))
         self.canvas.bind('<MouseWheel>', self.on_canvas_wheel)
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.59（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.60（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1063,7 +1064,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = tk.Toplevel(self.root)
-        win.title('任务指引 · 原生 0.2.59')
+        win.title('任务指引 · 原生 0.2.60')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1278,7 +1279,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.display_request and self.display_request.kind == 'button':
             # Original tutorial buttons wait for the highlighted node itself;
             # a click on empty ground must not dismiss both hide/restore tips.
-            if self.main_ui_visible and not self.ui_open and self.scene_ui.click(event.x, event.y):
+            key = self.display_request.data.get('nodekey', '')
+            rect = self.scene_ui.hits.get(key)
+            if self.main_ui_visible and not self.ui_open and rect and rect[0] <= event.x <= rect[2] and rect[1] <= event.y <= rect[3]:
+                self.scene_ui.action(key)
                 self.advance_button_tip()
             return
         if not self.runtime.running and not self.ui_open and self.main_ui_visible:
@@ -1548,11 +1552,19 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 if request.kind in ['button', 'tapscreen']:
                     text = request.data.get('text') or '\n'.join(request.data.get('texts', []))
                     if self.battle:
-                        if text:
-                            self.battle.messages.append(text.strip())
-                            self.battle_tips.append(text.strip())
                         self.runtime.resume()
                         continue
+                    if request.kind == 'button':
+                        key = request.data.get('nodekey', '')
+                        # mainUp now performs task navigation, not the old shop
+                        # list; never show the obsolete shop tutorial there.
+                        self.scene_ui.render(Image.new('RGBA', (self.WIDTH, self.HEIGHT)))
+                        if key == 'mainUp_Button' or not self.main_ui_visible or getattr(self, 'screen_black', False) or key not in self.scene_ui.hits:
+                            self.runtime.resume()
+                            continue
+                        self.display_request = request
+                        self.dialogue = None
+                        return
                     self.display_request = request
                     self.dialogue = text or '点击继续'
                     return
@@ -1708,6 +1720,27 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.status.set(self.runtime_error or ('方向键/WASD移动 · 空格/E对话 · F5保存 · F9读取 · G指引'
                                                ' | 原剧情状态机、战斗核心与原版战斗UI已接入' + guide_note))
 
+    def _draw_button_tutorial(self, frame):
+        request = self.display_request
+        if not request or request.kind != 'button':
+            return
+        key = request.data.get('nodekey', '')
+        rect = self.scene_ui.hits.get(key)
+        if not rect:
+            return
+        text = request.data.get('text', '')
+        font_size = 30
+        width = min(700, math.ceil(self.cocos_ui.font('', font_size).getlength(text))+4)
+        height = max(42, math.ceil(self.cocos_ui.font('', font_size).getlength(text)/width)*33)
+        layer = self.cocos_ui.render('TipsUiNode', (self.WIDTH, self.HEIGHT),
+                    text={'tip_Text': text}, sizes={'bg_Image': (width+32, height+20), 'tip_Text': (width, height)},
+                    positions={'Node': (400, 390), 'tip_Text': ((width+32)/2, (height+20)/2)})
+        frame.alpha_composite(layer)
+        marker = self.data.armature('dianji', 'Animation1', int(self.scene_animation_time*60))
+        if marker is not None:
+            origin = marker.info.get('origin', (marker.width/2, marker.height/2))
+            frame.alpha_composite(marker, (round((rect[0]+rect[2])/2-origin[0]), round((rect[1]+rect[3])/2-origin[1])))
+
     def make_frame(self):
         if self.battle and self.battle_ui:
             return self.battle_ui.render()
@@ -1743,6 +1776,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             frame.alpha_composite(overlay)
         else:
             self.draw_guide(frame)
+            self._draw_button_tutorial(frame)
         if time.monotonic() < getattr(self, 'flash_until', 0):
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'), .7)
         if getattr(self, 'task_page', None):
@@ -1952,7 +1986,13 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.task_page = None
         # Loading must not acknowledge an old event through close_ui().
         if self.ui_window and self.ui_window.winfo_exists():
+            job = getattr(self, 'ui_effect_job', None)
+            if job:
+                self.ui_window.after_cancel(job)
             self.ui_window.destroy()
+        self.ui_effect_job = None
+        self.original_page = None
+        self.page_wheel = None
         self.ui_window, self.ui_open = None, False
 
     def treasure_ui(self):

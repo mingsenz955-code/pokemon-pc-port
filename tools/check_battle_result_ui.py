@@ -1,4 +1,4 @@
-"""Battle victory uses the original WorldMonsterBattleResultUI layer."""
+"""Normal victory uses outcome/calculation layers and advances on screen taps."""
 import sys
 import tkinter as tk
 from pathlib import Path
@@ -26,10 +26,13 @@ try:
     frame = ui.render()
     assert frame.size == (960, 576)
     assert 'result_continue' in ui.hits
-    confirm = app.cocos_ui.rects['confirm_Button']
-    assert ui.hits['result_continue'] == tuple(round(v) for v in confirm)
-    # The original result plate replaces the old dark host-made panel.
-    assert frame.getpixel((512, 150))[3] > 0
+    assert ui.hits['result_continue'] == (0, 0, 960, 576)
+    for _ in range(20):
+        action = ui.click(480, 288)
+        if action == 'finish':
+            break
+        ui.render()
+    assert action == 'finish'
     print('Battle result UI checks passed')
 finally:
     root.destroy()

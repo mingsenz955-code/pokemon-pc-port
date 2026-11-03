@@ -514,9 +514,16 @@ class Battle:
             item = self._enemy_heal_item()
             if item and self.rng.randrange(100) < self._enemy_heal_rate():
                 return {'type': 'item', 'id': item}
-        options = [entry for entry in self.available_skills(unit) if entry['usable']]
-        if options and self.rng.random() < .85:
-            entry = self.rng.choice(options)
+        # PetController::newAi 0x2d4b34 cycles getSkillList with an index,
+        # then falls back to 300056 if that slot cannot run. Randomly picking
+        # an entry made low-level opponents repeatedly choose 发呆 first.
+        options = self.available_skills(unit)
+        if options:
+            index = getattr(unit, 'ai_skill_index', 0) % len(options)
+            unit.ai_skill_index = index+1
+            entry = options[index]
+            if not entry['usable'] or entry['id'] == '300056':
+                return {'type': 'attack'}
             return {'type': 'skill', 'id': entry['id'], 'row': entry['row']}
         return {'type': 'attack'}
 

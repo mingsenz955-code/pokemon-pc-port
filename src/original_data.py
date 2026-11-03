@@ -122,13 +122,14 @@ class OriginalData:
                 image.info['origin'] = tuple(v*scale for v in image.info['origin'])
         return image
 
-    def pet_frame(self, species, animation='stand', frame=0, loop=True):
+    @lru_cache(maxsize=128)
+    def pet_frame(self, species, animation='stand', frame=0, loop=True, fps=12, limit=550):
         row = self.tables['Pet'][str(species)]
         path = self.assets/'Sprite/Spine'/(str(row['filePath'])+'.json')
         if not path.exists():
             return None
         from spine_renderer import render_pose
-        image = render_pose(str(path), animation, int(frame), loop).copy()
+        image = render_pose(str(path), animation, int(frame), loop, limit=limit, fps=fps).copy()
         scale = float(row.get('scale', 1) or 1)
         if scale != 1:
             bone_points = image.info.get('bone_points', {})
@@ -138,6 +139,13 @@ class OriginalData:
             image.info['origin'] = tuple(v*scale for v in origin)
             image.info['bone_points'] = {key: tuple(v*scale for v in point) for key, point in bone_points.items()}
         return image
+
+    @lru_cache(maxsize=128)
+    def pet_clip_duration(self, species, animation):
+        from spine_renderer import skeleton, animation_duration
+        row = self.tables['Pet'][str(species)]
+        path = self.assets/'Sprite/Spine'/(str(row['filePath'])+'.json')
+        return animation_duration(skeleton(str(path)).get('animations', {}).get(animation, {}))
 
     @lru_cache(maxsize=64)
     def armature_source(self, name):

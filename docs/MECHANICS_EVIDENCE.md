@@ -1,3 +1,12 @@
+## 0.2.60：截图复现与刷新链
+
+- ChooseFirstPetUI 的宿主悬停重绘原先走无动态参数的静态模板；已改 Page.feedback，只重画命中的按钮区域，保留立绘/属性。伙伴来自 InitPet 预设，预览不提前发放或消耗。
+- 捕获的 caught_pet 是持久化 Pet，只有 species，没有 name。此前 _draw_result 读取 caught_pet.name 抛 AttributeError，让 Tk tick 在安排下一帧前退出。现在从 Pet 表取名，并以三种球真实菜单点击覆盖结果绘制、tick、返回。
+- WorldMonsterBattleResultUILayer 0x3c9a35 是排行榜世界怪兽页，不能代替正常结算。普通流程使用 ChallengeResultUI/BattleCalculationUI 原资源、捕捉使用 PetCatchedEffectUI；去除宿主多层黑色描边文字。当前包缺 BattleResultInfoUI.csb，完整原版经验表现仍未补齐。
+- PetController::newAi 0x2d4adc，在0x2d4b34..0x2d4b50读取getSkillList及索引，越界归零；0x2d4bd0..0x2d4c18检查该槽可用性，不能运行时回退300056普通攻击；0x2d4c1e增加索引。宿主不再以85%随机抽取技能造成低级对手首回合发呆。
+- 姿态采样12Hz提升到30Hz，render_pose以frame/fps计算相同秒数；专项测试比较0.5秒时两种采样的像素一致。缩小离屏渲染尺寸时用pixels_per_unit校正骨骼坐标/锚点，保持最终宠物高度。
+- Preview.tick按目标帧周期扣除绘制耗时，至少让出8ms给Tk输入/空闲处理，避免1ms重绘链让update持续忙等。HUD/背景/姿态缓存有容量上限。性能数据是本机离屏采样，不能宣称所有硬件稳定60fps。
+
 ## 0.2.59：特殊战斗演出、已见图鉴与可见范围寻宝
 
 - showSkillEffect1 0x2c6dec 同时载入 path1/path2，分别加入前方z=101和后方z=99，不是我方/敌方文件。showSkillEffect2 0x2c685c 对反向目标旋转180度，300025 噪音特判 winSize/2+(0,21)。showSkillEffect3 0x2c6330 以选中骨骼世界坐标定位；showSkillEffect4 0x2c5cd0 创建六个 MoveBy，方向交替±84，每段0.4秒；showSkillEffect5 0x2c57d0 处理治愈。
