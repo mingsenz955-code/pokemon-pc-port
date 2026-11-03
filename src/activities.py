@@ -49,13 +49,18 @@ class Activities:
                 maximum = int(self.state.tables['HatchItem'][egg['item']]['exp'])
                 egg['exp'] = min(maximum, egg['exp']+amount)
 
-    def hatch(self, index, *, use_money=False):
+    def hatch(self, index, *, use_money=False, free_tutorial=False):
         with self.state.transaction():
             egg = self.state.activities.get('eggs', {}).get(str(index))
             if not egg or egg['pet'] is not None:
                 raise ValueError('这个位置没有待孵化的蛋。')
             row = self.state.tables['HatchItem'][egg['item']]
-            if use_money:
+            if free_tutorial:
+                if (egg['item'] != '250001' or self.state.events.get('5905001', 0) == 1
+                        or self.state.activities.get('hatch_tutorial_free_used')):
+                    raise ValueError('本次免费教学孵化已经结束。')
+                self.state.activities['hatch_tutorial_free_used'] = True
+            elif use_money:
                 self.state.consume([row['moneyId']], [int(row['moneyCount'])])
             else:
                 if egg['exp'] < int(row['exp']):

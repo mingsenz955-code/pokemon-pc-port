@@ -1,3 +1,7 @@
+## 0.2.74 孵化教学
+
+先读 VERIFICATION_0.2.74.md。原 pEvent5905001 的 openui 后按钮教学必须在孵化屋内推进，不能等待关窗；保留一基数孵化位别名、一次免费教学及提前确认 False 语义。check_hatch_tutorial 覆盖完整原脚本和旧存档恢复。本轮不宣称全游戏任意卡顿都已修好。
+
 ## 0.2.72 接续
 
 先读 VERIFICATION_0.2.72.md。抽宠必须走 LotteryAnimation，不能再单独显示透明 LuckyDrawPetInfoUI。三连后两只只重播 Animation4_2；演出不再发宠扣费。build_windows 自动生成并复制无损帧缓存，源码运行先执行 tools/bake_lottery_animation.py。刷新目标 60Hz，繁忙帧最低让出 3ms；不要恢复 1ms 忙帧循环导致全屏 Tk update 饥饿。
