@@ -566,17 +566,18 @@ class BattleUI:
         all_rows = self._battle_items(balls)
         page = self.ball_page if balls else self.page
         rows = all_rows[page*4:(page+1)*4]
-        text, visible = {}, {}
+        text, visible, resources = {}, {}, {}
         for index in range(1, 5):
             key = f'itemMenu_{index}_Button'
             if index <= len(rows):
                 item_id, row, count = rows[index-1]
                 visible[key] = True
+                resources[f'Node/battleItemMenu_Panel/item_Panel/{key}/icon_Image'] = 'ItemIcon/'+row['texture']
                 text[f'Node/battleItemMenu_Panel/item_Panel/{key}/nameBg_Image/name_Text'] = str(row.get('name', item_id))
                 text[f'Node/battleItemMenu_Panel/item_Panel/{key}/have_BitmapFontLabel'] = str(count)
             else:
                 visible[key] = False
-        layer, origin, hits = self._crop_layout('BattleItemMenuNode', text, visible,
+        layer, origin, hits = self._crop_layout('BattleItemMenuNode', text, visible, resources,
                                                 offset=(W*168/800, H*180/480))
         self._paste(frame, layer, origin, hits)
         draw = ImageDraw.Draw(frame, 'RGBA')

@@ -1,3 +1,7 @@
+## 0.2.67 接续
+
+先读 VERIFICATION_0.2.67.md。基于 main/52e7eec。柜员以 eventLayer.npcId 区域为准，不能退回只走 NPC 邻格或全局加大对话距离；保持孵化剧情开放条件。HatchPages 用原三类 UI 和 PetHatchEffectUI 的 60/200 帧事件。子页返回不能调用 close_ui 提前推进柜员剧情。新增 check_counter_hatching.py 八项，已更新旧孵化用例。
+
 ## 0.2.64 接续
 
 先读 VERIFICATION_0.2.64.md。用户明确取消真实充值：1 元＝1000 金币，Store 原金额单位分；禁止金币买金币。背景音乐自动随场景播放，不做音乐商品/音乐欣赏页。新增 game_viewport/economy/game_audio 和十项检查。日常奖励不能继承任务边框或确认框 underlay。

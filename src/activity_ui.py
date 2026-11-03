@@ -22,140 +22,8 @@ from running_pet import RunningPetGame
 class ActivityUI:
 
     def _hatch_body(self, body, info):
-            activity = Activities(self.state)
-            selected = [0]
-            rect = self.ui_hits.get('pets_ListView') or self.ui_rects.get('pets_ListView')
-            if not rect:
-                rect = (226, 175, 738, 408)
-            body.pack_forget()
-
-            def slots():
-                return [(index, self.state.activities.get('eggs', {}).get(str(index)))
-                        for index in range(10)]
-
-            def available():
-                return [key for key in self.data.tables['HatchItem'] if self.state.count(key)]
-
-            def describe(index=None):
-                target = selected[0] if index is None else index
-                egg = self.state.activities.get('eggs', {}).get(str(target))
-                if not egg:
-                    info.set('空孵化位。选择下方的放入按钮可以放入宠物蛋。')
-                    return
-                if egg.get('pet'):
-                    info.set(f'{self.data.tables["Pet"][egg["pet"]["species"]]["name"]} 已孵化，待领取。')
-                    return
-                row = self.data.tables['HatchItem'][egg['item']]
-                info.set(f'孵化中 · 经验 {egg["exp"]}/{row["exp"]} · '
-                         f'直接孵化需要 {row["moneyCount"]} '
-                         f'{self.data.tables["Money"][row["moneyId"]]["name"]}')
-
-            def paint():
-                self.original_page = None
-                self.page_drag = None
-                self.ui_hits, self.ui_actions = {}, {}
-                layer = self.cocos_ui.render('HatchRoomUI', (800, 480), {
-                    'progress_BitmapFontLabel': f'{sum(1 for _, egg in slots() if egg)}/10',
-                    'info_Text': '选择孵化位；战斗获得孵化经验，可用材料孵化或支付金币直接孵化。',
-                })
-                base_hits = dict(self.cocos_ui.hits)
-                base_rects = dict(self.cocos_ui.rects)
-                base_buttons = dict(self.cocos_ui.buttons)
-                base_text = dict(self.cocos_ui.button_text)
-                draw = ImageDraw.Draw(layer)
-                font_path = Path(os.environ.get('WINDIR', 'C:/Windows'))/'Fonts/msyh.ttc'
-                try:
-                    font = ImageFont.truetype(str(font_path), 11)
-                except OSError:
-                    font = ImageFont.load_default()
-                for index, egg in slots():
-                    column, line = index % 2, index // 2
-                    x = round(rect[0] + 5 + column * 255)
-                    y = round(rect[1] + 4 + line * 45)
-                    if egg:
-                        if egg.get('pet'):
-                            name = self.data.tables['Pet'][egg['pet']['species']]['name']
-                            text = f'{index+1}. {name} · 待领取'
-                        else:
-                            row = self.data.tables['HatchItem'][egg['item']]
-                            text = (f'{index+1}. {self.data.tables["Item"][egg["item"]]["name"]} '
-                                    f'{egg["exp"]}/{row["exp"]}')
-                    else:
-                        text = f'{index+1}. 空位'
-                    draw.rectangle((x, y, x+245, y+38),
-                                   fill=(63, 41, 31, 155))
-                    draw.text((x+8, y+10), text, font=font,
-                              fill=(255, 244, 209))
-                    self.ui_hits[f'hatch_slot_{index}'] = (x, y, x+245, y+38)
-                    self.ui_actions[f'hatch_slot_{index}'] = (
-                        lambda value=index: choose(value))
-                    if index == selected[0]:
-                        draw.rectangle((x, y, x+245, y+38),
-                                       outline='#ffe36e', width=2)
-                for index, (label, action) in enumerate((
-                        ('放入蛋', put), ('材料孵化', lambda: act('normal')),
-                        ('金币孵化', lambda: act('money')), ('取回/领取', lambda: act('take')))):
-                    x = round(rect[0] + 8 + index * 126)
-                    y = 422
-                    draw.rectangle((x, y, x+116, y+32), fill=(143, 76, 44, 220))
-                    draw.text((x+22, y+9), label, font=font, fill=(255, 244, 209))
-                    self.ui_hits[f'hatch_action_{index}'] = (x, y, x+116, y+32)
-                    self.ui_actions[f'hatch_action_{index}'] = action
-                self.ui_base_layer = layer
-                self.ui_hits.update(base_hits)
-                self.ui_rects = base_rects
-                self.ui_buttons = base_buttons
-                self.ui_button_text = base_text
-                self.ui_actions['putIn_Button'] = put
-                self.ui_actions['takeBackEgg_Button'] = lambda: act('take')
-                self.ui_actions['takeBack_Button'] = lambda: act('take')
-                self.ui_actions['hatch_Button'] = lambda: act('normal')
-                self.ui_actions['moneyHatch_Button'] = lambda: act('money')
-                self.ui_actions['check_Button'] = check
-                self.ui_actions['close_Button'] = self.close_ui
-                if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
-                    photo = ImageTk.PhotoImage(layer)
-                    self.ui_art_label.configure(image=photo)
-                    self.ui_art_label.image = photo
-
-            def choose(index):
-                selected[0] = index
-                describe()
-                paint()
-
-            def put():
-                keys = available()
-                if not keys:
-                    info.set('没有可放入的宠物蛋。')
-                    return
-                def receive(key):
-                    try:
-                        activity.put_egg(selected[0], key)
-                    except (ValueError, KeyError) as error:
-                        info.set(str(error))
-                        return
-                    paint()
-                    self.original_page = None
-                    info.set('宠物蛋已放入孵化位。')
-                self._bag_page(info, allowed_keys=set(keys), select_item=receive, back=paint)
-
-            def act(kind):
-                try:
-                    if kind == 'take':
-                        activity.take_egg(selected[0])
-                    else:
-                        activity.hatch(selected[0], use_money=kind == 'money')
-                except (ValueError, KeyError) as error:
-                    info.set(str(error))
-                    return
-                paint()
-                describe()
-
-            def check():
-                self.open_hatch_check(selected[0])
-
-            paint()
-            describe()
+        body.pack_forget()
+        self._hatch_room_page(info)
 
     def _skill_body(self, body, info):
             from game_state import numbers
@@ -434,89 +302,123 @@ class ActivityUI:
         paint()
 
     def _fuse_body(self, body, info):
-        pets = list(self.state.bank)
+        from original_pages import Page
+        from pet_pages import text_box
+        from game_state import numbers
         body.pack_forget()
-        if not pets:
-            info.set('银行中没有可合体的宠物；出战宠物不能合体。')
-            message = lambda: info.set('先到银行放入两只可合体的宠物。')
-            for key in ('add_1_Button', 'add_2_Button', 'heTi_Button'):
-                self.ui_actions[key] = message
-            return
-        frames = tk.Frame(body)
-        frames.pack(fill='x')
-        boxes = []
-        for title in ('左侧宠物', '右侧宠物'):
-            frame = tk.Frame(frames)
-            frame.pack(side='left', fill='both', expand=True, padx=5)
-            tk.Label(frame, text=title).pack()
-            box = tk.Listbox(frame, width=28, height=6, exportselection=False)
-            box.pack(fill='both')
-            boxes.append(box)
-        chosen = {'a': None, 'b': None}
-        def refresh():
-            names = [f'{self.data.tables["Pet"][p.species]["name"]} Lv.{p.level} +{p.breakthrough}'
-                     for p in pets]
-            for box in boxes:
-                selected = box.curselection()
-                box.delete(0, 'end')
-                for text in names:
-                    box.insert('end', text)
-                if selected:
-                    box.selection_set(selected[0])
-            if not boxes[0].curselection() and pets:
-                boxes[0].selection_set(0)
-            if len(pets) > 1 and not boxes[1].curselection():
-                boxes[1].selection_set(1)
-            preview()
-        def preview(event=None):
-            a = pets[boxes[0].curselection()[0]] if boxes[0].curselection() else None
-            b = pets[boxes[1].curselection()[0]] if boxes[1].curselection() else None
-            chosen['a'], chosen['b'] = a, b
-            if not a or not b:
-                info.set('选择两只银行宠物。')
-                return
-            recipe = None
-            for row in self.data.tables['PetHeTi'].values():
-                if str(row['petAId']) == a.species and str(row['petBId']) == b.species:
-                    recipe = row
-                    break
-            if not recipe:
-                info.set('这两只宠物没有原版合体配方。')
-                return
-            result = self.data.tables['Pet'][str(recipe['petIds'].split(',')[0])]['name']
-            costs = '、'.join(f'{self.data.tables["Item"].get(i, self.data.tables["Money"].get(i, {})).get("name", i)}×{n}'
-                              for i, n in zip(recipe['costItemIds'].split(','), recipe['costItemCounts'].split(',')))
-            info.set(f'结果：{result} Lv.1 · 材料 {costs}')
+        chosen = [None, None]
+
+        def recipe_for():
+            a, b = chosen
+            return next((r for r in self.data.tables['PetHeTi'].values()
+                         if a and b and str(r['petAId']) == a.species
+                         and str(r['petBId']) == b.species), None)
+
+        def paint():
+            self._page_wheel(lambda event: None)
+            recipe = recipe_for()
+            text, visible, resources = {'Text_3': ''}, {}, {}
+            for i, pet in enumerate(chosen, 1):
+                path = f'Layer/root_Panel/add_{i}_Button'
+                visible[path+'/info_Panel'] = pet is not None
+                visible[path+'/add_Image'] = pet is None
+                visible[path+'/head_Image'] = pet is not None
+                if pet:
+                    row = self.data.tables['Pet'][pet.species]
+                    text[path+'/info_Panel/namgBg_Image/name_Text'] = row['name']
+                    text[path+'/info_Panel/lvBg_Image/lv_BitmapFontLabel'] = str(pet.level)
+                    resources[path+'/head_Image'] = 'PetHead/head_'+row['filePath']+'.png'
+            results = numbers(recipe['petIds']) if recipe else []
+            visible['wenHao_Sprite'] = len(results) != 1
+            page = Page(self, 'PetHeTiUI', text=text, visible=visible, resources=resources)
+            rect = page.rects['Layer/root_Panel/Text_3']
+            text_box(page, rect, '基础及成长属性由合体前两只宠物共同决定。', self.cocos_ui.font('', 16))
+            area = page.rects['Layer/root_Panel/itemListBg_Image/upgradesItems_ListView']
+            if recipe:
+                for i, (kid, need) in enumerate(zip(numbers(recipe['costItemIds']), numbers(recipe['costItemCounts']))):
+                    page.add('ConditionItemUI', (round(area[0]), round(area[1]+i*25)),
+                             size=(round(area[2]-area[0]), 23), prefix=f'fuse_cost_{i}/', clip=area,
+                             text={'name_Text': self._item_data(kid)[0],
+                                   'have_BitmapFontLabel': str(self.state.count(kid)),
+                                   'need_BitmapFontLabel': str(need)})
+                if len(results) == 1:
+                    point = page.rects['Layer/root_Panel/petPos_Node']
+                    page.animated_pets.append((str(results[0]), (point[0], point[1]-35),
+                                               (point[0]-110, point[1]-170, point[0]+110, point[1]-25), 140))
+            else:
+                message = ('请先选择两只银行宠物。' if not all(chosen)
+                           else '这两只宠物没有原版合体配方。')
+                text_box(page, area, message, self.cocos_ui.font('', 15))
+            page.actions.update({'add_1_Button': lambda: choose(0),
+                                 'add_2_Button': lambda: choose(1),
+                                 'heTi_Button': submit, 'close_Button': self.close_ui})
+            self._add_page_close(page)
+            page.publish()
+            info.set('点击左侧两个加号选择银行宠物；合体后两只原宠物消失，新宠物为 Lv.1。')
+
         def choose(side):
-            if not boxes[side].curselection():
+            other = chosen[1-side]
+            pets = [p for p in self.state.bank if not p.trial_id and p is not other]
+            if not pets:
+                self._page_tip('银行中没有可选宠物。请先存入两只不同的宠物；随身宠物不能合体。', paint)
                 return
-            chosen[side] = pets[boxes[side].curselection()[0]]
-            preview()
-        def fuse():
-            if not chosen['a'] or not chosen['b']:
-                info.set('请先选择左右两只银行宠物。')
+            offset = [0]
+            stride = 74+self._list_margin('PetSelectUI', 'pet_ListView')
+
+            def picker():
+                page = Page(self, 'PetSelectUI')
+                area = page.rects['Layer/root_Panel/pet_ListView']
+                for i, pet in enumerate(pets):
+                    row = self.data.tables['Pet'][pet.species]
+                    stats = pet.stats(self.data.tables)
+                    x, y = round(area[0]), round(area[1]+i*stride-offset[0])
+                    if y+74 <= area[1] or y >= area[3]:
+                        continue
+                    page.add('PetSelectItemUI', (x, y), prefix=f'fuse_pick_{i}/', clip=area,
+                             text={'name_Text': row['name'], 'lv_BitmapFontLabel': str(pet.level),
+                                   'hpHave_BitmapFontLabel': str(pet.hp), 'hpMax_BitmapFontLabel': str(stats[0]),
+                                   'enHave_BitmapFontLabel': str(pet.energy), 'enMax_BitmapFontLabel': str(stats[1]),
+                                   'friendly_BitmapFontLabel': str(pet.friendly)},
+                             resources={'kind_Image': 'UI/'+self.data.tables['PetKindEnum'][row['kind']]['iconTexture']},
+                             visible={'selected_Image': pet is chosen[side]})
+                    page.hit(f'fuse_pick_{i}', (x, y, x+309, y+74),
+                             lambda p=pet: select(side, p), area)
+                page.actions['close_Button'] = paint
+                page.publish()
+                info.set('选择银行宠物，左侧与右侧不能选择同一只。')
+
+            def wheel(event):
+                offset[0] = max(0, min(max(0, len(pets)*stride-320),
+                                      offset[0]+(-74 if event.delta > 0 else 74)))
+                picker()
+            self._page_wheel(wheel)
+            picker()
+
+        def select(side, pet):
+            chosen[side] = pet
+            paint()
+
+        def submit():
+            if not all(chosen):
+                self._page_tip('请先选择左右两只银行宠物。', paint)
                 return
-            try:
-                pet = self.state.fuse_pets(chosen['a'].uid, chosen['b'].uid)
-                pets[:] = list(self.state.bank)
-                for box in boxes:
-                    box.selection_clear(0, 'end')
-                refresh()
-                info.set(f'合体成功：{self.data.tables["Pet"][pet.species]["name"]} Lv.{pet.level}')
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-        for box in boxes:
-            box.bind('<<ListboxSelect>>', preview)
-        controls = tk.Frame(body)
-        controls.pack(pady=4)
-        tk.Button(controls, text='选择左侧', command=lambda: choose(0)).pack(side='left', padx=3)
-        tk.Button(controls, text='选择右侧', command=lambda: choose(1)).pack(side='left', padx=3)
-        tk.Button(controls, text='合体', command=fuse).pack(side='left', padx=3)
-        self.ui_actions['add_1_Button'] = lambda: choose(0)
-        self.ui_actions['add_2_Button'] = lambda: choose(1)
-        self.ui_actions['heTi_Button'] = fuse
-        self.ui_actions['close_Button'] = self.close_ui
-        refresh()
+            if not recipe_for():
+                self._page_tip('这两只宠物没有原版合体配方。', paint)
+                return
+            # Snapshot both UIDs so a stale confirmation cannot consume a new selection.
+            uids = tuple(p.uid for p in chosen)
+            def confirm():
+                try:
+                    pet = self.state.fuse_pets(*uids)
+                except (ValueError, KeyError) as error:
+                    self._page_tip(str(error), paint)
+                    return
+                chosen[:] = [None, None]
+                self.save()
+                self.reward_overlay([(pet.species, 1)], back=paint, title='合体成功', underlay=False)
+            self._choice_page('合体将消耗两只原宠物及所列材料，新宠物降为1级。确认合体？', confirm, paint)
+
+        paint()
 
     def _merge_body(self, body, info):
         pets = list(self.state.bank)

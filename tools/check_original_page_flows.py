@@ -111,7 +111,7 @@ class PageFlows(unittest.TestCase):
         for key in keys:
             app.state.grant(key, 1)
         self.open(5)
-        app.ui_actions['putIn_Button']()
+        self.click(next(k for k in app.ui_buttons if k.startswith('hatch_0/') and k.endswith('/putIn_Button')))
         self.assertIn('bag_row_1', app.ui_actions)
         app.ui_actions['bag_row_1']()
         app.ui_actions['use_Button']()

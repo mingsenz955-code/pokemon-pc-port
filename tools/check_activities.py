@@ -55,7 +55,8 @@ class EconomicChecks(unittest.TestCase):
             Activities(restored).draw_pets(1, free=True, now=17200)
 
     def test_full_bank_rejects_draw_before_charge_or_rng_use(self):
-        self.state.inventory['700004'] = 0
+        while len(self.state.pets) < 6:
+            self.state.pets.append(self.state.preset_pet(1))
         self.state.inventory['700005'] = 0
         before = self.state.payload()
         with self.assertRaises(ValueError):
@@ -102,13 +103,13 @@ class EconomicChecks(unittest.TestCase):
             self.activity.spin_roulette(now=1700000001)
         self.assertEqual(before, self.state.payload())
 
-    def test_bank_obeys_original_unlocked_slots(self):
-        for _ in range(4):
+    def test_bank_obeys_six_carried_slots(self):
+        for _ in range(7):
             self.state.add_preset(2)
-        self.assertEqual((3, 1), (len(self.state.pets), len(self.state.bank)))
+        self.assertEqual((6, 1), (len(self.state.pets), len(self.state.bank)))
         pet = self.state.pets[0]
         self.state.move_pet(pet.uid, to_bank=True)
-        self.assertEqual((2, 2), (len(self.state.pets), len(self.state.bank)))
+        self.assertEqual((5, 2), (len(self.state.pets), len(self.state.bank)))
         self.state.move_pet(pet.uid, to_bank=False)
         self.assertIs(pet, self.state.pets[-1])
 
@@ -338,7 +339,9 @@ class EconomicChecks(unittest.TestCase):
         pet = self.activity.hatch(9, use_money=True)
         self.assertIn(pet.species, TABLES['HatchItem']['250001']['petIds'].split(','))
         self.assertEqual(0, self.state.count('700001'))
-        self.state.inventory['700004'] = self.state.inventory['700005'] = 0
+        while len(self.state.pets) < 6:
+            self.state.pets.append(self.state.preset_pet(1))
+        self.state.inventory['700005'] = 0
         before = self.state.payload()
         with self.assertRaises(ValueError):
             self.activity.take_egg(9)

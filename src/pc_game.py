@@ -106,7 +106,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.66（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.69（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1103,7 +1103,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.66')
+        win.title('任务指引 · 原生 0.2.69')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1173,11 +1173,19 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.runtime.running or self.runtime_error:
             return
         actors = sorted(self.actors(), key=lambda a: (a[2]-self.x)**2+(a[3]-self.y)**2)
+        # Native areaProcess uses eventLayer.npcId across solid counters.
+        counter_ids = {str(o['props']['npcId']) for o in self.map.objects
+                       if o['group'] == 'eventLayer' and o.get('props', {}).get('npcId')
+                       and float(o['x']) <= self.x < float(o['x'])+float(o.get('width', self.map.tw))
+                       and float(o['y']) <= self.y < float(o['y'])+float(o.get('height', self.map.th))}
+        if npc_id is None and counter_ids:
+            actors = [a for a in actors if str(a[0]) in counter_ids]
         if npc_id is not None:
             actors = [actor for actor in actors if str(actor[0]) == str(npc_id)]
         if sprite_id is not None:
             actors = [actor for actor in actors if str(actor[1]) == str(sprite_id)]
-        if not actors or (actors[0][2]-self.x)**2+(actors[0][3]-self.y)**2 > 150**2:
+        if not actors or (str(actors[0][0]) not in counter_ids and
+                          (actors[0][2]-self.x)**2+(actors[0][3]-self.y)**2 > 150**2):
             return
         oid = actors[0][0]
         if oid.startswith('temp:'):
@@ -1692,6 +1700,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     self.show_reward('获得奖励', request.data['items'])
                     return
                 if request.kind in ['button', 'tapscreen']:
+                    if request.event == 'pEvent102001.json' and not self.battle and self.runtime.battle_result:
+                        # This script targets the BattleMainUI that just ended.
+                        # Its absent controls must not block the capture follow-up.
+                        self.runtime.resume()
+                        continue
                     text = request.data.get('text') or '\n'.join(request.data.get('texts', []))
                     if self.battle:
                         self.runtime.resume()
@@ -1811,6 +1824,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             if not self.runtime.running:
                 self.runtime.notify('toarea', area=area)
             self.advance_main_condition('area', area)
+            npc_id = obj.get('props', {}).get('npcId')
+            if npc_id and not self.runtime.running and not self.ui_open:
+                self.interact(str(npc_id))
             # getAreaSpriteAtTileCoord returns the first matching area.
             return
 
@@ -2545,77 +2561,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             'parameters': {'uiid': 62, 'index': int(index)}}))
 
     def _hatch_check_body(self, body, info):
-        from activities import Activities
-        from game_state import numbers
-        index = int(self.ui_parameters.get('index', 0) or 0)
-        activity = Activities(self.state)
-        egg = self.state.activities.get('eggs', {}).get(str(index))
-        tables = self.data.tables
-        if not egg:
-            info.set('这个孵化位是空的。')
-            self.ui_actions['takeBackEgg_Button'] = lambda: info.set('这个孵化位是空的。')
-            self.ui_actions['hatch_Button'] = lambda: info.set('这个孵化位是空的。')
-            self.ui_actions['moneyHatch_Button'] = lambda: info.set('这个孵化位是空的。')
-            self.ui_actions['close_Button'] = self._close_hatch_check
-            return
-        row = tables['HatchItem'][egg['item']]
-        item_name = tables['Item'].get(str(egg['item']), {}).get('name', str(egg['item']))
-        lines = [f'{index+1} 号孵化位 · {item_name}']
-        if egg.get('pet'):
-            target = tables['Pet'].get(str(egg['pet']['species']), {})
-            lines.append(f'已孵化：{target.get("name", egg["pet"]["species"])}，等待领取')
-        else:
-            lines.append(f'孵化经验 {egg["exp"]} / {row["exp"]}')
-            item_ids = [str(v) for v in numbers(row.get('itemIds', ''))]
-            item_counts = [int(v) for v in numbers(row.get('itemCounts', ''))]
-            for item_id, count in zip(item_ids, item_counts):
-                have = self.state.count(item_id)
-                lines.append(f'{tables["Item"].get(item_id, {}).get("name", item_id)} {have} / {count}')
-            money = tables['Money'].get(str(row.get('moneyId')), {})
-            lines.append(f'金币孵化 {row.get("moneyCount", 0)} {money.get("name", "")}')
-        if getattr(self, 'ui_art_label', None) is not None:
-            layer = self.cocos_ui.render('HatchCheckUI', (800, 480), {
-                'cost_BitmapFontLabel': str(row.get('moneyCount', 0))})
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-        frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
-        rect = self.ui_hits.get('condition_ListView') or self.ui_rects.get('condition_ListView')
-        if rect:
-            frame.place(x=rect[0], y=rect[1], width=max(160, rect[2]-rect[0]),
-                        height=max(90, rect[3]-rect[1]))
-            frame.lift()
-        else:
-            frame.pack(fill='both', expand=True)
-        box = tk.Listbox(frame, font=('Microsoft YaHei UI', 9), exportselection=False,
-                         bg='#182125', fg='#e8d8b8', selectbackground='#49606a')
-        box.pack(fill='both', expand=True)
-        for line in lines:
-            box.insert('end', line)
-        info.set(' · '.join(lines))
-        def back():
-            self.close_ui()
-            self.open_ui(Request('openui', 'hatch-room', 1, {
-                'parameters': {'uiid': 5}}))
-        def take():
-            try:
-                activity.take_egg(index)
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            back()
-        def hatch(use_money=False):
-            try:
-                activity.hatch(index, use_money=use_money)
-            except (ValueError, KeyError) as error:
-                info.set(str(error))
-                return
-            back()
-        self.ui_actions['takeBackEgg_Button'] = take
-        self.ui_actions['hatch_Button'] = lambda: hatch(False)
-        self.ui_actions['moneyHatch_Button'] = lambda: hatch(True)
-        self.ui_actions['close_Button'] = back
-        self.ui_window.bind('<Escape>', lambda _event: back())
+        body.pack_forget()
+        self._hatch_check_page(info, int(self.ui_parameters.get('index', 0)))
 
     def _close_hatch_check(self):
         self.close_ui()

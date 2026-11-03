@@ -40,12 +40,13 @@ class PetPages:
             pet = current or self.state.preset_pet(key, 'TrialPet')
             text, visible, resources = self._pet_base_fields(pet)
             text['lv_BitmapFontLabel'] = str(pet.level)
-            can_trial = int(row['trialCount']) > 0 and key not in self.state.activities.get('trial_received', [])
-            text['tips_Text'] = (f'剩余试用 {current.trial_remaining} 场战斗。' if current else
+            purchased = self.state.trial_pet_purchased(key)
+            can_trial = not purchased and int(row['trialCount']) > 0 and key not in self.state.activities.get('trial_received', [])
+            text['tips_Text'] = ('已永久购买。' if purchased else f'剩余试用 {current.trial_remaining} 场战斗。' if current else
                                  f'可试用 {row["trialCount"]} 场战斗。' if can_trial else '这只宠物没有剩余免费试用次数。')
             store = self.data.tables['Store'][row['storeId']]
-            text['costTip_Text'] = store.get('des2', '')
-            visible.update({'trial_Button': can_trial or bool(current), 'cost_BitmapFontLabel': False,
+            text['costTip_Text'] = '已购买' if purchased else store.get('des2', '')
+            visible.update({'buy_Button': not purchased, 'trial_Button': not purchased and (can_trial or bool(current)), 'cost_BitmapFontLabel': False,
                             'number_BitmapFontLabel': False, 'evolutionTimes_BitmapFontLabel': pet.species in self.data.tables['Evolution'],
                             'trial_Image': not bool(current)})
             page = Page(self, 'TrialPetUI', timeline_frame=60, text=text, visible=visible, resources=resources)
