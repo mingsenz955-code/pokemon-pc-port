@@ -102,6 +102,9 @@ class GameArtLabel(tk.Label):
     def set_layer(self, layer):
         frame = self.backdrop.copy()
         frame.alpha_composite(layer)
+        painter = getattr(self.master.app, 'paint_purchase_notice', None)
+        if painter:
+            painter(frame)
         self.show_frame(frame)
 
     def scaled_photo(self, frame):

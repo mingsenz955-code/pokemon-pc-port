@@ -571,6 +571,7 @@ class OriginalPages(PetPages, HatchPages, ServicePages):
                 self._page_tip(str(error), paint)
                 return
             self._back_to_shop(shop_uiid)
+            self.show_purchase_notice(row['name'], quantity[0]*int(row.get('gotCount', 1)))
 
         def cancel():
             self._back_to_shop(shop_uiid)

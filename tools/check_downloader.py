@@ -92,6 +92,45 @@ class DownloaderChecks(unittest.TestCase):
         self.assertTrue(any(p.startswith('/ok/') for p in self.server.requests))
         self.assertTrue((self.home/'installed.json').exists())
 
+    def test_folder_selection_remembers_install_target_and_preserves_old_files(self):
+        source=self.path/'FolderHarness.cs';binary=self.path/'FolderHarness.exe'
+        source.write_text('''using System;using System.IO;using System.Reflection;using System.Windows.Forms;
+class FolderHarness {
+ static void Check(bool value,string message){if(!value)throw new Exception(message);}
+ [STAThread] static int Main(string[] a) {try {
+  string old=Path.Combine(a[0],"old"),selected=Path.Combine(a[0],"selected-game"),settings=Path.Combine(a[0],"settings.json");
+  Directory.CreateDirectory(old);File.WriteAllText(Path.Combine(old,"keep.txt"),"old version");
+  using(var form=new DownloaderForm(old,settings)) {
+   form.SelectInstallRoot(selected);
+   Check(PocketInstallLocation.Read(settings,old)==selected,"selection was not remembered");
+   var client=(PocketClient)typeof(DownloaderForm).GetField("client",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(form);
+   Check(client.Root==selected,"form retained old client");
+   var hiddenHandle=form.Handle;
+   client.Install(client.Latest(a[1]));
+   Check(File.Exists(Path.Combine(selected,"installed.json")),"installed outside selection");
+   Check(!File.Exists(Path.Combine(old,"installed.json")),"old install changed");
+   Check(File.ReadAllText(Path.Combine(old,"keep.txt"))=="old version","old files lost");
+   typeof(DownloaderForm).GetField("busy",BindingFlags.NonPublic|BindingFlags.Instance).SetValue(form,true);
+   bool refused=false;try{form.SelectInstallRoot(old);}catch(InvalidOperationException){refused=true;}
+   Check(refused,"folder changed during active installation");
+  }
+  string root=PocketInstallLocation.Read(settings,old);
+  using(var reopened=new DownloaderForm(root,settings)) {
+   var client=(PocketClient)typeof(DownloaderForm).GetField("client",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(reopened);
+   Check(client.Installed()!=null,"reopened installer lost selected game");
+  }
+  File.WriteAllText(settings,"invalid");Check(PocketInstallLocation.Read(settings,old)==old,"invalid settings did not fall back");
+  return 0;
+ }catch(Exception e){Console.Error.WriteLine(e);return 1;} }
+}''',encoding='utf-8')
+        framework=Path(os.environ.get('WINDIR',r'C:\Windows'))/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+        refs=['System.Windows.Forms','System.Drawing','System.Web.Extensions','System.IO.Compression','System.IO.Compression.FileSystem','Microsoft.CSharp']
+        subprocess.run([str(framework),'/nologo','/codepage:65001','/main:FolderHarness','/out:'+str(binary),*['/reference:'+r+'.dll' for r in refs],str(ROOT/'native/Downloader.cs'),str(source)],check=True)
+        self.manifest(self.archive())
+        completed=subprocess.run([str(binary),str(self.path/'custom-folder-test'),self.url+'/manifest.json'],capture_output=True,text=True,timeout=25)
+        self.assertEqual(completed.returncode,0,completed.stdout+completed.stderr)
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.server.requests.append(self.path)

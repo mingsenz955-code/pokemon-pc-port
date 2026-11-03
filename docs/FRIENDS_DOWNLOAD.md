@@ -1,3 +1,5 @@
+新版下载器可点击“选择目录”指定游戏安装位置，并记住选择。更新沿用所选位置；存档仍在当前用户 %LOCALAPPDATA%\PocketNativePC。已有旧版下载器也能更新游戏；路径选择入口由新版 PocketPC-Setup.exe 提供。
+
 # 朋友下载、安装与自己的存档
 
 把 `PocketPC-Setup.exe` 发给朋友即可；不需要发送源码、Python 或你的游戏目录。

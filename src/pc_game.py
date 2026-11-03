@@ -106,7 +106,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.72（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.73（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -229,15 +229,6 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.battle or self.runtime.running or self.ui_open:
             return
         self.scene_ui.toggle('left')
-
-    def player_image(self, face):
-        row = Mounts(self.state).active()
-        if row:
-            animation = 'standleft' if face == 'standright' else face
-            image = self.data.armature(row['filePath'], animation)
-            if image is not None:
-                return image.transpose(Image.Transpose.FLIP_LEFT_RIGHT) if face == 'standright' else image
-        return super().player_image(face)
 
     def check_encounter(self):
         if self.battle or self.runtime.running or self.ui_open or self.display_request or self.pending_wait:
@@ -368,7 +359,50 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         animation = self.story_motion.animation(1, 0, face)
         if animation.startswith('stand') and getattr(self, 'player_walking', False):
             animation = animation.replace('stand', 'walk')
+        ride = Mounts(self.state).active()
+        if ride:
+            mirror = animation.endswith('right')
+            clip = animation.replace('right', 'left') if mirror else animation
+            frame = int(getattr(self, 'scene_animation_time', 0)*60)
+            image = self.data.armature(ride['filePath'], clip, frame)
+            if image is not None:
+                if mirror:
+                    origin = image.info.get('origin', (image.width/2, image.height))
+                    image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                    image.info['origin'] = (image.width-origin[0], origin[1])
+                return image
         return self.scene_sprite(self.player_sprite, animation)
+
+    def show_purchase_notice(self, name, count):
+        # RewardTipsUiLayer uses TipsUiNode, DelayTime(.5), FadeOut(.5).
+        self.purchase_notice = (f'获得道具：{name} ×{count}', time.monotonic())
+        job = getattr(self, 'purchase_notice_job', None)
+        if job:
+            self.root.after_cancel(job)
+        def refresh():
+            self.purchase_notice_job = None
+            if not self.ui_open or not getattr(self, 'purchase_notice', None):
+                return
+            self._paint_hover()
+            if self.purchase_notice:
+                self.purchase_notice_job = self.root.after(33, refresh)
+        refresh()
+
+    def paint_purchase_notice(self, frame):
+        notice = getattr(self, 'purchase_notice', None)
+        if not notice:
+            return
+        text, started = notice
+        age = time.monotonic()-started
+        if age >= 1:
+            self.purchase_notice = None
+            return
+        width = min(760, max(100, self.cocos_ui.font('', 30).getlength(text)+34))
+        art = self.cocos_ui.render('TipsUiNode', frame.size, canvas_size=(800, 480),
+            text={'tip_Text': text}, auto_text=('tip_Text',),
+            positions={'bg_Image': (400, 84), 'tip_Text': (width/2, 29.5)},
+            sizes={'bg_Image': (width, 59)}, alphas={'Node': round(255*min(1, (1-age)*2))})
+        frame.alpha_composite(art)
 
     def search_treasure(self):
         from treasure import TreasureHunt
@@ -516,6 +550,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     }
 
     def open_ui(self, request):
+        self.purchase_notice = None
+        notice_job = getattr(self, 'purchase_notice_job', None)
+        if notice_job:
+            self.root.after_cancel(notice_job)
+            self.purchase_notice_job = None
         job = getattr(self, 'ui_effect_job', None)
         if job and self.ui_window and self.ui_window.winfo_exists():
             self.ui_window.after_cancel(job)
@@ -1119,7 +1158,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.72')
+        win.title('任务指引 · 原生 0.2.73')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()

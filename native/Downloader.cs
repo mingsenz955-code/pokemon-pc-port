@@ -169,33 +169,81 @@ public sealed class PocketClient {
     }
 }
 
+public static class PocketInstallLocation {
+    public static string DefaultRoot { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PocketPCClient"); } }
+    public static string SettingsFile { get { return Path.Combine(DefaultRoot,"download-location.json"); } }
+    public static string Read(string settingsFile,string fallback) {
+        try {
+            var settings=new JavaScriptSerializer().Deserialize<Dictionary<string,string>>(File.ReadAllText(settingsFile,Encoding.UTF8));
+            string root;
+            if(settings!=null && settings.TryGetValue("install_root",out root) && !String.IsNullOrWhiteSpace(root) && Path.IsPathRooted(root))return Path.GetFullPath(root);
+        } catch {}
+        return Path.GetFullPath(fallback);
+    }
+    public static void Remember(string settingsFile,string root) {
+        string full=Path.GetFullPath(root),file=Path.GetFullPath(settingsFile),temp=file+".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(file));
+        File.WriteAllText(temp,new JavaScriptSerializer().Serialize(new Dictionary<string,string>{{"install_root",full}}),Encoding.UTF8);
+        if(File.Exists(file))File.Replace(temp,file,null);else File.Move(temp,file);
+    }
+}
+
 public sealed class DownloaderForm : Form {
-    readonly PocketClient client;
-    readonly Label status=new Label(), hint=new Label();
+    PocketClient client;
+    readonly string settingsFile;
+    readonly Label status=new Label(), hint=new Label(),locationLabel=new Label();
+    readonly TextBox location=new TextBox();
     readonly ProgressBar progress=new ProgressBar();
-    readonly Button install=new Button(),play=new Button(),saves=new Button();
+    readonly Button install=new Button(),play=new Button(),saves=new Button(),browse=new Button();
     bool busy;
-    public DownloaderForm(string root) {
-        client=new PocketClient(root);Text="口袋妖怪 · 下载与启动";ClientSize=new Size(610,270);
+    public DownloaderForm(string root):this(root,PocketInstallLocation.SettingsFile) {}
+    public DownloaderForm(string root,string preferencesFile) {
+        settingsFile=preferencesFile;
+        client=new PocketClient(root);Text="口袋妖怪 · 下载与启动";ClientSize=new Size(610,330);
         FormBorderStyle=FormBorderStyle.FixedSingle;MaximizeBox=false;StartPosition=FormStartPosition.CenterScreen;
         Font=new Font("Microsoft YaHei UI",10);
         hint.Text="首次下载后可离线游玩。更新保留本机存档。\r\n默认使用国内加速线路，失败会自动换线。";hint.SetBounds(24,20,560,56);
-        status.Text=client.Installed()==null?"尚未安装，点击下载。":"已安装 "+client.Installed().version;status.SetBounds(24,88,560,42);
-        progress.SetBounds(24,139,560,22);
-        install.Text="下载 / 更新";install.SetBounds(24,181,174,42);
-        play.Text="开始游戏";play.SetBounds(216,181,174,42);play.Enabled=client.Installed()!=null;
-        saves.Text="打开我的存档";saves.SetBounds(408,181,174,42);
-        Controls.AddRange(new Control[]{hint,status,progress,install,play,saves});
-        client.Report=(text,value)=> { if(IsDisposed)return;BeginInvoke(new Action(()=>{status.Text=text;progress.Value=Math.Max(0,Math.Min(100,value));})); };
+        locationLabel.Text="游戏安装目录";locationLabel.SetBounds(24,82,560,24);
+        location.ReadOnly=true;location.SetBounds(24,108,426,29);location.Text=client.Root;
+        browse.Text="选择目录…";browse.SetBounds(462,104,122,34);
+        status.SetBounds(24,151,560,42);
+        progress.SetBounds(24,202,560,22);
+        install.Text="下载 / 更新";install.SetBounds(24,248,174,42);
+        play.Text="开始游戏";play.SetBounds(216,248,174,42);
+        saves.Text="打开我的存档";saves.SetBounds(408,248,174,42);
+        Controls.AddRange(new Control[]{hint,locationLabel,location,browse,status,progress,install,play,saves});
+        ConnectClient();
+        browse.Click+=delegate {
+            using(var picker=new FolderBrowserDialog()) {
+                picker.Description="选择口袋妖怪的游戏安装目录（存档仍保留在当前用户目录）";
+                picker.SelectedPath=client.Root;picker.ShowNewFolderButton=true;
+                if(picker.ShowDialog(this)==DialogResult.OK) {
+                    try {SelectInstallRoot(picker.SelectedPath);}
+                    catch(Exception e){MessageBox.Show(this,e.Message,"目录选择失败",MessageBoxButtons.OK,MessageBoxIcon.Information);}
+                }
+            }
+        };
         install.Click+=async delegate {
-            busy=true;install.Enabled=play.Enabled=false;
-            try { await Task.Run(()=>client.Install(client.Latest(null)));client.Shortcut(); }
+            busy=true;install.Enabled=play.Enabled=browse.Enabled=false;
+            var installing=client;
+            try { await Task.Run(()=>installing.Install(installing.Latest(null)));installing.Shortcut(); }
             catch(Exception e){MessageBox.Show(this,e.Message,"下载提示",MessageBoxButtons.OK,MessageBoxIcon.Information);}
-            finally {busy=false;install.Enabled=true;play.Enabled=client.Installed()!=null;}
+            finally {busy=false;install.Enabled=browse.Enabled=true;play.Enabled=client.Installed()!=null;}
         };
         play.Click+=delegate{try{client.Play();}catch(Exception e){MessageBox.Show(this,e.Message);}};
         saves.Click+=delegate{Directory.CreateDirectory(PocketClient.SaveDirectory);Process.Start("explorer.exe",PocketClient.SaveDirectory);};
         FormClosing+=delegate(object sender,FormClosingEventArgs e){if(busy){e.Cancel=true;status.Text="正在下载或安装，请等待完成后再关闭。";}};
+    }
+    void ConnectClient() {
+        status.Text=client.Installed()==null?"尚未安装，点击下载。":"已安装 "+client.Installed().version;
+        play.Enabled=client.Installed()!=null;progress.Value=0;
+        client.Report=(text,value)=> { if(IsDisposed)return;BeginInvoke(new Action(()=>{status.Text=text;progress.Value=Math.Max(0,Math.Min(100,value));})); };
+    }
+    public void SelectInstallRoot(string root) {
+        if(busy)throw new InvalidOperationException("正在下载或安装，完成后才能更改目录。");
+        var selected=new PocketClient(root);
+        PocketInstallLocation.Remember(settingsFile,selected.Root);
+        client=selected;location.Text=client.Root;ConnectClient();
     }
 }
 
@@ -203,7 +251,7 @@ internal static class Downloader {
     static string Option(string[] args,string key) {int i=Array.IndexOf(args,key);return i>=0 && i+1<args.Length?args[i+1]:null;}
     [STAThread] static int Main(string[] args) {
         ServicePointManager.SecurityProtocol=(SecurityProtocolType)3072;
-        string root=Option(args,"--root")??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"PocketPCClient");
+        string root=Option(args,"--root")??PocketInstallLocation.Read(PocketInstallLocation.SettingsFile,PocketInstallLocation.DefaultRoot);
         string result=Option(args,"--result");
         try {
             var client=new PocketClient(root);
