@@ -34,9 +34,10 @@ from guide import Guide, GuideTarget
 from story_motion import StoryMotion, FACES
 from scene_ui import SceneUI
 from npc_motion import NpcMotion
+from exit_markers import ExitMarkers
 
 
-class NativeGame(OriginalPages, ActivityUI, Preview):
+class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
     TARGET_FPS = 60
     WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
     DYNAMIC_SCENERY = True
@@ -108,7 +109,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.77（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.78（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -173,7 +174,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 continue
             if self.map.remove_obstacle(tx, ty) is not None:
                 changed = True
-        if changed:
+        if changed and not self.DYNAMIC_SCENERY:
             self.background = self.map.render(self.SCALE, include_objects=False)
 
     def break_obstacle(self, obs_type, tx, ty):
@@ -184,22 +185,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.map.remove_obstacle(tx, ty) is None:
             return False
         self.state.removed_obstacles.append([int(self.map_id), int(tx), int(ty), int(obs_type)])
-        self.background = self.map.render(self.SCALE, include_objects=False)
+        if not self.DYNAMIC_SCENERY:
+            self.background = self.map.render(self.SCALE, include_objects=False)
         self.obstacle_fx = {'x': int(tx)*self.map.tw+self.map.tw/2,
                             'y': int(ty)*self.map.th+self.map.th/2,
                             'type': int(obs_type), 'age': 0}
         TaskProgress(self.state).update('obstacle', int(obs_type))
-        if self.pending_wait and self.pending_wait.kind == 'wait':
-            params = self.pending_wait.data.get('parameters', {})
-            if int(params.get('type', 0) or 0) == 3:
-                self.pending_wait = None
-                self.wait_until = 0
-                self.event_issue = ''
-                self.runtime.resume()
-                # Do not run the next event step inside move_to: a following
-                # toplace/goto may replace self.map while the caller is still
-                # finishing this movement.
-                self.root.after(0, self.drive)
         return True
 
     def move_to(self, x, y):
@@ -1177,7 +1168,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.77')
+        win.title('任务指引 · 原生 0.2.78')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1238,7 +1229,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         if self.pending_wait:
             request = self.pending_wait
             wait_type = int(request.data.get('parameters', {}).get('type', 0) or 0)
-            if wait_type == 3 or (wait_type == 2 and not self.ui_open):
+            if wait_type == 2 and not self.ui_open:
                 self.pending_wait = None
                 if self.runtime.pending is request:
                     self.runtime.resume()
@@ -1397,7 +1388,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             elif kind == 'mainuivisible':
                 self.main_ui_visible = bool(parameter.get('visible', 1))
             elif kind == 'addteachnode':
-                self.teach_nodes.append(parameter)
+                self.teach_nodes = []
             elif kind == 'closeui':
                 if getattr(self, 'story_window', None) and self.story_window.winfo_exists():
                     self.story_window.destroy()
@@ -1416,13 +1407,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 self.finish_battle()
             return
         if self.display_request and self.display_request.kind == 'button':
-            # Original tutorial buttons wait for the highlighted node itself;
-            # a click on empty ground must not dismiss both hide/restore tips.
-            key = self.display_request.data.get('nodekey', '')
-            rect = self.scene_ui.hits.get(key)
-            if self.main_ui_visible and not self.ui_open and rect and rect[0] <= event.x <= rect[2] and rect[1] <= event.y <= rect[3]:
-                self.scene_ui.action(key)
-                self.advance_button_tip()
+            self.advance_button_tip()  # Compatibility with an already displayed old lesson.
             return
         if not self.runtime.running and not self.ui_open and self.main_ui_visible:
             if self.scene_ui.click(event.x, event.y):
@@ -1792,42 +1777,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 if request.kind == 'reward':
                     self.show_reward('获得奖励', request.data['items'])
                     return
-                if request.kind in ['button', 'tapscreen']:
-                    if request.kind == 'button' and self._restore_hatch_tutorial_page(request):
-                        continue
-                    if request.event == 'pEvent102001.json' and not self.battle and self.runtime.battle_result:
-                        # This script targets the BattleMainUI that just ended.
-                        # Its absent controls must not block the capture follow-up.
-                        self.runtime.resume()
-                        continue
-                    text = request.data.get('text') or '\n'.join(request.data.get('texts', []))
-                    if self.battle:
-                        self.runtime.resume()
-                        continue
-                    if request.kind == 'button':
-                        key = request.data.get('nodekey', '')
-                        if key == 'mainUp_Button':
-                            # MainUI mainUp now performs task navigation, not
-                            # the obsolete shop-list tutorial.
-                            self.runtime.resume()
-                            continue
-                        self.scene_ui.render(Image.new('RGBA', (self.WIDTH, self.HEIGHT)))
-                        target = self._button_target(key)
-                        if not target:
-                            # Never silently skip an original tutorial step.
-                            # Keep the request visible and explain which node
-                            # is missing; a later page refresh can resolve it.
-                            self.display_request = request
-                            self.dialogue = None
-                            self.event_issue = f'等待原版引导按钮：{key or "(未命名节点)"}。'
-                            return
-                        if self.ui_open and target not in self.scene_ui.hits:
-                            self.ui_tutorial_active = True
-                        self.display_request = request
-                        self.dialogue = None
-                        return
+                if request.kind == 'button':
+                    self.runtime.resume()
+                    continue
+                if request.kind == 'tapscreen':
                     self.display_request = request
-                    self.dialogue = text or '点击继续'
+                    self.dialogue = request.data.get('text') or '点击继续'
                     return
                 if request.kind == 'fight':
                     parameters = request.data.get('parameters', {})
@@ -1850,14 +1805,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     return
                 if request.kind == 'openui':
                     self.open_ui(request)
-                    # Native openui starts the page, then a following button
-                    # tutorial operates inside it; waiting for close here stalls
-                    # the entire hatch lesson before its first instruction.
-                    following = self.runtime.sequence[self.runtime.index+1:self.runtime.index+2]
-                    if following and following[0]['type'] == 'button':
-                        self.runtime.resume()
-                        self.ui_tutorial_active = True
-                        continue
+                    # Ordinary pages wait for the player to close them.
                     # Some original map scenes talk/scroll while the map is
                     # open, then explicitly close it with auto=1.
                     for step in self.runtime.sequence[self.runtime.index+1:]:
@@ -2137,6 +2085,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             frame = super().make_frame()
         finally:
             self.dialogue = original_dialogue
+        self.draw_exit_markers(frame)
         if getattr(self, 'screen_black', False):
             frame.paste('#101010', (0, 0, self.WIDTH, self.HEIGHT))
         elif self.main_ui_visible:
@@ -2262,6 +2211,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 if key in state.presentation:
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
+            self.teach_nodes = []
+            self.state.trial_ride = 0
+            self.main_ui_visible = True
             self.player_sprite = state.sprite_id
             self.repair_starter_save_position()
             self.repair_legacy_player_visibility()

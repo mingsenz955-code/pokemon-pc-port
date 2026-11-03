@@ -485,7 +485,13 @@ class Guide:
         occupied = self.occupied_cells()
         mounts = Mounts(app.state)
         def blocked(tx, ty):
-            return (tx, ty) in occupied or world.blocked((tx+.5)*world.tw, (ty+.5)*world.th, mounts)
+            x, y = (tx+.5)*world.tw, (ty+.5)*world.th
+            if (tx, ty) in occupied:
+                return True
+            obstacle = world.obstacle_at(x, y) if hasattr(world, 'obstacle_at') else 0
+            if obstacle and mounts.obstacle_ability(obstacle):
+                return False
+            return world.blocked(x, y, mounts)
         start = (app.x, app.y)
         if self.target.kind == 'npc':
             path = walk_path(world, start, (self.target.x, self.target.y),

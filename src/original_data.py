@@ -93,14 +93,24 @@ class OriginalData:
     @lru_cache(maxsize=128)
     def _village_setup_frame(self, filename, scale):
         from spine_renderer import render_setup
-        path = self.assets/'Sprite/Spine'/(filename+'.json')
-        if not path.exists():
+        path = self.spine_path(filename)
+        if path is None:
             return None
         im = render_setup(str(path))
         result = im.resize((max(1, round(im.width*scale)), max(1, round(im.height*scale))), Image.Resampling.LANCZOS)
         if 'origin' in im.info:
             result.info['origin'] = tuple(v*scale for v in im.info['origin'])
         return result
+
+    @lru_cache(maxsize=256)
+    def spine_path(self, filename):
+        # Native FileUtils searches both resource directories. Lasileijia is
+        # shipped under Sprite itself, unlike most original pet skeletons.
+        for folder in ('Sprite/Spine', 'Sprite'):
+            path = self.assets/folder/(str(filename)+'.json')
+            if path.is_file():
+                return path
+        return None
 
     @lru_cache(maxsize=512)
     def _village_right_frame(self, filename, clip, frame):
@@ -119,8 +129,8 @@ class OriginalData:
         row = self.tables['Pet'].get(str(species))
         if not row:
             return None
-        path = self.assets/'Sprite/Spine'/(str(row['filePath'])+'.json')
-        if not path.exists():
+        path = self.spine_path(row['filePath'])
+        if path is None:
             return None
         from spine_renderer import render_setup
         image = render_setup(str(path)).copy()
@@ -135,8 +145,8 @@ class OriginalData:
     @lru_cache(maxsize=128)
     def pet_frame(self, species, animation='stand', frame=0, loop=True, fps=12, limit=550):
         row = self.tables['Pet'][str(species)]
-        path = self.assets/'Sprite/Spine'/(str(row['filePath'])+'.json')
-        if not path.exists():
+        path = self.spine_path(row['filePath'])
+        if path is None:
             return None
         from spine_renderer import render_pose
         image = render_pose(str(path), animation, int(frame), loop, limit=limit, fps=fps).copy()
@@ -154,7 +164,9 @@ class OriginalData:
     def pet_clip_duration(self, species, animation):
         from spine_renderer import skeleton, animation_duration
         row = self.tables['Pet'][str(species)]
-        path = self.assets/'Sprite/Spine'/(str(row['filePath'])+'.json')
+        path = self.spine_path(row['filePath'])
+        if path is None:
+            return 0
         return animation_duration(skeleton(str(path)).get('animations', {}).get(animation, {}))
 
     @lru_cache(maxsize=64)

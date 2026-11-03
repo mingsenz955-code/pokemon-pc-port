@@ -1,5 +1,6 @@
-"""obsType tree/rock collision, mount ability, map rendering and trial wait resume."""
+"""obsType tree/rock collision, mount ability, map rendering and save persistence."""
 import json
+import os
 import sys
 import tempfile
 import tkinter as tk
@@ -14,6 +15,8 @@ from original_data import OriginalData  # noqa: E402
 from pc_game import NativeGame  # noqa: E402
 from task_progress import TaskProgress  # noqa: E402
 
+save_folder = tempfile.TemporaryDirectory(prefix='pocket-obstacle-check-')
+os.environ['POCKET_NATIVE_SAVE_DIR'] = save_folder.name
 data = OriginalData(ROOT/'original-1.20.4')
 tables = data.tables
 map202 = data.load_map(202)
@@ -55,12 +58,14 @@ try:
     app.state = state
     app.load_map(202, (tx-1)*map202.tw+32, ty*map202.th+32)
     assert app.map.terrain_at(tx*64+32, ty*64+32) == 2
+    old_background = app.background
     old_x = app.x
     app.move_to(tx*64+32, ty*64+32)
     assert app.x == tx*64+32 and app.y == ty*64+32
     assert app.map.terrain_at(tx*64+32, ty*64+32) == 0
     assert [int(v) for v in state.removed_obstacles[-1][:3]] == [202, tx, ty]
     assert app.obstacle_fx['type'] == 2
+    assert app.background is old_background
     app.make_frame()
     assert state.task_counts['main:132'] == [1]
     # Without the matching mount the tile stays solid.
@@ -77,29 +82,7 @@ finally:
         root.after_cancel(job)
     root.destroy()
 
-# A pending trial-ride wait is resumed only after the obstacle is broken.
-wait_calls = []
-state2 = GameState(tables, seed=13)
-state2.rides, state2.ride = ['500005'], 500005
-root = tk.Tk()
-root.withdraw()
-try:
-    app = NativeGame(root, data)
-    app.state = state2
-    app.load_map(202)
-    class Pending:
-        kind = 'wait'
-        data = {'parameters': {'type': 3}}
-    app.pending_wait = Pending()
-    app.runtime.resume = lambda result=None: wait_calls.append(result)
-    t = rock_tiles[3]
-    assert app.break_obstacle(2, *t)
-    assert app.pending_wait is None
-    assert wait_calls == [None]
-finally:
-    for job in root.tk.call('after', 'info'):
-        root.after_cancel(job)
-    root.destroy()
+# Teaching wait removal and old saves are covered by check_mount_tutorial.
 
 # Save/load and a fresh map must reapply removed obstacle tiles.
 with tempfile.TemporaryDirectory() as folder:

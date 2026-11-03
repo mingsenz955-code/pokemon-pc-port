@@ -10,5 +10,14 @@ REMOVED_TUTORIAL_STEPS = {
 }
 
 def removed_tutorial_step(event, step):
+    kind = step.get('type')
+    # PC edition has no forced lessons. Applying this in EventRuntime.next
+    # also releases old saves whose pending request is a removed lesson.
+    if kind in ('button', 'addteachnode', 'trialride'):
+        return True
+    if kind == 'wait' and int(step.get('parameters', {}).get('type', 0)) == 3:
+        return True
+    if kind == 'mainuivisible':
+        return True
     return (int(step.get('id', -1)) in REMOVED_TUTORIAL_STEPS.get(event, ()) or
             step.get('type') == 'button' and step.get('nodekey') in REMOVED_SCENE_BUTTONS)

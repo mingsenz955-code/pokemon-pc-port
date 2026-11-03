@@ -1027,6 +1027,9 @@ class ActivityUI:
         info.set('初始伙伴 '+self.data.tables['Pet'][pet.species]['name'])
 
     def _pet_shop_body(self, body, info, key):
+        if str(key) in self.data.tables['Ride']:
+            self._ride_sale_page(body, info, str(key))
+            return
         body.pack_forget()
         row = self.data.tables['PetShop'][str(key)]
         name = self.data.tables['Pet'][str(row['petId'])]['name']

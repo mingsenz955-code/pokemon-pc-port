@@ -158,8 +158,8 @@ class EventRuntime:
 
     def next(self):
         # Apply before returning a restored pending request and before voiceover.
-        # Only explicitly removed feature tutorials are skipped; task, reward and
-        # ordinary NPC dialogue commands still execute in their original order.
+        # The PC edition disables forced lessons, including old pending saves.
+        # Task, reward and ordinary NPC dialogue commands retain their order.
         while self.running and self.index < len(self.sequence) and removed_tutorial_step(self.file, self.sequence[self.index]):
             self.pending = None
             self.index += 1
