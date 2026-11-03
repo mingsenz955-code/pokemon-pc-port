@@ -162,9 +162,9 @@ class HatchPages:
         page.publish()
 
     def _hatch_do(self, info, index, use_money):
-        request = self.display_request
+        request = self.runtime.pending
         free_tutorial = bool(request and request.event == 'pEvent5905001.json'
-            and request.step == 12 and request.data.get('nodekey') == 'hatch_Button'
+            and request.kind == 'openui' and request.data.get('parameters', {}).get('uiid') == 5
             and self.state.activities.get('eggs', {}).get(str(index), {}).get('item') == '250001'
             and not self.state.activities.get('hatch_tutorial_free_used'))
         try:

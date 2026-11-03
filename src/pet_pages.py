@@ -27,6 +27,37 @@ def text_box(page, rect, value, font, offset=0):
 
 
 class PetPages:
+    def _ride_sale_page(self, body, info, key):
+        from original_pages import Page
+        from pet_factory import generate_pet
+        body.pack_forget()
+        row = self.data.tables['Ride'][key]
+        store = self.data.tables['Store'][row['storeId']]
+        # Preview generation must not consume the player's saved RNG stream.
+        import random
+        pet = generate_pet(self.data.tables, random.Random(0), row['petId'], 1)
+        def paint():
+            text, visible, resources = self._pet_base_fields(pet)
+            owned = int(key) in [int(k) for k in self.state.rides]
+            text.update({'costTip_Text': '已获得' if owned else store['des2'],
+                         'cost_BitmapFontLabel': store['costCount']})
+            visible.update({'buy_Button': not owned, 'number_BitmapFontLabel': False})
+            page = Page(self, 'BuyPetUI', text=text, visible=visible, resources=resources)
+            self._pet_base_art(page, pet)
+            page.actions.update({'buy_Button': buy, 'close_Button': self.close_ui})
+            page.publish()
+        def buy():
+            try:
+                with self.state.transaction():
+                    if int(key) not in [int(k) for k in self.state.rides]:
+                        self.state.consume([store['costMoneyType']], [int(store['costCount'])])
+                        self.state.rides.append(int(key))
+            except ValueError as error:
+                self._page_tip(str(error), paint)
+                return
+            self.close_ui('yes')
+        paint()
+
     def _trial_pet_page(self, body, info):
         from original_pages import Page
         body.pack_forget()
