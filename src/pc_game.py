@@ -119,6 +119,8 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
         self.save_path = Path(os.environ.get('POCKET_NATIVE_SAVE_DIR', str(default_save)))/'slot1.json'
         from game_diagnostics import install_callback_log
         install_callback_log(self)
+        self.autosave_job = root.after(30000, self.autosave)
+        root.protocol('WM_DELETE_WINDOW', self.close_game)
         if self.save_path.exists() and self.restore():
             return
         self.load_map(7401, 17*64+32, (30-14)*64)
@@ -2146,6 +2148,19 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
         self.open_ui(Request('openui', 'save-button', 0,
                             {'parameters': {'uiid': 14}}))
 
+    def autosave(self):
+        self.autosave_job = None
+        if not self.booting and not self.battle and not self.runtime_error:
+            self.save()
+        self.autosave_job = self.root.after(30000, self.autosave)
+
+    def close_game(self):
+        # Battle snapshots are not implemented: keep the pre-battle save.
+        if not self.battle and not self.save():
+            self.game_tip(self.event_issue)
+            return
+        self.root.destroy()
+
     def save(self):
         if self.booting:
             return False
@@ -2155,6 +2170,7 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
         try:
             self.state.map_id, self.state.x, self.state.y = self.map_id, self.x, self.y
             self.state.presentation = {
+                **self.state.presentation,
                 'face': self.face, 'player_visible': self.player_visible,
                 'player_visibility_map': self.map_id,
                 'sprite_collision_version': 2,

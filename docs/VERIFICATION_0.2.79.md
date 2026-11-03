@@ -19,8 +19,12 @@ terrain_at 现在只读原 collideLayer；blocked 独立检查 obsType、SpriteT
 ## 检查
 
 - check_ride_obstacle_collision：8项通过。真实岩石进入拒绝、持有乘龙不自动骑石、真正渡水保留、正确坐骑破坏一次、飞行不破坏、五坐骑×两种障碍、点击绕路、旧重叠存档恢复，以及所有原地图10000多个障碍均不能由乘龙放行。
-- check_cross_map_npc_visibility：4项通过。原浅橙道馆对话→莎莉转移→深蓝道馆剧情→主线24选择具体鲤鱼王→下一主线；旧错误地图键恢复及再次存读档；后续隐藏/重显和宝箱重号隔离；全脚本1072条NPC显隐指令均按全局状态执行。
+- check_cross_map_npc_visibility：6项通过。原浅橙道馆对话→莎莉转移→深蓝道馆剧情→主线24选择具体鲤鱼王→下一主线；旧错误地图键恢复及再次存读档；后续隐藏/重显和宝箱重号隔离；全脚本1072条NPC显隐指令均按全局状态执行。
 - 全431图建立NPC目录；1072条指令中18个引用在现有地图资源没有匹配实体（包括旧圣兽使者支线和7401021），输出审计清单，不虚构角色位置。这个静态资源缺口不等于所有后期剧情已完整通关。
 - check_mounts 10、check_click_navigation 12、check_story_motion 15、check_sunshine_quests 10、check_teleport_exit 3、check_purchase_mount_render 7项通过；check_obstacles通过。所有游戏操作在隔离存档中执行，不修改玩家真实进度。
 
 原版ARM依据保存在本地 outputs/verification/mount-obstacle-native.txt、mount-is-collide-native.txt、cross-map-visibility-native.txt。新增检查与回归日志位于 outputs/verification。此版本修复上述通用逻辑，不宣称全游戏全部分支已逐一通关。
+
+## 进度落盘
+
+发现实际磁盘存档比截图任务落后，旧宿主未实现周期保存和主窗口退出保存。现非战斗且无运行错误时每30秒调用既有原子保存，保留 slot1.json.bak；正常关闭非战斗窗口也保存，失败时留在窗口报告错误。战斗不写入不完整快照，沿用战斗前存档。保存时保留状态迁移标记，避免显隐迁移重复记录。新增自动保存、正常退出、战斗跳过和迁移标记跨次存读档检查均通过。

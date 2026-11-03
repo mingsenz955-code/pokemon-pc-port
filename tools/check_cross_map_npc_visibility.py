@@ -68,6 +68,32 @@ class CrossMapNpcChecks(unittest.TestCase):
         self.assertTrue(a.save());self.assertTrue(a.restore())
         self.assertTrue(any(row[0]=='590103' for row in a.actors()))
 
+    def test_visibility_migration_marker_survives_save(self):
+        a=self.app;a.state.visible={'101:2:10109':False,'109:2:10109':True}
+        a.state.presentation.pop('global_npc_visibility_version',None)
+        self.assertTrue(a.save());self.assertTrue(a.restore())
+        self.assertEqual(a.state.presentation['global_npc_visibility_version'],1)
+        before=len([r for r in a.state.audit if r.get('repair')=='global-npc-visibility'])
+        self.assertTrue(a.save());self.assertTrue(a.restore())
+        after=len([r for r in a.state.audit if r.get('repair')=='global-npc-visibility'])
+        self.assertEqual(before,after)
+
+    def test_autosave_and_normal_close_preserve_progress_but_skip_battle(self):
+        from unittest.mock import patch
+        from game_state import GameState
+        a=self.app;a.state.main_task,a.state.main_state=24,4
+        a.root.after_cancel(a.autosave_job);a.autosave()
+        loaded=GameState.load(a.data.tables,a.save_path)
+        self.assertEqual(loaded.main_task,24)
+        before=a.save_path.read_bytes();a.battle=object()
+        a.root.after_cancel(a.autosave_job);a.autosave()
+        self.assertEqual(a.save_path.read_bytes(),before)
+        a.battle=None;a.state.main_task=25
+        with patch.object(a.root,'destroy') as destroyed:
+            a.close_game();destroyed.assert_called_once()
+        self.assertEqual(GameState.load(a.data.tables,a.save_path).main_task,25)
+        self.assertTrue(a.save_path.with_suffix('.json.bak').exists())
+
     def test_explicit_later_hide_and_chest_same_id_remain_independent(self):
         a=self.app;a.load_map(6201)
         for visible in (1,0,1):
