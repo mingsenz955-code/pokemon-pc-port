@@ -113,8 +113,7 @@ class PageFlows(unittest.TestCase):
         self.open(5)
         self.click(next(k for k in app.ui_buttons if k.startswith('hatch_0/') and k.endswith('/putIn_Button')))
         self.assertIn('bag_row_1', app.ui_actions)
-        app.ui_actions['bag_row_1']()
-        app.ui_actions['use_Button']()
+        app.ui_actions['bag_row_1']()  # Native hatch chooser puts the clicked egg directly.
         self.assertEqual(keys[1], app.state.activities['eggs']['0']['item'])
         self.assertEqual(1, app.state.count(keys[0]))
         self.assertEqual(0, app.state.count(keys[1]))

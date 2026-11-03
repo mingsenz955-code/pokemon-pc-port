@@ -18,6 +18,7 @@ from continuous_login import ContinuousLogin
 from pet_pages import PetPages
 from hatch_pages import HatchPages
 from service_pages import ServicePages
+from task_handover import TaskHandover
 from merge_pages import MergePages
 
 
@@ -166,11 +167,13 @@ class Page:
         self.display_frame = frame
         app.ui_base_layer = frame
         app.ui_art_label.set_layer(frame)
+        if getattr(app, 'ui_story_active', False):
+            app.paint_modal_story()
         delay = max(3, round(1000/60-(time.perf_counter()-started)*1000))
         app.ui_effect_job = app.ui_window.after(delay, self.animate)
 
 
-class OriginalPages(PetPages, HatchPages, ServicePages, MergePages):
+class OriginalPages(PetPages, HatchPages, ServicePages, MergePages, TaskHandover):
     def _choice_page(self, message, yes, no):
         previous = self.ui_base_layer.copy()
         page = Page(self, 'SecondConfirmUI', text={'tip_Text': message})
@@ -618,6 +621,17 @@ class OriginalPages(PetPages, HatchPages, ServicePages, MergePages):
             page.publish()
             self.page_drag = drag
             self._page_wheel(wheel)
+
+        def focus(mid):
+            nonlocal maps, boxes
+            region[0] = str(region_for(self.data, mid))
+            maps, boxes = region_image(self, region[0])
+            bounds = boxes.get(parent_map(self.data, mid))
+            if bounds:
+                offset[:] = [max(0, min(max(0, maps.width-672), (bounds[0]+bounds[2])/2-336)),
+                             max(0, min(max(0, maps.height-353), (bounds[1]+bounds[3])/2-176))]
+            paint()
+        self.area_map_focus = focus
 
         def drag(dx, dy):
             offset[0] = max(0, min(max(0, maps.width-672), offset[0]-dx))

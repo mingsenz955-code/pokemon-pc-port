@@ -83,6 +83,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.ui_info = None
         self.ui_parameters = {}
         self.ui_tutorial_active = False
+        self.ui_story_active = False
         self.accept_task_window = None
         self.accept_task_buttons = {}
         self.arena_summary = None
@@ -107,7 +108,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.76（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.77（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -115,6 +116,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 child.pack_forget()
         default_save = Path(os.environ.get('LOCALAPPDATA', str(Path.home())))/'PocketNativePC'
         self.save_path = Path(os.environ.get('POCKET_NATIVE_SAVE_DIR', str(default_save)))/'slot1.json'
+        from game_diagnostics import install_callback_log
+        install_callback_log(self)
         if self.save_path.exists() and self.restore():
             return
         self.load_map(7401, 17*64+32, (30-14)*64)
@@ -553,6 +556,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     }
 
     def open_ui(self, request):
+        self.ui_story_active = False
+        self.area_map_focus = None
         self.purchase_notice = None
         notice_job = getattr(self, 'purchase_notice_job', None)
         if notice_job:
@@ -846,6 +851,11 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
     def on_ui_click(self, event):
         if not self.ui_window or not self.ui_window.winfo_exists():
             return
+        if (self.ui_story_active and self.display_request
+                and self.display_request.kind in ('talk', 'aside', 'airtalk', 'tapscreen')):
+            self.interact()
+            self.paint_modal_story()
+            return
         hit = self.ui_hit_at(event.x, event.y)
         if not hit:
             return
@@ -901,6 +911,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.on_ui_click(event)
 
     def _paint_hover(self):
+        if self.ui_story_active:
+            self.paint_modal_story()
+            return
         if not self.ui_base_layer or not hasattr(self, 'ui_art_label'):
             return
         if not self.ui_art_label.winfo_exists():
@@ -1056,6 +1069,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
 
 
     def close_ui(self, result=None):
+        self.ui_story_active = False
         lottery = getattr(self, 'lottery_animation', None)
         if lottery is not None:
             lottery.close()
@@ -1163,7 +1177,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.76')
+        win.title('任务指引 · 原生 0.2.77')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1369,6 +1383,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             self.request_map(parameter['exit'])
         elif kind == 'areamapmove':
             self.state.world_focus = int(parameter['map'])
+            if self.ui_story_active and self.area_map_focus:
+                self.area_map_focus(self.state.world_focus)
         elif kind == 'trialride':
             self.state.trial_ride = int(parameter['rideid'])
         elif kind == 'save':
@@ -1746,7 +1762,8 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             return
         if self.pending_wait:
             return
-        if self.ui_open and not getattr(self, 'ui_tutorial_active', False):
+        if self.ui_open and not (getattr(self, 'ui_tutorial_active', False)
+                                 or getattr(self, 'ui_story_active', False)):
             # A tutorial page is allowed to advance to its next button/wait
             # request while the page stays open. Other story commands wait
             # until close_ui resumes the original openui request.
@@ -1841,12 +1858,29 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                         self.runtime.resume()
                         self.ui_tutorial_active = True
                         continue
+                    # Some original map scenes talk/scroll while the map is
+                    # open, then explicitly close it with auto=1.
+                    for step in self.runtime.sequence[self.runtime.index+1:]:
+                        if step['type'] == 'openui':
+                            break
+                        if step['type'] == 'closeui':
+                            if step.get('parameters', {}).get('auto') == 1:
+                                self.ui_story_active = True
+                                self.runtime.resume()
+                                break
+                            break
+                    if self.ui_story_active:
+                        continue
                     return
                 if request.kind == 'closeui':
                     self.close_ui()
                     return
                 if request.kind == 'accepttask':
                     self.accept_task_ui(request)
+                    return
+                if request.kind == 'costtaskitem':
+                    if self.begin_task_handover(request):
+                        continue
                     return
                 if request.kind == 'wait':
                     parameters = request.data.get('parameters', {})
@@ -1876,6 +1910,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             except (PendingMechanic, NotImplementedError, ValueError, KeyError) as error:
                 self.runtime_error = f'{self.runtime.file}：{error}'
                 self.state.audit.append({'event': self.runtime.file, 'index': self.runtime.index, 'pending': str(error)})
+                recorder = getattr(self, 'record_callback_error', None)
+                if recorder:
+                    recorder(type(error), error, error.__traceback__)
                 return
 
     def battle_action_complete(self):
@@ -1898,9 +1935,12 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
         self._processed_area_tile = tile
         x, y = (tile[1]+.5)*self.map.tw, (tile[2]+.5)*self.map.th
         self.inside_areas = set()
-        for obj in self.map.objects:
-            if obj['group'] != 'eventLayer':
-                continue
+        from area_order import native_area_order
+        stamp = (id(self.map), id(self.map.objects), len(self.map.objects))
+        if getattr(self, '_area_order_stamp', None) != stamp:
+            self._area_order_stamp = stamp
+            self._ordered_areas = native_area_order(self.map.objects)
+        for obj in self._ordered_areas:
             left, top = float(obj.get('x', 0)), float(obj.get('y', 0))
             width, height = float(obj.get('width', 64)), float(obj.get('height', 64))
             if not (left <= x < left+width and top <= y < top+height):
@@ -1908,12 +1948,23 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             area = int(obj['name'])
             self.inside_areas = {str(area)}
             if not self.runtime.running:
-                self.runtime.notify('toarea', area=area)
+                started = self.runtime.notify('toarea', area=area)
+                task = self.state.tables['MainTask'].get(str(self.state.main_task), {})
+                if (not started and self.state.main_state == 4 and int(task.get('conditionType', 0)) == 1
+                        and area in numbers(task.get('conditions', '0'))):
+                    # An old save may have counted this area while its plot
+                    # was masked. Retry the original pre-count trigger here,
+                    # preserving actual ready state and all task counters.
+                    self.state.main_state = 3
+                    try:
+                        self.runtime.notify('toarea', area=area)
+                    finally:
+                        self.state.main_state = 4
             self.advance_main_condition('area', area)
             npc_id = obj.get('props', {}).get('npcId')
             if npc_id and not self.runtime.running and not self.ui_open:
                 self.interact(str(npc_id))
-            # getAreaSpriteAtTileCoord returns the first matching area.
+            # getAreaSpriteAtTileCoord returns one matching native area.
             return
 
     def tick(self):
@@ -1935,6 +1986,10 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
             # Do not redraw the entire map behind that immutable scene.
             self.last_time = now
             self.state.activities['play_seconds'] = float(self.state.activities.get('play_seconds', 0))+elapsed
+            if self.ui_story_active:
+                self.advance_camera(elapsed)
+                self.drive()
+                self.paint_modal_story()
             self.root.after(33, self.tick)
             return
         if not self.booting:
@@ -1948,6 +2003,9 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                         self.npc_motion.advance(elapsed)
                 except (PendingMechanic, ValueError, KeyError) as error:
                     self.runtime_error = f'{self.runtime.file}：{error}'
+                    recorder = getattr(self, 'record_callback_error', None)
+                    if recorder:
+                        recorder(type(error), error, error.__traceback__)
             self.state.activities['play_seconds'] = (
                 float(self.state.activities.get('play_seconds', 0))+elapsed)
         if self.battle and self.battle_ui:
@@ -1997,6 +2055,25 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                 guide_note += f'（{self.guide.message}）'
         self.status.set(self.runtime_error or ('方向键/WASD移动 · 空格/E对话 · F5保存 · F9读取 · G指引'
                                                ' | 原剧情状态机、战斗核心与原版战斗UI已接入' + guide_note))
+
+    def paint_modal_story(self):
+        if not self.ui_story_active or not self.ui_open or not self.original_page:
+            return
+        page = self.original_page
+        frame = getattr(page, 'display_frame', page.layer).copy()
+        if self.dialogue:
+            name, content = (self.dialogue.split(':', 1) if ':' in self.dialogue else ('', self.dialogue))
+            side = 'left' if name == self.state.player_name else 'right'
+            portrait = next((row.get('icon') for row in self.data.tables['Npc'].values()
+                             if row.get('name') == name), None)
+            if portrait:
+                art = self.data.image('res/UI/HeadIcon/'+portrait)
+                frame.alpha_composite(art, (0 if side == 'left' else 800-art.width, 480-art.height))
+            frame.alpha_composite(self.cocos_ui.render('DialogUI', (800, 480),
+                text={side+'Name_Text': name, side+'Dialog_Text': content},
+                visible={'leftDialog_Panel': side == 'left', 'rightDialog_Panel': side == 'right'}))
+        self.ui_base_layer = frame
+        self.ui_art_label.set_layer(frame)
 
     def _decorate_ui_tutorial(self, frame):
         request = self.display_request
@@ -2315,6 +2392,7 @@ class NativeGame(OriginalPages, ActivityUI, Preview):
                     queue.append(neighbor)
 
     def close_transient_ui(self):
+        self.ui_story_active = False
         lottery = getattr(self, 'lottery_animation', None)
         if lottery is not None:
             lottery.close()

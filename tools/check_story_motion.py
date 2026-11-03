@@ -167,12 +167,14 @@ class StoryChecks(unittest.TestCase):
         self.assertEqual(4, app.state.main_state)
         self.assertEqual([], app.runtime.queue)
 
-    def test_overlapping_areas_use_first_original_object(self):
+    def test_overlapping_areas_use_native_hash_node_order(self):
         app = host(move())
         first = {'group': 'eventLayer', 'name': '10101', 'x': 64, 'y': 64, 'width': 64, 'height': 64}
         app.map.objects = [first, dict(first, name='10199')]
+        app.state.tables = copy.deepcopy(DATA.tables)
+        app.state.tables['MainTask']['1']['conditions'] = '10199'
         app.process_player_areas()
-        self.assertEqual({'10101'}, app.inside_areas)
+        self.assertEqual({'10199'}, app.inside_areas)
         self.assertEqual(4, app.state.main_state)
 
     def test_save_restores_remaining_segment_and_callback(self):
