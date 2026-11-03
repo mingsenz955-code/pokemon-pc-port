@@ -75,31 +75,8 @@ except ValueError:
 else:
     raise AssertionError('active pets must not fuse')
 
-# The original Cocos heTi_Button is a real click target in the Tk host.
-root = tk.Tk()
-app = NativeGame(root, data)
-app.runtime.sequence, app.runtime.file, app.runtime.pending = [], '', None
-app.display_request, app.dialogue = None, None
-aa = app.state.add_generated_pet('100028')
-bb = app.state.add_generated_pet('100129')
-app.state.grant('700002', 12)
-app.state.grant('240018', 4)
-app.open_ui(Request('openui', 'fusion-ui', 1, {'parameters': {'uiid': 34}}))
-button = app.ui_buttons['Layer/root_Panel/heTi_Button']
-app.on_ui_click(types.SimpleNamespace(x=(button[0]+button[2])/2, y=(button[1]+button[3])/2))
-assert '合体成功' in app.ui_info.get(), app.ui_info.get()
-assert [p.species for p in app.state.bank] == ['100034'], app.state.bank
-# The same original layout also exposes a nested close button.
-close = next(rect for name, rect in app.ui_buttons.items() if name.endswith('/close_Button'))
-app.on_ui_click(types.SimpleNamespace(x=(close[0]+close[2])/2, y=(close[1]+close[3])/2))
-assert not app.ui_open and app.ui_window is None
-root.destroy()
+# Native UI input/confirmation regression now lives in check_fusion_page.py,
+# which isolates saves and never opens the player's real save.
 print({'fusion_species': child.species, 'level': child.level,
        'variation': child.variation, 'growth': child.growth,
-       'ordered_recipe': 'passed', 'ui_button': 'passed'})
-import json
-(ROOT/'outputs/verification/fusion.json').write_text(json.dumps({
-    'fusion_species': child.species, 'level': child.level,
-    'variation': child.variation, 'growth': child.growth,
-    'ordered_recipe': True, 'ui_button': True,
-}, ensure_ascii=False, indent=2), encoding='utf-8')
+       'ordered_recipe': 'passed', 'rollback': 'passed'})
