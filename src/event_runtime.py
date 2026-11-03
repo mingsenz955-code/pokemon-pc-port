@@ -28,7 +28,7 @@ class EventRuntime:
     PRESENTATION = {'toplace', 'face', 'toface', 'spritevisible', 'tempnpc', 'screenmove',
                     'screen', 'screenclose', 'screenflash', 'areamapmove', 'button',
                     'tapscreen', 'mainuivisible', 'addteachnode', 'openui', 'closeui',
-                    'trialride', 'save', 'tomap'}
+                      'trialride', 'save', 'tomap', 'costtaskitem'}
     STATE_COMMANDS = {'giveitem', 'eventstate', 'taskstate', 'submittask', 'costtaskitem',
                       'function', 'init', 'iarenastate', 'goto', 'end'}
     INTERACTIVE = {'talk', 'aside', 'airtalk', 'fight', 'fightover', 'accepttask', 'wait'}
@@ -101,7 +101,20 @@ class EventRuntime:
         sequence = self.data.event(filename)
         ids = [step['id'] for step in sequence]
         if len(ids) != len(set(ids)):
-            raise ValueError(f'Duplicate step IDs in {filename}')
+            # Recovered originals contain repeated labels on consecutive
+            # non-branching commands. Execute those in sequence; reject only
+            # a jump whose destination really is ambiguous.
+            duplicates = {key for key in ids if ids.count(key) > 1}
+            targets = set()
+            for step in sequence:
+                parameters = step.get('parameters', {})
+                if step['type'] == 'goto':
+                    rows = parameters if isinstance(parameters, list) else [parameters]
+                    targets.update(row['id'] for row in rows if 'id' in row)
+                elif isinstance(parameters, dict):
+                    targets.update(value for key, value in parameters.items() if key in ('yes', 'no', 'win', 'lose'))
+            if duplicates & targets:
+                raise ValueError(f'Ambiguous original jump destination in {filename}')
         self.file, self.sequence, self.index = filename, sequence, 0
         self.pending, self.active_trigger, self.battle_result = None, trigger, None
         self.trigger_npc_id = int(npc_id or (trigger or {}).get('conditions_add', {}).get('npcid', 0))
@@ -199,8 +212,15 @@ class EventRuntime:
                 for row in rows:
                     if not any(str(row['itemid']) in self.state.tables[table] for table in ('Pet', 'Item', 'Money')):
                         raise ValueError(f'Unknown reward {row["itemid"]}')
-                self.state.grant_many([row['itemid'] for row in rows],
-                                      [row['itemcount'] for row in rows])
+                with self.state.transaction():
+                    # Native AddDropItemsEvent accepts signed deltas. Quest
+                    # scripts also use -100 to clear up to 100 quest items.
+                    for row in rows:
+                        key, count = str(row['itemid']), int(row['itemcount'])
+                        if count < 0:
+                            self.state.consume([key], [min(self.state.count(key), -count)])
+                        else:
+                            self.state.grant(key, count)
                 rewards = [(str(row['itemid']), int(row['itemcount'])) for row in rows
                            if int(row['itemcount']) > 0 and str(row['itemid']) != '0']
             elif kind == 'eventstate':
@@ -220,10 +240,6 @@ class EventRuntime:
                 task = self.state.tables['BranchTask' if branch else 'MainTask'][str(key)]
                 if self.state.submit_task(key, branch):
                     rewards = list(zip(numbers(task['rewardIds']), numbers(task['rewardCounts'])))
-            elif kind == 'costtaskitem':
-                table = 'BranchTask' if 'btask' in parameter else 'MainTask'
-                task = self.state.tables[table][str(parameter.get('btask', parameter.get('mtask')))]
-                self.state.consume(numbers(task['costIds']), numbers(task['costCounts']))
             elif kind == 'function':
                 rows = parameter if isinstance(parameter, list) else [parameter]
                 for row in rows:
@@ -265,6 +281,9 @@ class EventRuntime:
             return
         parameter = request.data.get('parameters', {})
         target = None
+        if request.kind == 'costtaskitem':
+            from task_costs import TaskCosts
+            TaskCosts(self.state, parameter).consume(result or [])
         if request.kind == 'fight':
             if result == 'start':
                 self.battle_result = None
