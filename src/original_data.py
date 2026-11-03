@@ -499,8 +499,6 @@ class OriginalMap:
         tx, ty = int(x//self.tw), int(y//self.th)
         if not (0 <= tx < self.width and 0 <= ty < self.height):
             return None
-        if (tx, ty) in getattr(self, 'obstacles', {}) and (tx, ty) not in getattr(self, 'removed_obstacles', set()):
-            return self.obstacles[(tx, ty)]
         for name, vals, _ in self.layers:
             if name == 'collideLayer':
                 gid = vals[ty*self.width+tx]
@@ -519,10 +517,21 @@ class OriginalMap:
         self.removed_obstacles.add((tx, ty))
         return obstacles[(tx, ty)]
 
-    def blocked(self, x, y, mounts=None):
+    def blocked(self, x, y, mounts=None, *, allow_break=False):
         terrain = self.terrain_at(x, y)
-        if self.sprite_blocked(x, y, mounts):
+        if terrain is None or self.sprite_blocked(x, y, mounts):
             return True
+        # obsType and collideTile are separate native enums: rock=2 is NOT
+        # water=2. Owning a swimming mount must never auto-board a rock.
+        obstacle = self.obstacle_at(x, y)
+        flying = mounts is not None and mounts.can_fly(int(self.info['mapType']))
+        if obstacle and not flying:
+            if not (allow_break and mounts is not None and mounts.obstacle_ability(obstacle)):
+                return True
         if mounts is None:
             return terrain != 0
         return not mounts.can_enter(terrain, int(self.info['mapType']))
+
+    def route_blocked(self, x, y, mounts=None):
+        """Plan through breakable obstacles; actual movement removes them first."""
+        return self.blocked(x, y, mounts, allow_break=True)

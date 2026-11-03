@@ -109,7 +109,7 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.78（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.79（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -202,10 +202,12 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             tx, ty = int(x//self.map.tw), int(y//self.map.th)
             obs_type = self.map.obstacle_at(x, y)
             if obs_type and self.break_obstacle(obs_type, tx, ty):
-                pass
+                if self.map.blocked(x, y, mounts):
+                    return
             else:
                 return
-        mounts.enter(self.map.terrain_at(x, y), int(self.map.info['mapType']))
+        if not mounts.enter(self.map.terrain_at(x, y), int(self.map.info['mapType'])):
+            return
         self.x, self.y = x, y
         dx, dy = x-before[0], y-before[1]
         if dx or dy:
@@ -273,7 +275,9 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             # They are separate native controller types, never the same actor.
             kind = 3 if str(sid) == '30001' else 2
             key = f'{self.map_id}:{kind}:{oid}'
-            visible = self.state.visible.get(key, int(obj['props'].get('state', '1')) != 0)
+            from npc_visibility import value as npc_visible
+            visible = npc_visible(self.state,self.map_id,kind,oid,
+                                  int(obj['props'].get('state','1')) != 0)
             if not visible:
                 continue
             x, y = self.state.positions.get(key, (float(obj['x'])+32, float(obj['y'])))
@@ -1168,7 +1172,7 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.78')
+        win.title('任务指引 · 原生 0.2.79')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1366,8 +1370,9 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
                     if str(p['spriteid']) in self.state.temp_npcs:
                         self.state.temp_npcs[str(p['spriteid'])]['visible'] = int(p['visible'])
                 else:
-                    key = f'{self.map_id}:{p.get("spritetype", 2)}:{p.get("spriteid", 0)}'
-                    self.state.visible[key] = bool(p['visible'])
+                    from npc_visibility import set_value
+                    set_value(self.state,self.map_id,p.get('spritetype',2),
+                              p.get('spriteid',0),p['visible'])
         elif kind == 'screenmove':
             self.begin_camera_move(parameter)
         elif kind == 'tomap':
@@ -2185,6 +2190,8 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             return False
         try:
             state = GameState.load(self.data.tables, self.save_path)
+            from npc_visibility import migrate
+            migrate(state)
             self.repair_legacy_obstacle_coordinates(state)
             runtime = EventRuntime(self.data, state)
             runtime.present_rewards = True
@@ -2318,11 +2325,15 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
                                  'map': self.map_id, 'event': self.runtime.file})
 
     def repair_legacy_sprite_collision(self):
-        if (int(self.state.presentation.get('sprite_collision_version', 0)) >= 2 or self.runtime.running
+        if (self.runtime.running or getattr(self.story_motion, 'actions', [])
                 or not hasattr(self.map, 'sprite_blocked')):
             return
         mounts = Mounts(self.state)
-        if not self.map.sprite_blocked(self.x, self.y, mounts):
+        obstacle = self.map.obstacle_at(self.x, self.y)
+        obstacle_overlap = bool(obstacle and not mounts.can_fly(int(self.map.info['mapType'])))
+        sprite_overlap = (int(self.state.presentation.get('sprite_collision_version', 0)) < 2
+                          and self.map.sprite_blocked(self.x, self.y, mounts))
+        if not (obstacle_overlap or sprite_overlap):
             return
         origin = [self.x, self.y]
         tx, ty = int(self.x//self.map.tw), int(self.y//self.map.th)
@@ -2334,7 +2345,9 @@ class NativeGame(OriginalPages, ActivityUI, ExitMarkers, Preview):
             if not self.map.blocked(px, py, mounts):
                 self.x, self.y = px, py
                 self.state.x, self.state.y = px, py
-                self.state.audit.append({'repair': 'legacy-player-inside-sprite-mask',
+                mounts.enter(self.map.terrain_at(px, py), int(self.map.info['mapType']))
+                self.state.audit.append({'repair': ('legacy-player-inside-obstacle' if obstacle_overlap
+                                                    else 'legacy-player-inside-sprite-mask'),
                                          'map': self.map_id, 'before': origin, 'after': [px, py]})
                 return
             for neighbor in ((x, y+1), (x-1, y), (x+1, y), (x, y-1)):

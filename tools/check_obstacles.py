@@ -24,7 +24,7 @@ assert map202.obstacles, 'obsType sprites were not parsed'
 rock_tiles = [tile for tile, kind in map202.obstacles.items() if kind == 2]
 tree_tiles = [tile for tile, kind in map202.obstacles.items() if kind == 1]
 assert rock_tiles and tree_tiles
-assert map202.terrain_at(rock_tiles[0][0]*64+32, rock_tiles[0][1]*64+32) == 2
+assert map202.terrain_at(rock_tiles[0][0]*64+32, rock_tiles[0][1]*64+32) == 0
 assert map202.obstacle_at(rock_tiles[0][0]*64+32, rock_tiles[0][1]*64+32) == 2
 assert map202.blocked(rock_tiles[0][0]*64+32, rock_tiles[0][1]*64+32)
 old_background = map202.render(.5)
@@ -57,7 +57,7 @@ try:
     app = NativeGame(root, data)
     app.state = state
     app.load_map(202, (tx-1)*map202.tw+32, ty*map202.th+32)
-    assert app.map.terrain_at(tx*64+32, ty*64+32) == 2
+    assert app.map.obstacle_at(tx*64+32, ty*64+32) == 2
     old_background = app.background
     old_x = app.x
     app.move_to(tx*64+32, ty*64+32)

@@ -367,7 +367,7 @@ def walk_path(game_map, start, goal, predicate, mounts=None, limit=40000, occupi
         if not (0 <= tx < width and 0 <= ty < height):
             return False
         x, y = _tile_center(tx, ty)
-        return (tx, ty) not in occupied and not game_map.blocked(x, y, mounts)
+        return (tx, ty) not in occupied and not getattr(game_map, 'route_blocked', game_map.blocked)(x, y, mounts)
 
     if not passable(sx, sy):
         found = None
@@ -488,10 +488,7 @@ class Guide:
             x, y = (tx+.5)*world.tw, (ty+.5)*world.th
             if (tx, ty) in occupied:
                 return True
-            obstacle = world.obstacle_at(x, y) if hasattr(world, 'obstacle_at') else 0
-            if obstacle and mounts.obstacle_ability(obstacle):
-                return False
-            return world.blocked(x, y, mounts)
+            return getattr(world, 'route_blocked', world.blocked)(x, y, mounts)
         start = (app.x, app.y)
         if self.target.kind == 'npc':
             path = walk_path(world, start, (self.target.x, self.target.y),

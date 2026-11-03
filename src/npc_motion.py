@@ -36,8 +36,9 @@ class NpcMotion:
         app = self.app
         obj = next(o for o in app.map.objects if o['group'] == 'spriteLayer'
                    and o.get('gid') and str(o.get('name')) == identifier)
-        return bool(app.state.visible.get(self.motion.key(2, identifier),
-                                         int(obj.get('props', {}).get('state', 1))))
+        from npc_visibility import value
+        return value(app.state,app.map_id,2,identifier,
+                     int(obj.get('props',{}).get('state',1)))
 
     def advance(self, seconds):
         app = self.app
