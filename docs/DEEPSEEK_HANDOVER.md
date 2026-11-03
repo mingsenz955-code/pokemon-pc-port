@@ -1,3 +1,7 @@
+## 2026-11-02 / 0.2.61 单窗口与奖励修复
+
+分支 codex/fix-single-window-reward-flows 接续 PR15/bddcee2。优先读 VERIFICATION_0.2.61.md。TipConfirmUI 的文字是 tip_Text；误写 info_Text 会显示背包满样文。任务 counts=0 的事件类型不能在菜单刷新时自动完成；尤其主线 7 的剧情触发要求状态 3。护士 580504 在斯塔镇银行，101009 是临时教学。奖励图片有透明边缘，内边距必须按可见纸张检查。新增 check_single_window_flows.py；不强杀旧游戏、不改玩家存档文件。
+
 ## 2026-11-02 / 0.2.60 试玩阻塞修复
 
 分支 codex/fix-playtest-blockers，接续 PR14/fca759e。用户五张截图暴露：选宠悬停恢复空模板、误用世界Boss结算卡、空指向教程、捕捉成功读取Pet.name后刷新中断、敌方随机发呆及低帧率。当前修复/边界见 VERIFICATION_0.2.60.md。

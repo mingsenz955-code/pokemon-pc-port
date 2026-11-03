@@ -27,6 +27,7 @@ class Page:
         self.app = app
         self.specs = []
         self.particles = []
+        self.animated_pets = []
         self.hits, self.buttons, self.rects, self.actions = {}, {}, {}, {}
         self.layer = self.add(name, (0, 0), **args)
 
@@ -71,7 +72,7 @@ class Page:
             self.hits[key], self.actions[key] = rect, callback
 
     def feedback(self, active):
-        result = self.layer.copy()
+        result = getattr(self, 'display_frame', self.layer).copy()
         if not active or active not in self.buttons:
             return result
         for name, size, args, at, prefix, clip in reversed(self.specs):
@@ -91,7 +92,9 @@ class Page:
     def publish(self):
         app = self.app
         app.original_page = self
-        app.ui_base_layer = self.layer
+        self.effect_start = time.monotonic()
+        app.ui_base_layer = self.pet_frame(self.layer.copy(), 0)
+        self.display_frame = app.ui_base_layer
         app.ui_hits, app.ui_buttons, app.ui_rects = self.hits, self.buttons, self.rects
         # Public short rects support existing host callers/tests, while callbacks
         # and hit testing retain unique full paths for each repeated card.
@@ -101,27 +104,46 @@ class Page:
         app.ui_actions = self.actions
         label = getattr(app, 'ui_art_label', None)
         if label is not None and label.winfo_exists():
-            photo = ImageTk.PhotoImage(self.layer)
+            photo = ImageTk.PhotoImage(app.ui_base_layer)
             label.configure(image=photo)
             label.image = photo
-        if self.particles and getattr(app, 'ui_window', None) is not None:
+        if (self.particles or self.animated_pets) and getattr(app, 'ui_window', None) is not None:
             job = getattr(app, 'ui_effect_job', None)
             if job:
                 app.ui_window.after_cancel(job)
             self.effect_start = time.monotonic()
             app.ui_effect_job = app.ui_window.after(40, self.animate)
 
+    def pet_frame(self, frame, elapsed):
+        for species, point, area, limit in self.animated_pets:
+            duration = self.app.data.pet_clip_duration(species, 'stand')
+            index = int((elapsed % duration if duration else elapsed)*25)
+            art = self.app.data.pet_frame(species, 'stand', index, True, fps=25, limit=limit)
+            setup = self.app.data.pet_image(species)
+            if art is None or setup is None:
+                continue
+            ratio = min(limit/setup.width, limit/setup.height)*setup.info.get('pixels_per_unit', 1)/art.info.get('pixels_per_unit', 1)
+            origin = art.info.get('origin', (art.width/2, art.height))
+            art = art.resize((max(1, round(art.width*ratio)), max(1, round(art.height*ratio))), Image.Resampling.LANCZOS)
+            layer = Image.new('RGBA', frame.size)
+            layer.alpha_composite(art, (round(point[0]-origin[0]*ratio), round(point[1]-origin[1]*ratio)))
+            x, y, right, bottom = map(round, area)
+            frame.alpha_composite(layer.crop((x, y, right, bottom)), (x, y))
+        return frame
+
     def animate(self):
         app = self.app
         if getattr(app, 'original_page', None) is not self or not app.ui_window or not app.ui_window.winfo_exists():
             return
         from particles import draw_emitter
-        frame = self.layer.copy()
+        frame = self.pet_frame(self.layer.copy(), time.monotonic()-self.effect_start)
         for resource, position, scale, alpha, clip in self.particles:
             path = app.data.assets/'res'/resource
             if path.exists():
                 draw_emitter(frame, path, position, scale, time.monotonic()-self.effect_start, alpha, clip)
         photo = ImageTk.PhotoImage(frame)
+        self.display_frame = frame
+        app.ui_base_layer = frame
         app.ui_art_label.configure(image=photo)
         app.ui_art_label.image = photo
         app.ui_effect_job = app.ui_window.after(40, self.animate)
@@ -173,10 +195,16 @@ class OriginalPages(PetPages):
                 'surplusTime_BitmapFontLabel': f'{seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02}',
                 'price_1_BitmapFontLabel': '10', 'price_2_BitmapFontLabel': '25',
                 'price_3_BitmapFontLabel': '50', 'price_3_old_BitmapFontLabel': '75',
-                'cost_1_BitmapFontLabel': str(self.state.count('700002')),
-                'cost_2_BitmapFontLabel': str(self.state.count('700002')),
-                'cost_3_BitmapFontLabel': str(self.state.count('700002'))},
-                visible={'weixin_Button': False})
+                'cost_1_BitmapFontLabel': self.data.tables['Store']['70601']['costCount'],
+                'cost_2_BitmapFontLabel': self.data.tables['Store']['70602']['costCount'],
+                'cost_3_BitmapFontLabel': self.data.tables['Store']['70603']['costCount']},
+                visible={'weixin_Button': False, 'yuan_Image': False, 'yuan_2_Image': False,
+                         'price_1_BitmapFontLabel': False, 'price_2_BitmapFontLabel': False,
+                         'draw_3_Button': False, 'draw_3_1_Button': True,
+                         'free_Image': seconds == 0, 'moneyIcon_1_Image': seconds > 0,
+                         'cost_1_BitmapFontLabel': seconds > 0,
+                         'moneyIcon_2_Image': True, 'cost_2_BitmapFontLabel': True,
+                         'moneyIcon_3_Image': True, 'cost_3_BitmapFontLabel': True})
             page.actions.update({'draw_1_Button': lambda: draw(1),
                                  'draw_2_Button': lambda: draw(2), 'draw_3_Button': lambda: draw(3),
                                  'draw_3_1_Button': lambda: draw(3), 'close_Button': self.close_ui})
@@ -418,7 +446,7 @@ class OriginalPages(PetPages):
         if self.ui_info is not None:
             self.ui_info.set(message)
         previous = self.ui_base_layer.copy()
-        page = Page(self, 'TipConfirmUI', text={'info_Text': message})
+        page = Page(self, 'TipConfirmUI', text={'tip_Text': message})
         art = page.layer
         page.layer = previous
         page.layer.alpha_composite(art)
@@ -610,7 +638,11 @@ class OriginalPages(PetPages):
                             'UI/tag_selected.png' if i == kind[0] else 'UI/tag_unselected.png' for i in range(1, 6)}},
                         visible=visibility)
             from pet_pages import text_box
-            description_area[0] = next(r for k, r in page.rects.items() if k.endswith('/info_Text'))
+            # BagUI's root has an authored entrance timeline. Its Text node
+            # bounds can be above the paper; use the actual paper interior.
+            paper = next(r for k, r in page.rects.items() if k.endswith('/info_bg_Image'))
+            # The recovered paper texture includes a transparent/shadow border.
+            description_area[0] = (paper[0]+52, paper[1]+58, paper[2]-52, paper[3]-52)
             description_limit[0] = text_box(page, description_area[0], description,
                                             self.cocos_ui.font('', 18), description_scroll[0])
             area = page.rects['Layer/root_Panel/item_ListView']

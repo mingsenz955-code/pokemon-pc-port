@@ -2,6 +2,7 @@
 import os
 import time
 import tkinter as tk
+from game_overlay import GameOverlay, GameArtLabel
 from tkinter import ttk
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -566,7 +567,7 @@ class ActivityUI:
             progress.leave(aid)
             self.close_ui('no')
         def rule():
-            win = tk.Toplevel(self.root)
+            win = GameOverlay(self)
             win.title('竞技场规则')
             text = tk.Text(win, width=62, height=18, wrap='word')
             text.pack(fill='both', expand=True)
@@ -1249,7 +1250,7 @@ class ActivityUI:
         def cancel():
             self.close_ui('no')
         def rule():
-            win = tk.Toplevel(self.root)
+            win = GameOverlay(self)
             win.title('无限竞技场规则')
             text = tk.Text(win, width=62, height=18, wrap='word')
             text.pack(fill='both', expand=True)
@@ -1264,7 +1265,7 @@ class ActivityUI:
         tk.Button(body, text='查看规则', command=rule).pack(pady=3)
 
     def starter_window(self, key):
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title('选择初始伙伴')
         win.protocol('WM_DELETE_WINDOW', self.close_ui)
         self.ui_window, self.ui_open = win, True
@@ -1490,6 +1491,7 @@ class ActivityUI:
                 box.selection_set(index)
                 box.see(index)
                 info.set(f'获得 {box.get(index)} · 剩余轮盘券 {self.state.count("220009")}')
+                self.show_reward('轮盘奖励', [(reward['item'], reward['count'])])
             except (ValueError, KeyError) as error:
                 info.set(str(error))
         tk.Button(body, text='开始（1 张轮盘券）', command=spin).pack(side='left', pady=4)
@@ -1511,7 +1513,7 @@ class ActivityUI:
         if self.state.functions.get('8', 0) != 1:
             self.event_issue = '抽宠功能尚未在剧情中开启。'
             return
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title('抽宠')
         win.protocol('WM_DELETE_WINDOW', self.close_ui)
         self.ui_window, self.ui_open = win, True

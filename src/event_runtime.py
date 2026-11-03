@@ -42,6 +42,7 @@ class EventRuntime:
         self.battle_result = None
         self.save_event = True
         self.trigger_npc_id = 0
+        self.present_rewards = False
 
     @property
     def running(self):
@@ -178,6 +179,7 @@ class EventRuntime:
                 return self.pending
             # Mutating instructions advance only after successful completion.
             target = None
+            rewards = []
             if kind == 'giveitem':
                 rows = parameter if isinstance(parameter, list) else [parameter]
                 for row in rows:
@@ -185,6 +187,8 @@ class EventRuntime:
                         raise ValueError(f'Unknown reward {row["itemid"]}')
                 self.state.grant_many([row['itemid'] for row in rows],
                                       [row['itemcount'] for row in rows])
+                rewards = [(str(row['itemid']), int(row['itemcount'])) for row in rows
+                           if int(row['itemcount']) > 0 and str(row['itemid']) != '0']
             elif kind == 'eventstate':
                 for row in parameter if isinstance(parameter, list) else [parameter]:
                     self.state.events[str(row['eventid'])] = int(row['state'])
@@ -198,7 +202,10 @@ class EventRuntime:
                 # current task, not that numeric ID (e.g. pEvent101005 uses 5
                 # while the current task is 6). Branch IDs remain explicit.
                 branch = 'btask' in parameter
-                self.state.submit_task(parameter['btask'] if branch else self.state.main_task, branch)
+                key = parameter['btask'] if branch else self.state.main_task
+                task = self.state.tables['BranchTask' if branch else 'MainTask'][str(key)]
+                if self.state.submit_task(key, branch):
+                    rewards = list(zip(numbers(task['rewardIds']), numbers(task['rewardCounts'])))
             elif kind == 'costtaskitem':
                 table = 'BranchTask' if 'btask' in parameter else 'MainTask'
                 task = self.state.tables[table][str(parameter.get('btask', parameter.get('mtask')))]
@@ -227,12 +234,21 @@ class EventRuntime:
             if target is not None:
                 self.jump(target)
             self.persist()
+            if rewards and self.present_rewards:
+                # The grant and instruction cursor have already committed.
+                # Dismissing this presentation must never execute them again.
+                self.pending = Request('reward', self.file, int(step['id']), {'items': rewards})
+                return self.pending
         return None
 
     def resume(self, result=None):
         if not self.pending:
             raise RuntimeError('No original event request is waiting')
         request = self.pending
+        if request.kind == 'reward':
+            self.pending = None
+            self.persist()
+            return
         parameter = request.data.get('parameters', {})
         target = None
         if request.kind == 'fight':

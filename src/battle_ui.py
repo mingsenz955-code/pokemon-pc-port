@@ -12,6 +12,7 @@ from collections import OrderedDict
 import tkinter as tk
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
+from game_overlay import GameOverlay, GameArtLabel
 
 W, H = 960, 576
 FONT = 'C:/Windows/Fonts/msyh.ttc'
@@ -130,7 +131,19 @@ class BattleUI:
         current = None
         for event in fresh:
             kind = event.get('type')
-            if kind in ('attack', 'skill'):
+            if kind == 'catch_attempt':
+                success = any(e.get('type') == 'caught' for e in fresh)
+                # PetController::executeAction 0x2d32c6/0x2d330c maps
+                # catchsuccess -> Animation1, catchfailed -> Animation7.
+                name = 'Animation1' if success else 'Animation7'
+                frames = 20 if success else 210
+                current = {'side': 'enemy', 'target': 'enemy', 'kind': 'capture',
+                           'source_uid': self.battle.enemy_active.pet.uid,
+                           'amount': 0, 'crit': False, 'age': 0,
+                           'duration': frames*25/60, 'damages': [],
+                           'capture_clip': name, 'capture_success': success}
+                self.anim_queue.append(current)
+            elif kind in ('attack', 'skill'):
                 current = {'side': event.get('side', 'player'), 'target': '', 'kind': kind,
                            'source_uid': event.get('uid'), 'amount': 0, 'crit': False,
                            'idle': event.get('skill_id') == '300071',
@@ -304,6 +317,8 @@ class BattleUI:
         self.effects.draw(frame, self, rear=True)
         frame.alpha_composite(pets_layer)
         self.effects.draw(frame, self)
+        if self.anim and self.anim['kind'] == 'capture':
+            self._draw_capture(frame)
         hide_hud = bool(self.battle.result and not self.anim) or bool(self.anim and self.anim.get('effect', {}).get('hide_ui'))
         for layer in (() if hide_hud else (self._hud_layer(True), self._hud_layer(False))):
             if layer:
@@ -351,12 +366,16 @@ class BattleUI:
             return
         if self.battle.result and not self.anim and not unit.alive:
             return
+        if enemy and self.anim and self.anim['kind'] == 'capture':
+            fi = self.anim['age']*60/25
+            if self.anim['capture_success'] or 75 <= fi < 190:
+                return
         setup = self.app.data.pet_image(unit.pet.species)
         if setup is None:
             return
         clip, age, loop = 'stand', self.anim_idle, True
         side = 'enemy' if enemy else 'player'
-        if self.anim and self.anim['side'] == side and not self.anim.get('idle'):
+        if self.anim and self.anim['kind'] in ('attack', 'skill') and self.anim['side'] == side and not self.anim.get('idle'):
             clip, age, loop = 'attack', self.anim['age'], False
         elif self.anim and self.anim.get('impact', {}).get('side') == side and self.anim['impact']['type'] == 'damage':
             clip, age, loop = 'underattack', self.anim['age']-self.anim['impact']['when'], False
@@ -395,6 +414,21 @@ class BattleUI:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
             image = Image.blend(image, overlay, min(.55, .55*flash))
         frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
+
+    def _draw_capture(self, frame):
+        art = self.app.data.armature('kaichong', self.anim['capture_clip'],
+                                     int(self.anim['age']*60/25))
+        if art is None:
+            return
+        origin = art.info.get('origin', (art.width/2, art.height))
+        # The enemy controller mirrors the authored armature; its flight
+        # begins on our side. Preserve the authored moving origin.
+        scale = W/800
+        art = art.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        origin = (art.width-origin[0], origin[1])
+        art = art.resize((max(1, round(art.width*scale)), max(1, round(art.height*scale))), Image.Resampling.LANCZOS)
+        point = self.pet_positions['enemy']
+        frame.alpha_composite(art, (round(point[0]-origin[0]*scale), round(point[1]-origin[1]*scale)))
 
     def _draw_damage(self, draw):
         impact = self.anim.get('impact') if self.anim else None
@@ -785,7 +819,7 @@ class BattleUI:
                 return
             except tk.TclError:
                 self.shop_window = None
-        self.shop_window = tk.Toplevel(self.app.root)
+        self.shop_window = GameOverlay(self.app)
         win = self.shop_window
         win.title('战斗商店 · 原版 BattleShopUI')
         win.transient(self.app.root)
@@ -793,7 +827,7 @@ class BattleUI:
         try:
             layer = self.app.cocos_ui.render('BattleShopUI', (800, 480), {})
             photo = ImageTk.PhotoImage(layer)
-            art = tk.Label(win, image=photo, bg='#101418')
+            art = GameArtLabel(win, image=photo, bg='#101418', borderwidth=0)
             art.image = photo
             art.pack()
         except (FileNotFoundError, ValueError, KeyError, OSError):

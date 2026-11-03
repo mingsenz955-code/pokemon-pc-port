@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import tkinter as tk
+from game_overlay import GameOverlay
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -366,7 +367,7 @@ class Preview:
         return 320.0
 
     def choose(self, title, rows, callback):
-        win = tk.Toplevel(self.root)
+        win = GameOverlay(self)
         win.title(title)
         win.geometry('600x600')
         query = tk.StringVar()
@@ -409,7 +410,7 @@ class Preview:
                 for k, r in sorted(self.data.tables['Pet'].items(), key=lambda x: int(x[0]))]
         def show(k):
             r = self.data.tables['Pet'][k]
-            win = tk.Toplevel(self.root)
+            win = GameOverlay(self)
             win.title(r['name']+' · 原始配置')
             text = tk.Text(win, font=('Microsoft YaHei UI', 11), wrap='word', width=68, height=24)
             text.pack(fill='both', expand=True)

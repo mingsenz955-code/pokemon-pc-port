@@ -80,7 +80,8 @@ class TaskChecks(unittest.TestCase):
         runtime = EventRuntime(data, self.state)
         runtime.start('test.json')
         runtime.next()
-        self.assertEqual((7, 4), (self.state.main_task, self.state.main_state))
+        # Task 7 still waits for its original area event, whose trigger requires state 3.
+        self.assertEqual((7, 3), (self.state.main_task, self.state.main_state))
         self.assertIn(6, self.state.completed_main)
 
     def test_starter_choice_id_is_separate_from_character_initialization(self):
@@ -124,7 +125,7 @@ class TaskChecks(unittest.TestCase):
                 self.assertFalse(app.runtime_error, app.runtime_error)
                 self.assertEqual(1, self.state.events.get('102001'))
                 self.assertEqual(1, self.state.events.get('101005'))
-                self.assertEqual((7, 4), (self.state.main_task, self.state.main_state))
+                self.assertEqual((7, 3), (self.state.main_task, self.state.main_state))
                 self.assertEqual(2, len(self.state.pets))
             finally:
                 root.destroy()

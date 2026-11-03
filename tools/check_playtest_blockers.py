@@ -84,13 +84,13 @@ class PlaytestBlockers(unittest.TestCase):
         self.assertTrue(any(s[0] == 'PetPropertyItemUI' for s in page.specs))
         self.assertFalse(any(k.endswith('/costTip_Text') for k in a.ui_rects))
         key = next(k for k in a.ui_buttons if k.endswith('/confirm_Button'))
-        before, after = page.layer.copy(), page.feedback(key)
+        before, after = page.display_frame.copy(), page.feedback(key)
         box = ImageChops.difference(before, after).convert('RGB').getbbox()
         if box:
             rect = a.ui_buttons[key]
             self.assertGreaterEqual(box[0], round(rect[0])-1)
             self.assertLessEqual(box[2], round(rect[2])+1)
-        page.layer.save(OUT/'starter.png')
+        page.display_frame.save(OUT/'starter.png')
         rect = a.ui_buttons[key]
         event = SimpleNamespace(x=(rect[0]+rect[2])/2, y=(rect[1]+rect[3])/2)
         a.on_ui_press(event)
