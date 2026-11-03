@@ -387,6 +387,8 @@ class GameState:
                    [[row['gotItemKid'], int(row['gotCount'])]])
         if not rewards or any(str(k) == '0' or int(n) <= 0 for k, n in rewards):
             raise ValueError('这个商品没有可领取的奖励。')
+        if all(str(k) == '700004' for k, _ in rewards) and self.pet_capacity() >= 6:
+            raise ValueError('随身宠物栏已开放全部6格，无需再次购买。')
         self.consume([row['costMoneyType']], [int(row['costCount'])])
         for key_id, count in rewards:
             self.grant(key_id, count)

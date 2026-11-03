@@ -63,6 +63,14 @@ class TrialChecks(unittest.TestCase):
                 with self.assertRaises(ValueError):s.buy_trial_pet(key)
                 self.assertEqual(s.payload(),before)
 
+    def test_full_bag_slot_product_cannot_charge(self):
+        s=self.app.state
+        key=next(k for k,r in s.tables['Store'].items() if r['gotItemKid']=='700004' and r['shopType'] in ('1','2','7'))
+        s.inventory['700001']=10000000
+        before=s.payload()
+        with self.assertRaisesRegex(ValueError,'6格'):s.buy_store(key)
+        self.assertEqual(s.payload(),before)
+
     def test_six_slots_new_old_and_overflow_bank(self):
         s=self.app.state
         self.assertEqual(s.pet_capacity(),6)
