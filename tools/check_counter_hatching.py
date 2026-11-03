@@ -176,7 +176,8 @@ class CounterHatchChecks(unittest.TestCase):
         for _ in range(10):
             a.page_wheel(SimpleNamespace(delta=-120))
         self.assertTrue(any(k.startswith('hatch_9/') for k in a.ui_hits))
-        a.state.inventory['700004'] = len(a.state.pets)
+        while len(a.state.pets) < a.state.pet_capacity():
+            a.state.add_preset(1)
         a.state.inventory['700005'] = 0
         snapshot = a.state.payload()
         with self.assertRaises(ValueError):
