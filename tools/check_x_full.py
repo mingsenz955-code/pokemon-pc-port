@@ -264,6 +264,40 @@ class XFullChecks(unittest.TestCase):
                     errors.append((skill_id, rear, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_every_x_skill_effect_full_timeline(self):
+        """Draw each authored effect at start, middle, hit and final frame."""
+        from PIL import Image
+        from battle_effects import BattleEffects
+        from pet_factory import generate_pet
+        pet = generate_pet(self.data.tables, random.Random(1), '100160', 50)
+
+        class UI:
+            pet_bones = {'player': {'p_center': (400, 300), 'p_shadow': (400, 320)},
+                         'enemy': {'p_center': (600, 300), 'p_shadow': (600, 320)}}
+            pet_positions = {'player': (400, 300), 'enemy': (600, 300)}
+            anim = None
+
+            def presentation_unit(self, enemy):
+                return type('Unit', (), {'pet': pet})()
+
+        ui = UI()
+        effects = BattleEffects(self.data)
+        errors = []
+        for skill_id in self.data.tables['Skill']:
+            plan = effects.plan(skill_id, 'player')
+            if not plan:
+                continue
+            ages = (0, plan['duration']/2, max(0, plan['duration']-.01),
+                    plan['hit'] if plan['hit'] is not None else 0)
+            for age in ages:
+                ui.anim = {'effect': plan, 'age': age, 'side': 'player'}
+                for rear in (False, True):
+                    try:
+                        effects.draw(Image.new('RGBA', (800, 480)), ui, rear)
+                    except Exception as error:  # noqa: BLE001 - collect every frame
+                        errors.append((skill_id, age, rear, type(error).__name__, str(error)))
+        self.assertFalse(errors, errors[:10])
+
     def test_every_x_skill_effect_plan_and_face(self):
         from battle_effects import BattleEffects
         effects = BattleEffects(self.data)
