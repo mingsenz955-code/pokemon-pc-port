@@ -235,6 +235,8 @@ class XFullChecks(unittest.TestCase):
         immune = immune_battle.player[0]
         self.assertTrue(immune.immune_all_debuffs)
         self.assertTrue(immune_battle._immune(immune, '2'))
+        self.assertTrue(immune_battle._immune(immune, '52'))
+        self.assertTrue(immune_battle._immune(immune, '49'))
         divine = generate_pet(self.data.tables, random.Random(63), '100160', 80)
         divine.talents = ['400130']
         resist_battle = make_wild_battle(self.data.tables, [divine], enemy,

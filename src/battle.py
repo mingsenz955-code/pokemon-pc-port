@@ -55,9 +55,10 @@ STATE_NAMES = {
 SELF_STATES = {8, 11, 12, 14, 21, 22, 23, 24, 25, 26, 27, 28, 29, 32, 33, 34,
                35, 36, 39, 43, 45, 46, 47, 48, 53, 54}
 INSTANT_STATES = {16, 19, 20, 23, 24, 25, 26, 27, 35, 38, 39, 50, 51, 53}
-DEBUFF_KINDS = {'poison', 'def_down', 'speed_down', 'sleep', 'sleep', 'petrify',
-                'bind', 'restrict', 'drain', 'power_down', 'fear', 'nightmare',
-                'power_down_big', 'def_down_big', 'power_down_35', 'speed_down_big'}
+DEBUFF_KINDS = {'charm', 'poison', 'def_down', 'def_down_35', 'speed_down',
+                'sleep', 'petrify', 'bind', 'restrict', 'drain', 'leech',
+                'power_down', 'power_down_35', 'fear', 'nightmare', 'doom',
+                'power_down_big', 'def_down_big', 'speed_down_big'}
 DOT_KINDS = {'poison', 'drain', 'leech', 'nightmare'}
 
 # The original tables encode skill coefficients as decimal strings.
@@ -207,6 +208,8 @@ class BattlePet:
                         self.crit_bonus += value
                     elif state == 60:
                         self.immune_all_debuffs = True
+                    elif state == 52:
+                        self.talent_immune.add('52')
                     elif state == 66:
                         self.prevent_drain = True
                     elif state == 34:
