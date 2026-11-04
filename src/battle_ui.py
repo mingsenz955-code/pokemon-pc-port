@@ -642,6 +642,9 @@ class BattleUI:
     def _result_lines(self):
         lines = [f'{name} 获得 {gained} 点经验。' for name, gained, _levels in self.battle.exp_gained]
         lines += [f'获得 {self._reward_name(item)} ×{amount}' for item, amount in self.battle.drops]
+        outcome = {'win': 'battleWin', 'lose': 'battleLose'}.get(self.battle.result)
+        if outcome:
+            lines.insert(0, self.app.data.localized_text()[outcome])
         if self.battle.caught_pet:
             name = self.app.data.tables['Pet'][self.battle.caught_pet.species]['name']
             lines.insert(0, f'捕捉到了 {name}！')

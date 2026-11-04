@@ -71,6 +71,9 @@ class StoryChecks(unittest.TestCase):
         app.repair_legacy_cg_chase()
         app.drive()
         self.assertEqual([1568, 160], app.story_motion.position(7, 1))
+        self.assertEqual('face', app.runtime.pending.kind)
+        app.story_face_until = 0.01
+        app.drive()
         self.assertEqual('talk', app.display_request.kind)
         self.assertEqual(5, app.display_request.step)
 

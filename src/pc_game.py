@@ -9,6 +9,7 @@ import os
 import time
 import tkinter as tk
 from game_overlay import GameOverlay, GameArtLabel
+from functools import lru_cache
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -112,7 +113,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.89（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.90（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -133,7 +134,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def load_map(self, mid, x=None, y=None):
         super().load_map(mid, x, y)
-        self.map_name_started = time.monotonic()
+        self.map_name_started = None
         self.story_face_icons = {}
         self.story_face_until = 0
         if hasattr(self, 'state'):
@@ -324,7 +325,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self._actor_lookup_map = self.map
             self._actor_lookup = {}
             for obj in self.map.objects:
-                if obj.get('gid'):
+                if obj.get('group') == 'spriteLayer' and obj.get('gid'):
                     self._actor_lookup.setdefault(str(obj.get('name')), obj)
         obj = self._actor_lookup.get(str(oid), {})
         # Some original TMX actors explicitly contain face="". Treat that as
@@ -340,21 +341,29 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         return self.data.village_sprite(sid, animation, frame)
 
     def render_actor_overlay(self, frame, oid, sid, sx, sy, sprite, anchor):
-        if self.booting or not str(oid).isdigit() or not str(sid).isdigit() or not 20000 <= int(sid) < 30000:
+        if self.booting or self.runtime.running or not str(oid).isdigit() or not str(sid).isdigit() or not 20000 <= int(sid) < 30000:
             return
         from task_icons import TaskIcons
         resolver = getattr(self, 'task_icons', None)
         if resolver is None or resolver.state is not self.state:
             resolver = self.task_icons = TaskIcons(self.state)
         icon_id = resolver.for_npc(oid)
-        if not icon_id:
-            return
-        icon = self.data.image(f'TaskIcon/taskIcon{icon_id}.png')
-        scale = self.SCALE*.5
-        icon = icon.resize((max(1, round(icon.width*scale)), max(1, round(icon.height*scale))), Image.Resampling.LANCZOS)
+        if icon_id:
+            path = f'TaskIcon/taskIcon{icon_id}.png'
+        else:
+            default_face = self._actor_lookup.get(str(oid), {}).get('props', {}).get('defaultFace')
+            if not default_face or not 1 <= int(default_face) <= 18:
+                return
+            path = f'FaceIcon/face1_{default_face}.png'
+        icon = self._world_icon(path, self.SCALE*.5)
         bob = resolver.bob(getattr(self, 'scene_animation_time', 0))*self.SCALE
         top = sy-anchor[1]*self.SCALE-icon.height+bob
         frame.alpha_composite(icon, (round(sx-icon.width/2), round(top)))
+
+    @lru_cache(maxsize=64)
+    def _world_icon(self, path, scale):
+        icon = self.data.image(path)
+        return icon.resize((max(1, round(icon.width*scale)), max(1, round(icon.height*scale))), Image.Resampling.LANCZOS)
 
     def render_world_overlay(self, frame, camx, camy):
         guide = getattr(self, 'guide', None)
@@ -1191,7 +1200,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.89')
+        win.title('任务指引 · 原生 0.2.90')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1376,7 +1385,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             for p in rows:
                 actor = int(p.get('spritetype', 2)), int(p.get('spriteid', 0))
                 face = int(p.get('face', 0))
-                if kind == 'face' and 5 <= face <= 8:
+                if kind == 'face' and 1 <= face <= 8:
                     if not hasattr(self, 'story_face_icons'):
                         self.story_face_icons = {}
                     started = time.monotonic()
@@ -1796,6 +1805,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.screen_fade_until = 0
             if self.runtime.pending and self.runtime.pending.kind == 'screen':
                 self.runtime.resume()
+        flash_until = getattr(self, 'flash_until', 0)
+        if flash_until:
+            if time.monotonic() < flash_until:
+                return
+            self.flash_until = 0
+            if self.runtime.pending and self.runtime.pending.kind == 'screenflash':
+                self.runtime.resume()
         if (self.display_request and self.display_request.kind == 'airtalk'
                 and time.monotonic() >= getattr(self, 'air_talk_until', float('inf'))):
             self.display_request = self.dialogue = None
@@ -1839,7 +1855,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                         self.air_talk_until = time.monotonic()+2
                     return
                 if request.kind == 'reward':
-                    self.show_reward('获得奖励', request.data['items'])
+                    if request.data['items']:
+                        self.show_reward(request.data.get('title', '获得奖励'), request.data['items'])
+                    else:
+                        self.game_tip(request.data['title'])
                     return
                 if request.kind == 'button':
                     self.runtime.resume()
@@ -1917,6 +1936,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 self.apply_visual(request)
                 if (self.camera_action or getattr(self, 'screen_fade_until', 0)
                         or getattr(self, 'story_face_until', 0)
+                        or getattr(self, 'flash_until', 0)
                         or getattr(getattr(self, 'story_motion', None), 'actions', [])):
                     return
                 self.runtime.resume()
@@ -2184,7 +2204,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             frame.alpha_composite(bubble, (left,top))
 
     def draw_map_name(self, frame):
-        age = time.monotonic()-getattr(self, 'map_name_started', -1e9)
+        now = time.monotonic()
+        if self.map_name_started is None:
+            self.map_name_started = now
+        age = now-self.map_name_started
         if age >= 2.5:
             return
         key = self.map.info['name'], self.WIDTH, self.HEIGHT
@@ -2215,10 +2238,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             opacity = 1-opacity
         if self.main_ui_visible and opacity < 1:
             self.scene_ui.render(frame)
-            self.draw_map_name(frame)
         if opacity:
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'black'), opacity)
         else:
+            self.draw_map_name(frame)
             self.draw_story_face_icons(frame)
         if original_dialogue is None:
             self._draw_chest_fx(frame)
@@ -2253,8 +2276,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         else:
             self.draw_guide(frame)
             self._draw_button_tutorial(frame)
-        if time.monotonic() < getattr(self, 'flash_until', 0):
-            frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'), .7)
+        flash_remaining = getattr(self, 'flash_until', 0)-time.monotonic()
+        if flash_remaining > 0:
+            frame = Image.blend(frame, Image.new('RGBA', frame.size, 'white'),
+                                min(1, flash_remaining/.2)*(150/255))
         if getattr(self, 'task_page', None):
             frame.alpha_composite(self.task_page.render().resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS))
         self.scene_ui.render_tip(frame)

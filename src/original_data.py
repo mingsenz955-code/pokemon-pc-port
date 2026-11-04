@@ -65,6 +65,11 @@ class OriginalData:
     def event(self, name):
         return json.loads((self.root/'events'/name).read_text(encoding='utf-8'))
 
+    @lru_cache(maxsize=1)
+    def localized_text(self):
+        rows = json.loads((self.assets/'Data/Text.json').read_text(encoding='utf-8-sig'))
+        return {row['name']: row['text'] for row in rows}
+
     def village_sprite(self, sid, animation='standdown', frame=0):
         row = self.tables['VillageSprite'].get(str(sid))
         if not row:
@@ -488,9 +493,10 @@ class OriginalMap:
                     continue
                 gid = int(obj['gid'])
                 sid = self.tile_properties(gid).get('spriteId')
-                key = sid or gid
+                animation = obj['props'].get('aniName') or 'standdown'
+                key = (sid or gid, animation)
                 if key not in images:
-                    image = self.data.village_sprite(sid) if sid else self.tile(gid)
+                    image = self.data.village_sprite(sid, animation) if sid else self.tile(gid)
                     if image is not None:
                         image = image.copy()
                         definition = self.data.sprite_tiles().get(str(sid))

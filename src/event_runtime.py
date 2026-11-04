@@ -208,6 +208,7 @@ class EventRuntime:
             # Mutating instructions advance only after successful completion.
             target = None
             rewards = []
+            reward_title = None
             if kind == 'giveitem':
                 rows = parameter if isinstance(parameter, list) else [parameter]
                 for row in rows:
@@ -240,7 +241,9 @@ class EventRuntime:
                 key = parameter['btask'] if branch else self.state.main_task
                 task = self.state.tables['BranchTask' if branch else 'MainTask'][str(key)]
                 if self.state.submit_task(key, branch):
-                    rewards = list(zip(numbers(task['rewardIds']), numbers(task['rewardCounts'])))
+                    reward_title = '任务完成'
+                    rewards = [(item, count) for item, count in
+                               zip(numbers(task['rewardIds']), numbers(task['rewardCounts'])) if item and count]
             elif kind == 'function':
                 rows = parameter if isinstance(parameter, list) else [parameter]
                 for row in rows:
@@ -265,10 +268,12 @@ class EventRuntime:
             if target is not None:
                 self.jump(target)
             self.persist()
-            if rewards and self.present_rewards:
+            if (rewards or reward_title) and self.present_rewards:
                 # The grant and instruction cursor have already committed.
                 # Dismissing this presentation must never execute them again.
                 self.pending = Request('reward', self.file, int(step['id']), {'items': rewards})
+                if reward_title:
+                    self.pending.data['title'] = reward_title
                 return self.pending
         return None
 
