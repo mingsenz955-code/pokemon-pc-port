@@ -114,7 +114,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.94（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.95（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -126,16 +126,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         install_callback_log(self)
         self.autosave_job = root.after(30000, self.autosave)
         root.protocol('WM_DELETE_WINDOW', self.close_game)
-        if self.save_path.exists() and self.restore():
-            return
         if show_opening:
             clips = self.cocos_ui.layout('OpeningUI')['action']['clips']
             self.opening = (tuple(clips[f'animation{i}'] for i in range(7)), 0, time.monotonic())
             return
-        self.start_prologue()
+        self.enter_game()
 
-    def start_prologue(self):
+    def enter_game(self):
         self.opening = None
+        if self.save_path.exists() and self.restore():
+            return
         self.load_map(7401, 17*64+32, (30-14)*64)
         self.reset_encounter()
         self.runtime.notify('tomap', map=7401)
@@ -146,7 +146,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         now = time.monotonic()
         begin, end = clips[index]
         if skip or index >= len(clips)-2 and (now-started)*60 >= end-begin:
-            self.start_prologue()
+            self.enter_game()
         elif (now-started)*60 >= end-begin:
             self.opening = (clips, index+1, now)
 
@@ -1223,7 +1223,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.94')
+        win.title('任务指引 · 原生 0.2.95')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1672,7 +1672,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         battle.select_initial_player(self.state.active_pet)
         if battle.enemy_active:
             self.state.record_seen_pet(battle.enemy_active.pet.species)
-        self.battle, self.battle_ui = battle, BattleUI(self, battle)
+        self.battle, self.battle_ui = battle, BattleUI(self, battle, opening=True)
         self.event_notice = ''
         battle.source_id = str(npcid)
         self.battle_tips = []

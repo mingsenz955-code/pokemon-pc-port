@@ -35,7 +35,7 @@ def cover(image, size):
 
 
 class BattleUI:
-    def __init__(self, app, battle):
+    def __init__(self, app, battle, *, opening=False):
         self.app = app
         self.battle = battle
         from battle_effects import BattleEffects, EffectAudio
@@ -64,6 +64,9 @@ class BattleUI:
         self.anim_queue = []
         self.anim_frame = 0
         self.anim_idle = 0
+        self.opening_frame = 0.0 if opening else None
+        self.opening_transition = (app.cocos_ui.layout('BattleStartEffectUI')['action']['duration']
+                                   if opening else 0)
         self.display_hp = {(u.side, u.pet.uid): u.hp for u in battle.player+battle.enemy}
         self.visual_hp = dict(self.display_hp)
         self._event_cursor = len(getattr(battle, 'events', []))
@@ -76,6 +79,15 @@ class BattleUI:
     def advance(self, steps=1, *, seconds=None):
         # Use elapsed time so slow renders still cross every authored callback.
         steps = max(0.0, float(steps) if seconds is None else float(seconds)*25)
+        if self.opening_frame is not None:
+            previous = self.opening_frame
+            self.opening_frame += steps*60/25
+            voice_frame = self.opening_transition+3
+            if previous <= voice_frame < self.opening_frame:
+                self.effect_audio.play('5023')
+            if self.opening_frame >= self.opening_transition+49:
+                self.opening_frame = None
+            self.frame = None
         self.anim_idle += steps
         remaining = steps
         while self.anim and remaining > 0:
@@ -299,6 +311,12 @@ class BattleUI:
         if land not in self._background_cache:
             self._background_cache[land] = cover(background, (W, H))
         frame.alpha_composite(self._background_cache[land])
+        if self.opening_frame is not None and self.opening_frame < self.opening_transition:
+            frame.alpha_composite(self.app.cocos_ui.render(
+                'BattleStartEffectUI', (W, H), timeline_frame=int(self.opening_frame)))
+            self.hits = {}
+            self.frame = frame
+            return frame
         source_offset, target_offset, flash = self._animation_offsets()
         if self.anim:
             enemy_offset = source_offset if self.anim['side'] == 'enemy' else target_offset
@@ -314,6 +332,16 @@ class BattleUI:
                        250, False, flash if self.anim and self.anim['target'] == 'player' else 0)
         self.effects.draw(frame, self, rear=True)
         frame.alpha_composite(pets_layer)
+        if self.opening_frame is not None:
+            index = int(self.opening_frame-self.opening_transition)
+            art = self.app.data.armature('vfx_appear', 'Animation1', index)
+            if art is not None:
+                origin = art.info.get('origin', (art.width/2, art.height/2))
+                ratio = W/800
+                art = art.resize((round(art.width*ratio), round(art.height*ratio)), Image.Resampling.LANCZOS)
+                for side in ('player', 'enemy') if self.battle.kind != 'wild' else ('player',):
+                    x, y = self.pet_positions[side]
+                    frame.alpha_composite(art, (round(x-origin[0]*ratio), round(y-origin[1]*ratio)))
         self.effects.draw(frame, self)
         if self.anim and self.anim['kind'] == 'capture':
             self._draw_capture(frame)
@@ -362,6 +390,15 @@ class BattleUI:
     def _draw_pet(self, frame, unit, center, height, enemy=False, flash=0.0):
         if not unit:
             return
+        if self.opening_frame is not None:
+            age = self.opening_frame-self.opening_transition
+            reveal = 0 if enemy and self.battle.kind == 'wild' else 16
+            if age < reveal:
+                return
+            t = min(1, (age-reveal)/30)
+            # PetActionController::appearAction uses a half-second EaseBackOut.
+            scale = 1+2.70158*(t-1)**3+1.70158*(t-1)**2
+            height = max(1, round(height*(.1+.9*scale)))
         if self.battle.result and not self.anim and not unit.alive:
             return
         if enemy and self.anim and self.anim['kind'] == 'capture':
@@ -702,7 +739,7 @@ class BattleUI:
 
     # -- input ---------------------------------------------------------------
     def click(self, x, y):
-        if self.anim:
+        if self.anim or self.opening_frame is not None:
             return None
         if self.info:
             self.info = ''

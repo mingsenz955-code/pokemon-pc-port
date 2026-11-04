@@ -6,6 +6,7 @@ from pathlib import Path
 
 from audit_story_migration import audit, numbers
 from import_story_presentation import apply_pet_catalog, apply_compatible_dialogue
+from repair_x_routes import repair_routes
 
 
 def write_json(path, value):
@@ -116,6 +117,7 @@ def stage(source, baseline, output):
                     else:
                         row.update(type='eventstate', parameters=[])
         write_json(target, rows)
+    repair_routes(output, pc)
     write_json(output/'tables.json', pc)
     apply_pet_catalog(output, source)
     apply_compatible_dialogue(output, source)

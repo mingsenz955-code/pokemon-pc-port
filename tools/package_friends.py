@@ -51,5 +51,5 @@ def package(release,version):
     print(json.dumps(manifest,ensure_ascii=False));return output
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('release',type=Path);parser.add_argument('--version',default='0.2.94');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('release',type=Path);parser.add_argument('--version',default='0.2.95');args=parser.parse_args()
     package(args.release,args.version)
