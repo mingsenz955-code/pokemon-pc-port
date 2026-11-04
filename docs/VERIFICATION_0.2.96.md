@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**10 个测试全部通过**。
+结果：**11 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
@@ -25,6 +25,7 @@
 - 全部 2,318 个可执行事件文件成功载入 `EventRuntime`，含 X 的重复/零步骤 id。
 - 全部 500 场 NPC 战斗和 668 个野外配置成功实例化，含 X 101025 的异常天赋概率行。
 - 从 `pEvent119007` 开始受控播放 X 对话，自动点击到第一场战斗；战斗敌方均来自 X `NpcPet`。
+- 从 X 地图 5801 的 NPC `580101` 触发对话，确认地图触发、`pEventContents` 条件、事件脚本和 UI 对话串联正常。
 - 旧 1.20.4 存档可载入 X 数据并恢复到相同地图。
 - 启动 `OpeningUI` 可渲染，跳过序章后进入 7401。
 - `gzip` TMX、外置 TSX、`pcWalkThrough` 和特殊路线修正均已加入。

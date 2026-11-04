@@ -183,6 +183,35 @@ class XFullChecks(unittest.TestCase):
                         pass
                 root.destroy()
 
+    def test_x_map_npc_trigger_starts_dialogue(self):
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                root.update()
+                app.state.main_task, app.state.main_state = 2, 4
+                app.state.events['101001'] = 1
+                app.load_map(5801)
+                app.interact('580101')
+                root.update()
+                self.assertTrue(app.runtime.running)
+                self.assertTrue(app.dialogue)
+                self.assertIn('pEvent', app.runtime.file)
+                self.assertEqual(app.runtime_error, '')
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_opening_and_battle_start_render(self):
         with tempfile.TemporaryDirectory() as save:
             os.environ['POCKET_NATIVE_SAVE_DIR'] = save
