@@ -462,7 +462,8 @@ class XFullChecks(unittest.TestCase):
                 app = NativeGame(root, self.data)
                 app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
                 ui = app.battle_ui
-                ui.advance(seconds=3)
+                ui.advance(seconds=10)
+                self.assertIsNone(ui.opening_frame)
                 unit = app.battle.player_active
                 level = unit.pet.level
                 app.battle.result = 'win'
@@ -471,6 +472,10 @@ class XFullChecks(unittest.TestCase):
                 frame = ui.render()
                 self.assertEqual(frame.size, (960, 576))
                 self.assertTrue(ui._levelup_active())
+                entry = ui._levelup_data()[0]
+                rows = ui._levelup_stats(entry, unit)
+                self.assertEqual(5, len(rows))
+                self.assertTrue(all(row[2] >= 0 for row in rows))
                 self.assertIn('result_continue', ui.hits)
                 ui.advance(seconds=.1)
                 ui.render()

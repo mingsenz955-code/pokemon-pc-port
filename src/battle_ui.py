@@ -340,6 +340,12 @@ class BattleUI:
             self.hits = {}
             self.frame = frame
             return frame
+        if self.battle.result and self.result_page == 'outcome' and self._levelup_active():
+            # PetLevelUpUI is a full-screen settlement layer: do not leave
+            # the battle pets/HUD visible behind its own pet portrait.
+            self._draw_levelup(frame)
+            self.frame = frame
+            return frame
         source_offset, target_offset, flash = self._animation_offsets()
         if self.anim:
             enemy_offset = source_offset if self.anim['side'] == 'enemy' else target_offset
@@ -715,14 +721,34 @@ class BattleUI:
     def _levelup_active(self):
         return self.levelup_index < len(self._levelup_data())
 
+    def _levelup_stats(self, entry, unit):
+        """Return the five original attribute rows shown by PetLevelUpUI."""
+        from copy import deepcopy
+        before_pet = deepcopy(unit.pet)
+        before_pet.level = max(1, int(entry['from_level']))
+        before = before_pet.stats(self.app.data.tables)
+        after = unit.pet.stats(self.app.data.tables)
+        icons = ('life', 'energy', 'strength', 'defense', 'speed')
+        return [(icon, current, current-before[index])
+                for index, (icon, current) in enumerate(zip(icons, after))]
+
     def _draw_levelup(self, frame):
         entry = self._levelup_data()[self.levelup_index]
         name = entry['name']
+        # The five trainAdd project nodes are prefab placeholders when a pet
+        # has no training gain; without hiding them the original prefab text
+        # ("生命训练值+99") is shown for every pet.
+        hidden = {f'trainAdd_{index}_ProjectNode': False for index in range(1, 6)}
+        # The exp bar is animated by PetLevelUpUILayer itself; a static
+        # LoadingBar leaves only its clipped "0" visible behind the pet.
+        hidden.update({'exp_Sprite': False, 'expBg_Sprite': False,
+                       'exp_LoadingBar': False})
         layer = self.app.cocos_ui.render('PetLevelUpUI', (W, H),
             text={'name_Text': name, 'petName_Text': name,
                   'info_Text': '获得经验', 'exp_BitmapFontLabel': str(entry['gained']),
                   'levelFrom_BitmapFontLabel': str(entry['from_level']),
                   'levelTo_BitmapFontLabel': str(entry['to_level'])},
+            visible=hidden,
             timeline_frame=int(min(489, self.levelup_age)))
         frame.alpha_composite(layer)
         unit = next((u for u in self.battle.player if u.name == name), None)
@@ -733,6 +759,20 @@ class BattleUI:
                 art.thumbnail((210, 210), Image.Resampling.LANCZOS)
                 frame.alpha_composite(art, (round(W*.25-art.width/2),
                                             round(H*.52-art.height)))
+            list_rect = self.app.cocos_ui.rects.get(
+                'Layer/root_Panel/levelUp_Panel/listviewBg_Image/arrt_ListView')
+            if list_rect:
+                for index, (icon, current, gain) in enumerate(
+                        self._levelup_stats(entry, unit)):
+                    item = self.app.cocos_ui.render(
+                        'PetLevelUpItemUI', (252, 34),
+                        text={'current_BitmapFontLabel': str(current),
+                              'add_BitmapFontLabel': f'+{gain}'},
+                        resources={'name_Image':
+                                   f'UI/text_attribute_{icon}.png'})
+                    frame.alpha_composite(
+                        item, (round(list_rect[0]),
+                               round(list_rect[1]+index*34)))
         self.hits['result_continue'] = tuple(
             self.app.cocos_ui.buttons.get('confirm_Button', (W-170, H-80, W, H)))
 
