@@ -4,7 +4,58 @@ import shutil
 import xml.etree.ElementTree as ET
 
 
+def apply_pet_catalog(pc_data, recovered):
+    path = pc_data/'tables.json'
+    tables = json.loads(path.read_bytes())
+    source = json.loads((recovered/'tables.json').read_bytes())
+    for table in ('Pet', 'Skill', 'SkillEffect', 'SkillState', 'StateDescribe',
+                  'Talent', 'Sound', 'PetAttributeEnum', 'PetLandType', 'PetKindEnum'):
+        tables[table].update({key: row for key, row in source[table].items()
+                              if key not in tables[table]})
+    for table, cost in (('Evolution', 'itemIds'), ('PetHeTi', 'costItemIds')):
+        known = tables['Item'].keys() | tables['Money'].keys() | {'0'}
+        tables[table].update({key: row for key, row in source[table].items()
+                              if key not in tables[table] and set(row[cost].split(',')) <= known})
+    path.write_text(json.dumps(tables, ensure_ascii=False, indent=2), encoding='utf-8')
+    for folder in ('Sprite', 'PetHead', 'Skill', 'Audio'):
+        source_dir = recovered/'assets'/folder
+        for file in source_dir.rglob('*'):
+            target = pc_data/'assets'/folder/file.relative_to(source_dir)
+            if file.is_file() and not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(file, target)
+
+
+def apply_compatible_dialogue(pc_data, recovered):
+    kinds = {'talk', 'aside', 'airtalk'}
+    for path in (pc_data/'events').glob('*.json'):
+        incoming = recovered/'events'/path.name
+        if path.name == 'pEventContents.json' or not incoming.exists():
+            continue
+        base, source = (json.loads(file.read_bytes()) for file in (path, incoming))
+        if len(base) != len(source):
+            continue
+        changed = False
+        for step, reference in zip(base, source):
+            old, new = step.get('text'), reference.get('text')
+            if not isinstance(old, str) or not isinstance(new, str) or old == new or step.get('type') not in kinds:
+                continue
+            # Keep the same speaker, placement and command. In particular,
+            # a replaced pet NPC must not introduce a different pet name.
+            if old.partition(':')[0] != new.partition(':')[0]:
+                continue
+            if ({k: v for k, v in step.items() if k not in ('id', 'text')} !=
+                    {k: v for k, v in reference.items() if k not in ('id', 'text')}):
+                continue
+            step['text'] = new
+            changed = True
+        if changed:
+            path.write_text(json.dumps(base, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
 def apply_story_presentation(pc_data, recovered):
+    apply_pet_catalog(pc_data, recovered)
+    apply_compatible_dialogue(pc_data, recovered)
     # Keep save-visible step IDs and instructions, including dialogue portraits.
     updates = {
         'pEventBTask13301.json': {14: ('急冻鸟:喔吼！！！', '闪电鸟:喔吼！！！')},

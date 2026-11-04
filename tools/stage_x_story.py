@@ -21,16 +21,7 @@ def stage(source, baseline, output):
     for table in ('WorldMap', 'VillageSprite', 'Npc', 'Sound', 'Skill', 'SkillEffect',
                   'SkillState', 'StateDescribe', 'Talent'):
         pc[table].update({key: row for key, row in apk[table].items() if key not in pc[table]})
-    story_pets = set(report['new_story_pet_references'])
-    for table in ('MainTask', 'BranchTask'):
-        for task in apk[table].values():
-            kind = int(task['conditionType'])
-            condition = numbers(task['conditions'])
-            if kind == 2:
-                story_pets.update(str(row[1]) for row in zip(*(iter(condition),)*4) if row[0] == 1)
-            elif kind == 5:
-                story_pets.update(str(key) for key in condition[3::4])
-    pc['Pet'].update({key: apk['Pet'][key] for key in story_pets & apk['Pet'].keys() if key not in pc['Pet']})
+    pc['Pet'].update({key: row for key, row in apk['Pet'].items() if key not in pc['Pet']})
     for table in ('NpcFight', 'NpcPet', 'BossPet', 'VillageEnemy'):
         for key, row in apk[table].items():
             if key not in pc[table] and ('petId' not in row or row['petId'] in pc['Pet']):
