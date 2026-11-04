@@ -525,6 +525,33 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_super_perfume_uses_function_item(self):
+        """The 10x perfume is a FunctionItem and must persist its timer."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.state.inventory['220010'] = 1
+                app.use_perfume('220010')
+                self.assertEqual(0, app.state.count('220010'))
+                perfume = app.state.activities['perfume']
+                self.assertEqual('220010', perfume['item'])
+                self.assertEqual(300, int(perfume['steps']))
+                self.assertTrue(Path(app.save_path).is_file())
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_card_legend_board_ui(self):
         """The recovered CardLegend rules are driven by the original page."""
         from event_runtime import Request

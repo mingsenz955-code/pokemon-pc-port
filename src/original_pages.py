@@ -888,7 +888,7 @@ class OriginalPages(PetPages, HatchPages, ServicePages, MergePages, TaskHandover
                     self.drive()
                 self._transport_item_page(kid, fly, paint, info)
                 return
-            if kid in ('220002', '220003'):
+            if kid in ('220002', '220003', '220010'):
                 try:
                     self.use_perfume(kid)
                 except ValueError as error:

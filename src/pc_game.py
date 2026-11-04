@@ -208,6 +208,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         with self.state.transaction():
             self.state.consume([kid], [1])
             self.state.activities['perfume'] = {'item': str(kid), 'steps': steps, 'until': time.time()+seconds}
+        self.save()
 
     def apply_scenery_visibility(self):
         prefix = f'{self.map_id}:5:'
