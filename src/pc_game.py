@@ -280,6 +280,45 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             return
         self.scene_ui.toggle('left')
 
+    def rare_encounter_bonus(self):
+        """Lucky Star (Talent state 31) raises the wild rare-pet chance."""
+        if not self.state.pets:
+            return 0
+        index = min(max(0, int(getattr(self.state, 'active_pet', 0))),
+                    len(self.state.pets)-1)
+        for talent_id in self.state.pets[index].talents:
+            row = self.data.tables.get('Talent', {}).get(str(talent_id), {})
+            for token in str(row.get('state', '')).split(':'):
+                values = token.split(',')
+                if len(values) >= 3 and values[0] == '31':
+                    try:
+                        return max(0, int(values[2]))
+                    except ValueError:
+                        continue
+        return 0
+
+    def pick_wild_enemy(self, ids, weights):
+        """Pick a wild enemy, allowing Lucky Star to bias toward higher stars."""
+        ids, weights = list(ids), list(weights)
+        bonus = self.rare_encounter_bonus()
+        if bonus:
+            stars = {}
+            for enemy_id in ids:
+                enemy = self.data.tables.get('VillageEnemy', {}).get(str(enemy_id), {})
+                pet = self.data.tables.get('Pet', {}).get(str(enemy.get('petId')), {})
+                try:
+                    stars[str(enemy_id)] = int(pet.get('starLevel', 0))
+                except (TypeError, ValueError):
+                    continue
+            if stars and max(stars.values()) > min(stars.values()):
+                if self.state.rng.randint(1, 100) <= bonus:
+                    best = max(stars.values())
+                    rare_ids = [str(eid) for eid in ids if stars.get(str(eid)) == best]
+                    rare_weights = [weights[i] for i, eid in enumerate(ids)
+                                    if stars.get(str(eid)) == best]
+                    return self.state.rng.choices(rare_ids, weights=rare_weights, k=1)[0]
+        return self.state.rng.choices(ids, weights=weights, k=1)[0]
+
     def check_encounter(self):
         if self.battle or self.runtime.running or self.ui_open or self.display_request or self.pending_wait:
             return False
@@ -294,7 +333,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             return False
         if len(weights) < len(ids):
             weights += [1]*(len(ids)-len(weights))
-        enemy_id = self.state.rng.choices(ids, weights=weights[:len(ids)], k=1)[0]
+        enemy_id = self.pick_wild_enemy(ids, weights[:len(ids)])
         self.encounter_distance = 0.0
         self.reset_encounter()
         try:

@@ -525,6 +525,34 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_lucky_star_biases_wild_encounters(self):
+        """Talent state 31 gives the original Lucky Star rare encounter bias."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.state.pets[0].talents = ['400203']
+                app.state.active_pet = 0
+                self.assertEqual(5, app.rare_encounter_bonus())
+                app.state.rng = random.Random(0)
+                picks = [app.pick_wild_enemy(['804001', '804002', '804003'], [1, 1, 1])
+                         for _ in range(200)]
+                self.assertIn('804003', picks)
+                self.assertTrue(set(picks) <= {'804001', '804002', '804003'})
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_super_perfume_uses_function_item(self):
         """The 10x perfume is a FunctionItem and must persist its timer."""
         with tempfile.TemporaryDirectory() as save:
