@@ -525,6 +525,41 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_battle_plays_pet_wow_sound(self):
+        """A pet with an original wowSound roars during battle entrance."""
+        from types import SimpleNamespace
+        from battle_ui import BattleUI
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                unit = SimpleNamespace(side='player', hp=10, alive=True,
+                                       pet=SimpleNamespace(uid=1, species='100001'))
+                battle = SimpleNamespace(player=[unit], enemy=[], events=[],
+                                        result=None, kind='wild',
+                                        player_active=unit, enemy_active=None)
+                ui = BattleUI(app, battle, opening=True)
+                played = []
+                ui.effect_audio = SimpleNamespace(play=lambda value: played.append(str(value)))
+                for _ in range(20):
+                    ui.advance(seconds=1)
+                    if ui.opening_frame is None:
+                        break
+                self.assertIn('2001', played)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_pet_list_plays_name_voice(self):
         """Selecting a PetListUI row plays its original nameSound."""
         with tempfile.TemporaryDirectory() as save:

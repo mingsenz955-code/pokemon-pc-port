@@ -69,6 +69,7 @@ class BattleUI:
         self.anim_frame = 0
         self.anim_idle = 0
         self.opening_frame = 0.0 if opening else None
+        self._entry_voice_played = False
         self.opening_transition = (app.cocos_ui.layout('BattleStartEffectUI')['action']['duration']
                                    if opening else 0)
         self.display_hp = {(u.side, u.pet.uid): u.hp for u in battle.player+battle.enemy}
@@ -89,6 +90,18 @@ class BattleUI:
             voice_frame = self.opening_transition+3
             if previous <= voice_frame < self.opening_frame:
                 self.effect_audio.play('5023')
+            # Once the player's pet has appeared, play the authored wowSound
+            # (the roar used by the original PetActionController).  Most rows
+            # have no Sound entry; those stay silent instead of borrowing an
+            # unrelated asset.
+            if not self._entry_voice_played and self.opening_frame >= self.opening_transition+16:
+                self._entry_voice_played = True
+                unit = getattr(self.battle, 'player_active', None)
+                if unit is not None:
+                    row = self.app.data.tables['Pet'].get(unit.pet.species, {})
+                    sound = str(row.get('wowSound', '0'))
+                    if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
+                        self.effect_audio.play(sound)
             if self.opening_frame >= self.opening_transition+49:
                 self.opening_frame = None
             self.frame = None
