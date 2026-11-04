@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT/'src'))
 
-from battle import make_npc_battle, make_wild_battle
+from battle import Buff, make_npc_battle, make_wild_battle
 from event_runtime import EventRuntime
 from game_state import GameState
 from original_data import OriginalData
@@ -34,7 +34,8 @@ class XFullChecks(unittest.TestCase):
         """Passive talent state codes parse into combat modifiers."""
         pet = generate_pet(self.data.tables, random.Random(41), '100160', 80)
         pet.talents = ['400121', '400214', '400215', '400216', '400217',
-                       '400117', '400122']
+                       '400117', '400122', '400136', '400137', '400138',
+                       '400140', '400141']
         battle = make_wild_battle(self.data.tables, [pet],
                                   next(iter(self.data.tables['VillageEnemy'])),
                                   random.Random(42))
@@ -50,11 +51,40 @@ class XFullChecks(unittest.TestCase):
         self.assertIn('9', unit.talent_immune)
         self.assertTrue(battle._immune(unit, '9'))
         self.assertFalse(battle._immune(unit, '2'))
+        self.assertTrue(unit.prevent_drain)
+        self.assertTrue(unit.ignore_invincible)
+        self.assertEqual('hp', unit.convert_damage['defence'])
+        self.assertEqual('energy', unit.convert_damage['energy'])
+        self.assertEqual(25, unit.reflect_damage['energy'])
+        unit.energy = 1
+        energy_before = unit.energy
+        battle._deal(battle.enemy[0], unit, 20, 'energy')
+        self.assertGreater(unit.energy, energy_before)
+        enemy = battle.enemy[0]
+        enemy.hp = enemy.max_hp
+        enemy.add_buff('45', Buff('45', 3, '41,1', 1, '', '力量伤害无效'))
+        unit.ignore_invincible = False
+        battle._deal(unit, enemy, 50, 'power')
+        self.assertEqual(enemy.max_hp, enemy.hp)
+        unit.ignore_invincible = True
+        battle._deal(unit, enemy, 50, 'power')
+        self.assertLess(enemy.hp, enemy.max_hp)
         self.assertEqual(85, battle._reduce_talent_damage(100, unit))
         unit.hp = max(1, unit.max_hp//2)
         before = unit.hp
         battle._end_round()
         self.assertGreater(unit.hp, before)
+
+    def test_x_state_targets_follow_buff_type(self):
+        from battle import SELF_STATES
+        wrong = []
+        for key, row in self.data.tables['SkillState'].items():
+            buff_type = int(row.get('buffType', 0) or 0)
+            if buff_type == 1 and int(key) not in SELF_STATES:
+                wrong.append((key, 'buff1-not-self'))
+            if buff_type == 2 and int(key) in SELF_STATES:
+                wrong.append((key, 'debuff-self'))
+        self.assertFalse(wrong, wrong)
 
     def test_complete_data_counts(self):
         tables = self.data.tables

@@ -52,8 +52,8 @@ STATE_NAMES = {
     '57': ('速度大幅降低', 'speed_down_big'),
 }
 
-SELF_STATES = {8, 11, 12, 14, 21, 22, 23, 24, 25, 26, 27, 28, 29, 33, 34, 35,
-               36, 39, 43, 44, 45, 46, 47, 48, 53, 54, 55, 56, 57}
+SELF_STATES = {8, 11, 12, 14, 21, 22, 23, 24, 25, 26, 27, 28, 29, 32, 33, 34,
+               35, 36, 39, 43, 45, 46, 47, 48, 53, 54}
 INSTANT_STATES = {16, 19, 20, 23, 24, 25, 26, 27, 35, 38, 39, 50, 51, 53}
 DEBUFF_KINDS = {'poison', 'def_down', 'speed_down', 'sleep', 'sleep', 'petrify',
                 'bind', 'restrict', 'drain', 'power_down', 'fear', 'nightmare',
@@ -136,6 +136,10 @@ class BattlePet:
         self.dot_down = {}
         self.regen_pct = 0.0
         self.half_damage_chance = 0.0
+        self.prevent_drain = False
+        self.ignore_invincible = False
+        self.convert_damage = {}
+        self.reflect_damage = {}
         for key in self.pet.talents:
             talent = self.tables['Talent'].get(str(key))
             if not talent:
@@ -166,6 +170,16 @@ class BattlePet:
                         self.crit_bonus += value
                     elif state == 60:
                         self.immune_all_debuffs = True
+                    elif state == 66:
+                        self.prevent_drain = True
+                    elif state in (67, 68, 69):
+                        self.convert_damage[{67: 'defence', 68: 'speed',
+                                             69: 'energy'}[state]] = 'hp' if state != 69 else 'energy'
+                    elif state in (70, 71, 72):
+                        self.reflect_damage[{70: 'energy', 71: 'defence',
+                                             72: 'speed'}[state]] = 25.0
+                    elif state in (62, 63, 64, 65):
+                        self.ignore_invincible = True
                     elif mapped and value < 100:
                         self.talent_chance[mapped] = (
                             self.talent_chance.get(mapped, 0.0)+value)
@@ -252,17 +266,18 @@ class BattlePet:
             removed.append(buff)
         return removed
 
-    def take_damage(self, amount, source=None, attribute=None):
+    def take_damage(self, amount, source=None, attribute=None, ignore_invincible=False):
         amount = max(0, int(amount))
         if amount <= 0:
             return 0
         absorb = next((buff for buff in self.buffs if buff.kind == 'absorb'), None)
-        if absorb:
+        if absorb and not ignore_invincible:
             self.buffs.remove(absorb)
             self.add_buff('5', Buff('5', 4, '14,5', 2, name='睡眠'))
             return 0
         for buff in list(self.buffs):
-            if buff.kind.startswith('immune_') and attribute is not None:
+            if (not ignore_invincible and buff.kind.startswith('immune_')
+                    and attribute is not None):
                 if buff.kind == f'immune_{attribute}':
                     return 0
         if self.has('counter') and source is not None:
@@ -712,6 +727,16 @@ class Battle:
 
     def _deal(self, unit, target, damage, attribute, crit=False, crit_chance=None, skill=None, hit_index=0):
         crit = crit if crit_chance is None else self.rng.randrange(100) < crit_chance
+        immune_kind = {'power': 'immune_power', 'energy': 'immune_energy',
+                       'defence': 'immune_def', 'speed': 'immune_speed'}.get(attribute)
+        if (immune_kind and target.has(immune_kind)
+                and not getattr(unit, 'ignore_invincible', False)):
+            self.messages.append(f'{target.name} 免疫了{immune_kind}的伤害！')
+            self.events.append({'type': 'damage', 'side': target.side, 'name': target.name,
+                                'uid': target.pet.uid, 'amount': 0, 'crit': crit,
+                                'attribute': attribute, 'hp': target.hp,
+                                'max_hp': target.max_hp, 'hit_index': hit_index})
+            return
         # damageAddition 0x2c91bc adds 50 to the restraint percentage on a
         # critical hit, BEFORE Formula_PetSkillAttackDamage. No +/-5% jitter.
         percent = 100
@@ -724,6 +749,20 @@ class Battle:
         if skill is not None:
             damage = skill_damage(damage, int(skill.get('attack', 0) or 0),
                                   round(float(skill.get('attackCoe', 0) or 0)*100))
+        conversion = getattr(target, 'convert_damage', {}).get(attribute)
+        if conversion:
+            if conversion == 'hp':
+                healed = target.heal(max(1, int(damage)))
+                self.messages.append(f'{target.name} 将{attribute}伤害转化为 {healed} 点生命。')
+                self.events.append({'type': 'heal', 'side': target.side, 'name': target.name,
+                                    'uid': target.pet.uid, 'amount': healed, 'hp': target.hp,
+                                    'max_hp': target.max_hp})
+            else:
+                amount = target.restore_energy(max(1, int(damage)))
+                self.messages.append(f'{target.name} 将{attribute}伤害转化为 {amount} 点能量。')
+                self.events.append({'type': 'energy', 'side': target.side, 'name': target.name,
+                                    'uid': target.pet.uid, 'amount': amount})
+            return
         if getattr(unit, 'damage_up', 0):
             damage = int(damage*(1+unit.damage_up/100))
         damage = self._reduce_talent_damage(damage, target)
@@ -737,7 +776,8 @@ class Battle:
                     source = unit
                     source.heal(max(1, int(damage*.1)))
         was_alive = target.alive
-        taken = target.take_damage(damage, source=unit, attribute=attribute)
+        taken = target.take_damage(damage, source=unit, attribute=attribute,
+                                   ignore_invincible=getattr(unit, 'ignore_invincible', False))
         if unit.side == 'player' and target.side == 'enemy':
             self.damage_dealt += taken
         self.events.append({'type': 'damage', 'side': target.side, 'name': target.name,
@@ -748,6 +788,16 @@ class Battle:
             self.messages.append(f'{target.name} 没有受到伤害。')
         else:
             self.messages.append(f'{target.name} 受到 {taken} 点伤害' + ('（暴击）' if crit else '') + '。')
+        reflect = getattr(target, 'reflect_damage', {}).get(attribute)
+        if reflect and taken > 0:
+            amount = max(1, int(taken*reflect/100))
+            reflected = unit.take_damage(amount)
+            self.messages.append(f'{target.name} 的{attribute}反伤对 {unit.name} 造成 {reflected} 点伤害。')
+            self.events.append({'type': 'damage', 'side': unit.side, 'name': unit.name,
+                                'uid': unit.pet.uid, 'amount': reflected, 'crit': False,
+                                'attribute': attribute, 'hp': unit.hp,
+                                'max_hp': unit.max_hp, 'hit_index': 0,
+                                'source': 'reflect'})
         if unit.has('recoil') and damage > 0:
             recoil = max(1, int(damage*0.15))
             unit.take_damage(recoil)
@@ -846,6 +896,9 @@ class Battle:
             receiver.hp = 0
             self.messages.append(f'{receiver.name} 被一击致命！')
         elif kind == 'drain_hp':
+            if getattr(receiver, 'prevent_drain', False):
+                self.messages.append(f'{receiver.name} 的生命守护阻止了生命汲取！')
+                return
             pct = values[1] if len(values) > 1 else 20
             amount = max(1, receiver.max_hp*pct//100)
             receiver.take_damage(amount, source=unit)
@@ -913,6 +966,9 @@ class Battle:
                                         'max_hp': unit.max_hp, 'hit_index': 0,
                                         'source': 'drain'})
                 elif kind == 'leech':
+                    if getattr(unit, 'prevent_drain', False):
+                        self.messages.append(f'{unit.name} 的生命守护阻止了寄生汲取！')
+                        continue
                     pct = values[1] if len(values) > 1 else 10
                     amount = max(1, unit.max_hp*pct//100)
                     taken = unit.take_damage(amount)
