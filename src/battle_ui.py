@@ -101,6 +101,13 @@ class BattleUI:
                     if self.anim['age'] >= when and index not in played and name == 'sound':
                         self.effect_audio.play(plan['sound'])
                         played.add(index)
+                # Two X armatures author a sound filename but have no sound
+                # callback frame; the native loader still starts it with the
+                # effect, so play it once at animation start.
+                if plan.get('sound') and not any(name == 'sound' for _, name in plan['events']):
+                    if 'start_sound' not in played:
+                        self.effect_audio.play(plan['sound'])
+                        played.add('start_sound')
             for event in self.anim.get('damages', []):
                 if not event.get('presented') and self.anim['age'] >= event['when']:
                     event['presented'] = True

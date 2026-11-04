@@ -58,6 +58,7 @@
 - 事件奖励、`StoryToken`、主线续接、战斗捕捉信物、战斗入场动画与 X 序章已接入。
 - 兼容 X 把单个 `fight`/`fightover`/`submittask`/`taskstate`/`end`/`screen`/`tomap` 参数包成列表的写法，并修复 `pEvent1614001` 指向缺失 id 1 的战后分支（继续到其 id 2 对话）。
 - Cocos plist 兼容 UTF-8 BOM 与 `<ustring>` 标签；X 的 363 个 plist 现已全部可解析，修复三个技能特效无法绘制。
+- 技能特效有 `sound` 配置但骨架没有 sound 回调帧时，开播即播放一次，覆盖 X 的两个此类技能。
 
 ## 构建与启动
 
