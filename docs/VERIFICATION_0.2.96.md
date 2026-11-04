@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**39 个测试全部通过**。
+结果：**40 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
@@ -101,3 +101,4 @@
 - 未进行从序章到结局的全程步行通关；当前结论限于自动化加载、受控剧情/战斗和代表性 UI。
 - X 的少数附属动画、特效组合、战斗镜头和支线边界仍需逐项核对。
 - 1.20.4 回退可用 `POCKET_NATIVE_DATA=original-1.20.4`；默认源码数据为 `x-data`（存在时）。
+- 卡牌传说已接入原版 `CardLegendUI`、`CardLegendCardItemUI` 与 `CardLegendResultUI`：五张手牌、比大小、胜负/平局、奖励领取和原版卡牌按钮均由 `Activities` 的牌局逻辑驱动；新增 UI 回归测试。

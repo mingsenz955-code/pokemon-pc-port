@@ -1050,23 +1050,145 @@ class ActivityUI:
         self._service_bank_page(info)
 
     def _cards_body(self, body, info):
-        """Original CardLegendUI shell; the card battle rules are still being ported."""
+        """CardLegendUI: the original five-card star comparison game.
+
+        CardLegendCardItemUI is the hand card prefab; CardLegendResultUI is
+        published when the original win/lose/tie state is reached.  Deal,
+        comparison and reward rules live in Activities.
+        """
+        from original_pages import Page
         body.pack_forget()
-        layer = self.cocos_ui.render('CardLegendUI', (800, 480), {})
-        self.ui_base_layer = layer
-        self.ui_hits = dict(self.cocos_ui.hits)
-        self.ui_rects = dict(self.cocos_ui.rects)
-        self.ui_buttons = dict(self.cocos_ui.buttons)
-        self.ui_button_text = dict(self.cocos_ui.button_text)
-        self.ui_actions['open_Button'] = lambda: info.set(
-            '卡牌传说规则仍在按手机版原逻辑接入，当前不会伪造开包结果。')
-        self.ui_actions['close_Button'] = self.close_ui
-        info.set('卡牌传说 · 原版界面')
-        if getattr(self, 'ui_art_label', None) is not None:
-            photo = ImageTk.PhotoImage(layer)
-            self.ui_art_label.configure(image=photo)
-            self.ui_art_label.image = photo
-    
+        activity = Activities(self.state)
+        owner = self.ui_window
+
+        def live():
+            return self.ui_open and self.ui_window is owner
+
+        def face(card):
+            row = self.data.tables['Pet'][card['species']]
+            return 'PetHead/head_'+row.get('filePath', '')+'.png'
+
+        def card_args(card, shown):
+            star = int(card['star'])
+            visible = {'front_Image': shown, 'reverse_Image': not shown,
+                       'head_Image': shown, 'headKuang_Image': shown}
+            for index in range(1, 6):
+                visible[f'star_Sprite_{index}'] = shown and index <= star
+            return {'resources': {'head_Image': face(card)}, 'visible': visible}
+
+        def show_result(match):
+            result = int(match['result'])
+            reward = match.get('reward') or {}
+            if result == 1 and reward:
+                gained = self.data.tables['Item'].get(reward.get('item'), {}).get('name', reward.get('item'))
+                tip = f'恭喜您获得了：{gained} × {reward.get("count", 1)}'
+            else:
+                tip = '恭喜您获得了：'
+            page = Page(self, 'CardLegendResultUI', timeline_frame=60,
+                        text={'winTip_Text': '恭喜您获得了：'},
+                        visible={'win_Panel': result == 1,
+                                 'lose_Panel': result == -1,
+                                 'tie_Panel': result == 0,
+                                 'item_ListView': result == 1})
+            if result == 1 and reward:
+                name, icon = self._item_data(reward.get('item'))
+                try:
+                    area = page.rects['Layer/root_Panel/win_Panel/item_ListView']
+                    art = self.data.image(icon).convert('RGBA').resize(
+                        (52, 52), Image.Resampling.LANCZOS)
+                    page.layer.alpha_composite(art, (round((area[0]+area[2]-52)/2),
+                                                     round(area[1]+20)))
+                    ImageDraw.Draw(page.layer).text(
+                        (round((area[0]+area[2])/2), round(area[3]-28)),
+                        f'{name} × {reward.get("count", 1)}',
+                        font=self.cocos_ui.font('', 16), fill='#693100', anchor='mm')
+                except (KeyError, ValueError, OSError):
+                    pass
+            def finish():
+                if result == 1 and not match.get('claimed'):
+                    try:
+                        won = activity.claim_cards()
+                    except (ValueError, KeyError) as error:
+                        self._page_tip(str(error), lambda: show_result(match))
+                        return
+                    self.save()
+                    if won:
+                        self.reward_overlay([(won['item'], won['count'])],
+                                            lambda: self.close_ui('yes'), '卡牌传说奖励')
+                        return
+                self.close_ui('yes')
+            page.actions['confirm_Button'] = finish
+            page.actions['close_Button'] = finish
+            page.publish()
+
+        probe = Page(self, 'CardLegendUI', timeline_frame=60)
+
+        def paint():
+            match = self.state.activities.get('cards')
+            if match and match.get('result') is not None:
+                show_result(match)
+                return
+            hidden = {'Layer/root_Panel/our_Panel/open_ProjectNode': False,
+                      'Layer/root_Panel/other_Panel/open_ProjectNode': False}
+            for side in ('our', 'other'):
+                for index in range(5):
+                    hidden[f'Layer/root_Panel/{side}_Panel/card_Panel/card_{index+1}_ProjectNode'] = False
+            our_score = int(match['score'][0]) if match else 0
+            other_score = int(match['score'][1]) if match else 0
+            for index in range(3):
+                hidden[f'Layer/root_Panel/our_Panel/cup_Panel/cup_{index+1}_Sprite'] = index < our_score
+                hidden[f'Layer/root_Panel/other_Panel/cup_Panel/cup_{index+1}_Sprite'] = index < other_score
+            tip = '请选牌' if match and not match.get('used') else '继续选牌' if match else '请开始牌局'
+            page = Page(self, 'CardLegendUI', timeline_frame=60, visible=hidden,
+                        text={'times_BitmapFontLabel': str(self.state.count("220008")),
+                              'playTip_Text': tip})
+
+            def play(index):
+                if not match or index in match.get('used', []):
+                    return
+                try:
+                    activity.play_card(index)
+                except (ValueError, KeyError) as error:
+                    self._page_tip(str(error), paint)
+                    return
+                self.save()
+                paint()
+
+            def start():
+                current = self.state.activities.get('cards')
+                if current and current.get('result') == 1 and not current.get('claimed'):
+                    show_result(current)
+                    return
+                try:
+                    activity.start_cards()
+                except (ValueError, KeyError) as error:
+                    self._page_tip(str(error), paint)
+                    return
+                self.save()
+                paint()
+
+            if match:
+                for index, card in enumerate(match['player']):
+                    rect = probe.rects[f'Layer/root_Panel/our_Panel/card_Panel/card_{index+1}_ProjectNode']
+                    page.add('CardLegendCardItemUI', (round(rect[0]), round(rect[1])),
+                             prefix=f'our_card_{index}/', **card_args(card, True))
+                    if index not in match.get('used', []):
+                        page.hit(f'our_card_{index}', rect, lambda i=index: play(i))
+                for index, card in enumerate(match['enemy']):
+                    revealed = index in match.get('enemy_used', []) or match.get('result') is not None
+                    rect = probe.rects[f'Layer/root_Panel/other_Panel/card_Panel/card_{index+1}_ProjectNode']
+                    page.add('CardLegendCardItemUI', (round(rect[0]), round(rect[1])),
+                             prefix=f'other_card_{index}/', **card_args(card, revealed))
+            page.actions['open_Button'] = start
+            page.actions['close_Button'] = self.close_ui
+            if not any(k.endswith('/close_Button') for k in page.hits):
+                self._add_page_close(page)
+            if not live():
+                return
+            page.publish()
+
+        paint()
+
     def _roulette_body(self, body, info):
         from original_pages import Page
         from game_state import numbers
