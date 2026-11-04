@@ -525,6 +525,39 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_battle_pet_scale_uses_original(self):
+        """Pet.scale survives the battle target-height resize."""
+        from types import SimpleNamespace
+        from PIL import Image
+        from battle_ui import BattleUI
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                ui = BattleUI(app, SimpleNamespace(player=[], enemy=[], events=[], result=None, kind='wild'))
+                heights = {}
+                for species in ('100001', '101152'):
+                    unit = SimpleNamespace(pet=SimpleNamespace(species=species), alive=True)
+                    frame = Image.new('RGBA', (800, 480))
+                    ui._pose_cache.clear()
+                    ui._draw_pet(frame, unit, (400, 300), 200)
+                    cached = next(iter(ui._pose_cache.values()))
+                    heights[species] = cached[0].height
+                self.assertLess(heights['101152'], heights['100001'])
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_lucky_star_biases_wild_encounters(self):
         """Talent state 31 gives the original Lucky Star rare encounter bias."""
         with tempfile.TemporaryDirectory() as save:

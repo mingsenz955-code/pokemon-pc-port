@@ -426,6 +426,11 @@ class BattleUI:
     def _draw_pet(self, frame, unit, center, height, enemy=False, flash=0.0):
         if not unit:
             return
+        # Pet.scale is applied to both the setup pose and every spine frame in
+        # OriginalData; the battle target height must carry it as well or the
+        # two scalings cancel and every pet draws at the same size.
+        pet_scale = float(self.app.data.tables['Pet'][unit.pet.species].get('scale', 1) or 1)
+        height = max(1, round(height*pet_scale))
         if self.opening_frame is not None:
             age = self.opening_frame-self.opening_transition
             reveal = 0 if enemy and self.battle.kind == 'wild' else 16
