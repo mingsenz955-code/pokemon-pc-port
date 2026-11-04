@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**29 个测试全部通过**。
+结果：**30 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
@@ -29,6 +29,7 @@
 - 战斗结算页的 `PetCatchedEffectUI`（捕捉）和 `ChallengeResultUI`（胜负）按原始时间轴推进，不再固定在单帧。
 - 剧情 `screen` 指令区分黑屏（type 0）和白屏（type 1），`screenclose` 现在真正清除遮罩，不再把画面留黑。
 - 战斗结算的经验结算文字会列出实际升级到的等级，不再只显示获得经验。
+- 有宠物升级时先显示原版 `PetLevelUpUI` 升级面板（等级 55→56 样式、宠物图、确认按钮），确认后才进入战斗结算页。
 - 全部 162 个 X 技能在真实 `Battle` 回合中逐一使用，无异常。
 - 全部 162 个技能的 `SkillEffect` 计划可解析；8 种剧情表情 `face` 骨架可渲染。APK 唯一缺失的特效资源是「突袭」的 `133_tuxi`，未伪造替代特效。
 - 全部 320 个技能特效层级（含前后层）实际离屏绘制成功；修复 X 的 Cocos plist UTF-8 BOM 与 `<ustring>` 标签解析，星界洪流、异能引爆、时空归位等特效不再报错。

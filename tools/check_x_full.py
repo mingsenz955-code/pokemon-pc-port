@@ -363,6 +363,42 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_battle_levelup_panel_renders(self):
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
+                ui = app.battle_ui
+                ui.advance(seconds=3)
+                unit = app.battle.player_active
+                level = unit.pet.level
+                app.battle.result = 'win'
+                app.battle.exp_gained = [(unit.name, 120, [level+1])]
+                ui.levelup_entries = None
+                frame = ui.render()
+                self.assertEqual(frame.size, (960, 576))
+                self.assertTrue(ui._levelup_active())
+                self.assertIn('result_continue', ui.hits)
+                ui.advance(seconds=.1)
+                ui.render()
+                rect = ui.hits['result_continue']
+                ui.click((rect[0]+rect[2])//2, (rect[1]+rect[3])//2)
+                self.assertFalse(ui._levelup_active())
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_wild_capture_reaches_caught(self):
         pets = [generate_pet(self.data.tables, random.Random(22), '100160', 80)
                 for _ in range(2)]

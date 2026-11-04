@@ -59,6 +59,9 @@ class BattleUI:
         self._background_cache = {}
         self.result_page = 'outcome'
         self.result_age = 0.0
+        self.levelup_entries = None
+        self.levelup_index = 0
+        self.levelup_age = 0.0
         # Replay authored action callbacks. Unsupported plans retain the
         # explicitly provisional 26-tick fallback.
         self.anim = None
@@ -91,10 +94,15 @@ class BattleUI:
             self.frame = None
         self.anim_idle += steps
         if self.battle.result and self.result_page == 'outcome':
-            # PetCatchedEffectUI (200 frames) and ChallengeResultUI (170)
-            # are authored timelines; keep them moving while the result page
-            # waits for the player's confirmation tap.
-            self.result_age += steps*60/25
+            if self._levelup_active():
+                # PetLevelUpUILayer is shown before BattleCalculationUILayer;
+                # confirm advances through every leveled pet.
+                self.levelup_age += steps*60/25
+            else:
+                # PetCatchedEffectUI (200 frames) and ChallengeResultUI (170)
+                # are authored timelines; keep them moving while the result page
+                # waits for the player's confirmation tap.
+                self.result_age += steps*60/25
             self.frame = None
             self._signature = None
         remaining = steps
@@ -691,6 +699,43 @@ class BattleUI:
             draw.rounded_rectangle(rect, 8, fill=(70, 92, 66, 240))
             self._label(draw, ((rect[0]+rect[2])//2, (rect[1]+rect[3])//2), label, 19, anchor='mm')
 
+    def _levelup_data(self):
+        if self.levelup_entries is None:
+            self.levelup_entries = []
+            for name, gained, levels in self.battle.exp_gained:
+                if levels:
+                    self.levelup_entries.append({
+                        'name': name,
+                        'gained': gained,
+                        'from_level': levels[0]-1,
+                        'to_level': levels[-1],
+                    })
+        return self.levelup_entries
+
+    def _levelup_active(self):
+        return self.levelup_index < len(self._levelup_data())
+
+    def _draw_levelup(self, frame):
+        entry = self._levelup_data()[self.levelup_index]
+        name = entry['name']
+        layer = self.app.cocos_ui.render('PetLevelUpUI', (W, H),
+            text={'name_Text': name, 'petName_Text': name,
+                  'info_Text': '获得经验', 'exp_BitmapFontLabel': str(entry['gained']),
+                  'levelFrom_BitmapFontLabel': str(entry['from_level']),
+                  'levelTo_BitmapFontLabel': str(entry['to_level'])},
+            timeline_frame=int(min(489, self.levelup_age)))
+        frame.alpha_composite(layer)
+        unit = next((u for u in self.battle.player if u.name == name), None)
+        if unit is not None:
+            art = self.app.data.pet_image(unit.pet.species)
+            if art is not None:
+                art = art.copy()
+                art.thumbnail((210, 210), Image.Resampling.LANCZOS)
+                frame.alpha_composite(art, (round(W*.25-art.width/2),
+                                            round(H*.52-art.height)))
+        self.hits['result_continue'] = tuple(
+            self.app.cocos_ui.buttons.get('confirm_Button', (W-170, H-80, W, H)))
+
     def _result_lines(self):
         lines = []
         for name, gained, levels in self.battle.exp_gained:
@@ -710,6 +755,9 @@ class BattleUI:
         # WorldMonsterBattleResultUI is a world-boss ranking page, not the
         # normal battle settlement. Use the recovered outcome/calculation UI.
         result = self.battle.result
+        if self.result_page == 'outcome' and self._levelup_active():
+            self._draw_levelup(frame)
+            return
         if self.result_page == 'outcome':
             if result == 'caught' and self.battle.caught_pet:
                 pet = self.battle.caught_pet
@@ -766,6 +814,13 @@ class BattleUI:
             self.info = ''
             return 'refresh'
         if self.battle.result:
+            if self._levelup_active():
+                if self._inside(self.hits.get('result_continue'), x, y):
+                    self.levelup_index += 1
+                    self.levelup_age = 0.0
+                    self.frame = None
+                    return 'refresh'
+                return None
             if self._inside(self.hits.get('result_continue'), x, y):
                 if self.battle.result == 'caught':
                     return 'finish'  # Native captured-pet confirmation closes this result.
