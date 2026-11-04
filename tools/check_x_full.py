@@ -522,6 +522,31 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_opening_respects_saved_audio_switches(self):
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            (Path(save)/'slot1.json').write_text(
+                '{"presentation": {"music_enabled": false, "effects_enabled": false}}',
+                encoding='utf-8')
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data, show_opening=True)
+                self.assertFalse(app.audio.music_enabled)
+                self.assertFalse(app.audio.effects_enabled)
+                self.assertIsNotNone(app.opening)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_opening_and_battle_timelines(self):
         from csb_render import CocosUI
         ui = CocosUI(self.data)

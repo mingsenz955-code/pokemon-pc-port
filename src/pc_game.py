@@ -126,6 +126,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         install_callback_log(self)
         self.autosave_job = root.after(30000, self.autosave)
         root.protocol('WM_DELETE_WINDOW', self.close_game)
+        self._preload_audio_settings()
         if show_opening:
             # The native opening timeline uses BGM_101.mp3 (string table next
             # to OpeningUI.csb). It must stop as soon as the opening is skipped.
@@ -134,6 +135,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.opening = (tuple(clips[f'animation{i}'] for i in range(7)), 0, time.monotonic())
             return
         self.enter_game()
+
+    def _preload_audio_settings(self):
+        """Apply saved music/effect switches before the opening BGM starts."""
+        try:
+            saved = json.loads(self.save_path.read_text(encoding='utf-8'))
+            presentation = saved.get('presentation') or {}
+            self.audio.music_enabled = bool(presentation.get('music_enabled', True))
+            self.audio.effects_enabled = bool(presentation.get('effects_enabled', True))
+        except (OSError, ValueError, TypeError):
+            pass
 
     def enter_game(self):
         self.opening = None
