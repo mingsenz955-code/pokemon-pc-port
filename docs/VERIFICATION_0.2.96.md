@@ -96,7 +96,7 @@
 
 ## 最终发布状态（2026-11-05）
 
-- 自动化：`tools/check_x_full.py -v`，**45 项全部通过**，耗时约 238 秒。
+- 自动化：`tools/check_x_full.py -v`，**46 项全部通过**，耗时约 238 秒。
 - X 0.2.96：5,713,438 字节，SHA-256 `EE8C4199DF0B2EF2495F60E3A87EF2E217219FF1FCBB35D762ED42CFBACF7E62`。
 - 1.20.4 回退版：5,713,438 字节，SHA-256 `8EFE5F3A218F6D6B2B7E2DA3971535D7FB17F6CB4E100C4BF5A6EF0F510BC0EB`。
 - 两个包均以临时存档运行 `--smoke-test`，退出码 0。
