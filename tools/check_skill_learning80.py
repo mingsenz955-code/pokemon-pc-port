@@ -35,9 +35,11 @@ class SkillLearningChecks(unittest.TestCase):
   a=self.app;p,key=self.paid();money=a.data.tables['Skill'][key]['moneyId'];a.state.inventory[money]=0
   a.open_skill_learn_confirm(p.uid,key,back=6);before=a.state.payload();self.click('confirm_Button')
   self.assertEqual(a.original_page.specs[0][0],'TipConfirmUI');self.assertEqual(a.state.payload(),before)
- def test_medal_pack_is_one_million_for_ten(self):
-  s=self.app.state;row=s.tables['Store']['105'];self.assertEqual(row['gotCount'],'10');self.assertEqual(row['costCount'],'1000000')
-  s.inventory['700001']=1000000;s.inventory['700002']=0;s.buy_store('105')
-  self.assertEqual(s.count('700002'),10);self.assertEqual(s.count('700001'),0)
+ def test_medal_packs_use_original_counts_and_gold_conversion(self):
+  s=self.app.state
+  for key,price,count in [('105',10000,20),('106',20000,50),('107',30000,90)]:
+   with self.subTest(key=key):
+    s.inventory.update({'700001':price,'700002':0});s.buy_store(key)
+    self.assertEqual(s.count('700002'),count);self.assertEqual(s.count('700001'),0)
 
 if __name__=='__main__':unittest.main(verbosity=2)

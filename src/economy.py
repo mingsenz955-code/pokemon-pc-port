@@ -22,11 +22,6 @@ def adapt_tables(tables):
         if store_limit_group(row):row['repeat']='0'
         for field in ('des', 'des2', 'name'):
             row[field] = gold_text(row.get(field, ''))
-        if row.get('gotItemKid')=='700002':
-            if int(row['gotCount'])==20:row['gotCount']='10'
-            row['costMoneyType']=GOLD
-            row['costCount']=str(int(row['gotCount'])*100000)
-            row['des']=row['des2']=f"{row['costCount']}金币兑换{row['gotCount']}个勋章"
 
 
 def store_limit_group(row):
