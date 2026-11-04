@@ -183,6 +183,34 @@ class XFullChecks(unittest.TestCase):
                         pass
                 root.destroy()
 
+    def test_every_x_pet_renders(self):
+        missing = []
+        for species in self.data.tables['Pet']:
+            try:
+                image = self.data.pet_image(species)
+                if image is None:
+                    missing.append((species, 'no image'))
+            except Exception as error:  # noqa: BLE001 - collect every pet
+                missing.append((species, type(error).__name__, str(error)))
+        self.assertFalse(missing, missing[:10])
+
+    def test_every_x_skill_executes_in_battle(self):
+        from battle import Battle
+        from pet_factory import generate_pet
+        errors = []
+        for skill in self.data.tables['Skill']:
+            try:
+                player = generate_pet(self.data.tables, random.Random(1), '100160', 200)
+                player.skills = [skill]
+                enemy = generate_pet(self.data.tables, random.Random(2), '100160', 200)
+                battle = Battle(self.data.tables, [player], [enemy],
+                                random.Random(3), kind='trainer', name='skill')
+                battle.player[0].energy = battle.player[0].max_energy = 9999
+                battle.choose_skill(0)
+            except Exception as error:  # noqa: BLE001 - collect every skill
+                errors.append((skill, type(error).__name__, str(error)))
+        self.assertFalse(errors, errors[:10])
+
     def test_every_battle_reaches_a_result(self):
         from pet_factory import generate_pet
         pets = [generate_pet(self.data.tables, random.Random(21), '100160', 200)
