@@ -130,6 +130,7 @@ class BattlePet:
         self.talent_resist = {}
         self.talent_immune = set()
         self.immune_all_debuffs = False
+        self.all_debuff_resist = 0.0
         self.damage_up = 0.0
         self.damage_down = 0.0
         self.dot_up = {}
@@ -234,7 +235,12 @@ class BattlePet:
                         self.talent_chance[mapped] = (
                             self.talent_chance.get(mapped, 0.0)+value)
                 elif mode == 1:
-                    if mapped:
+                    if state == 58:
+                        if value >= 100:
+                            self.immune_all_debuffs = True
+                        else:
+                            self.all_debuff_resist += value
+                    elif mapped:
                         if value >= 100:
                             self.talent_immune.add(mapped)
                         else:
@@ -950,6 +956,9 @@ class Battle:
                     continue
                 chance += unit.talent_chance.get(str(index), 0.0)
                 chance -= receiver.talent_resist.get(str(index), 0.0)
+                kind = STATE_NAMES.get(str(index), ('', ''))[1]
+                if kind in DEBUFF_KINDS:
+                    chance -= receiver.all_debuff_resist
                 chance = max(0, min(100, chance))
                 roll = self.rng.randrange(100)
                 if roll >= chance:

@@ -225,6 +225,24 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(pet.species, '101025')
         self.assertTrue(pet.talents)
 
+    def test_x_all_abnormal_talents(self):
+        """State 58 is the all-abnormal resistance used by holy/divine talents."""
+        enemy = next(iter(self.data.tables['VillageEnemy']))
+        holy = generate_pet(self.data.tables, random.Random(61), '100160', 80)
+        holy.talents = ['400126']
+        immune_battle = make_wild_battle(self.data.tables, [holy], enemy,
+                                         random.Random(62))
+        immune = immune_battle.player[0]
+        self.assertTrue(immune.immune_all_debuffs)
+        self.assertTrue(immune_battle._immune(immune, '2'))
+        divine = generate_pet(self.data.tables, random.Random(63), '100160', 80)
+        divine.talents = ['400130']
+        resist_battle = make_wild_battle(self.data.tables, [divine], enemy,
+                                         random.Random(64))
+        resist = resist_battle.player[0]
+        self.assertEqual(20, resist.all_debuff_resist)
+        self.assertFalse(resist_battle._immune(resist, '2'))
+
     def test_x_terrain_talent_uses_land_background(self):
         """Ocean Will switches the battle background to the ocean land type."""
         with tempfile.TemporaryDirectory() as save:
