@@ -170,5 +170,7 @@ def read_csb(path):
                 frames.append({'frame': frame.scalar(0), 'tween': bool(frame.scalar(1, '<?', True)), 'value': value})
             if frames:
                 tracks.append({'property': prop, 'tag': track.scalar(1), 'frames': frames})
-        result['action'] = {'duration': action.scalar(0), 'tracks': tracks}
+        result['action'] = {'duration': action.scalar(0), 'tracks': tracks,
+                            'clips': {clip.text(0): (clip.scalar(1), clip.scalar(2))
+                                      for clip in root.tables(5)}}
     return result

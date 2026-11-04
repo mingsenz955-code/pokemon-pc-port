@@ -44,7 +44,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     TARGET_FPS = 60
     WIDTH, HEIGHT = 960, 576  # Uniform 1.2x of the original 800x480 design.
     DYNAMIC_SCENERY = True
-    def __init__(self, root, data):
+    def __init__(self, root, data, *, show_opening=False):
+        self.opening = None
         self.state = GameState(data.tables)
         self.cocos_ui = CocosUI(data)
         self.runtime = EventRuntime(data, self.state)
@@ -113,7 +114,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.91（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.92（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -127,10 +128,27 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         root.protocol('WM_DELETE_WINDOW', self.close_game)
         if self.save_path.exists() and self.restore():
             return
+        if show_opening:
+            clips = self.cocos_ui.layout('OpeningUI')['action']['clips']
+            self.opening = (tuple(clips[f'animation{i}'] for i in range(7)), 0, time.monotonic())
+            return
+        self.start_prologue()
+
+    def start_prologue(self):
+        self.opening = None
         self.load_map(7401, 17*64+32, (30-14)*64)
         self.reset_encounter()
         self.runtime.notify('tomap', map=7401)
         self.drive()
+
+    def opening_input(self, *, skip=False):
+        clips, index, started = self.opening
+        now = time.monotonic()
+        begin, end = clips[index]
+        if skip or index >= len(clips)-2 and (now-started)*60 >= end-begin:
+            self.start_prologue()
+        elif (now-started)*60 >= end-begin:
+            self.opening = (clips, index+1, now)
 
     def load_map(self, mid, x=None, y=None):
         super().load_map(mid, x, y)
@@ -1139,6 +1157,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.drive()
 
     def key_down(self, event):
+        if getattr(self, 'opening', None):
+            key = event.keysym.lower()
+            if key in ('escape', 'return', 'space'):
+                self.opening_input(skip=key == 'escape')
+            return
         panels = getattr(self, '_game_overlays', [])
         if panels:
             if event.keysym.lower() == 'escape':
@@ -1200,7 +1223,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.91')
+        win.title('任务指引 · 原生 0.2.92')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1446,6 +1469,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             raise PendingMechanic(f'原画面指令 {kind} 未实现')
 
     def on_click(self, event):
+        if getattr(self, 'opening', None):
+            bounds = getattr(self, '_opening_skip', None)
+            skip = bool(bounds and bounds[0] <= event.x < bounds[2] and bounds[1] <= event.y < bounds[3])
+            self.opening_input(skip=skip)
+            return
         if getattr(self, '_game_overlays', []):
             return
         if getattr(self, 'task_page', None):
@@ -2004,6 +2032,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     def tick(self):
         self._frame_started = time.perf_counter()
         now = time.monotonic()
+        if getattr(self, 'opening', None):
+            self._play_clock = now
+            self.last_time = now
+            self.frame = self.make_frame()
+            self.viewport.present(self.frame)
+            self.root.after(33, self.tick)
+            return
         if hasattr(self, 'audio'):
             for kind, flag in [('music', 'music_enabled'), ('effect', 'effects_enabled')]:
                 enabled = self.state.presentation.get(kind+'_enabled', True)
@@ -2222,6 +2257,19 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         frame.alpha_composite(art, ((self.WIDTH-art.width)//2, round(24*self.HEIGHT/480-art.height/2)))
 
     def make_frame(self):
+        if getattr(self, 'opening', None):
+            clips, index, started = self.opening
+            begin, end = clips[index]
+            offset = int((time.monotonic()-started)*60)
+            position = begin + min(offset, end-begin)
+            if index == len(clips)-2 and offset >= end-begin:
+                loop_start, loop_end = clips[-1]
+                position = loop_start + (offset-(end-begin)) % (loop_end-loop_start)
+            layer = self.cocos_ui.render('OpeningUI', (self.WIDTH, self.HEIGHT), timeline_frame=position)
+            self._opening_skip = self.cocos_ui.buttons.get('skip_Button')
+            frame = Image.new('RGBA', layer.size, 'black')
+            frame.alpha_composite(layer)
+            return frame
         if self.battle and self.battle_ui:
             return self.battle_ui.render()
         original_dialogue = self.dialogue
@@ -2304,13 +2352,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def autosave(self):
         self.autosave_job = None
-        if not self.booting and not self.battle and not self.runtime_error:
+        if not self.booting and not self.opening and not self.battle and not self.runtime_error:
             self.save()
         self.autosave_job = self.root.after(30000, self.autosave)
 
     def close_game(self):
         # Battle snapshots are not implemented: keep the pre-battle save.
-        if not self.battle and not self.save():
+        if not self.opening and not self.battle and not self.save():
             self.game_tip(self.event_issue)
             return
         self.root.destroy()
@@ -3322,7 +3370,7 @@ def main():
     parser.add_argument('--screenshot', type=Path)
     args = parser.parse_args()
     root = tk.Tk()
-    app = NativeGame(root, OriginalData(data_root()))
+    app = NativeGame(root, OriginalData(data_root()), show_opening=True)
     if args.screenshot:
         app.make_frame().convert('RGB').save(args.screenshot)
         root.after(200, root.destroy)
