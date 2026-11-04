@@ -38,18 +38,14 @@ class MailChecks(unittest.TestCase):
    self.assertEqual(a.original_page.specs[0][0],'GetItemUI');self.click('confirm_Button')
    self.click('mail_claim');self.assertEqual(b.data['claimed'].count('test-1'),1)
    a.ui_base_layer.save('outputs/verification/mailbox.png')
- def test_balance_mail_confirms_before_lowering_and_only_grants_once(self):
+ def test_balance_mail_claims_directly_and_only_grants_once(self):
   a=self.app;s=a.state;b=Mailbox(s)
   feed=json.loads((Path(__file__).resolve().parents[1]/'distribution/mailbox.json').read_text('utf8'))
   kid=feed['messages'][0]['id'];b.merge(feed)
   s.inventory.update({'700001':125000,'700002':7})
   with patch('mail_pages.download',return_value=feed):
    a.mailbox_ui();self.click('mail_row_0');self.click('mail_claim')
-   self.assertEqual(a.original_page.specs[0][0],'SecondConfirmUI')
-   self.click('cancel_Button')
-   self.assertEqual(s.count('700001'),125000)
-   self.assertEqual(s.count('700002'),7)
-   self.click('mail_claim');self.click('confirm_Button')
+   self.assertEqual(a.original_page.specs[0][0],'GetItemUI')
    self.assertEqual(s.count('700001'),20000)
    self.assertEqual(s.count('700002'),17)
    self.click('confirm_Button');self.click('mail_claim')
