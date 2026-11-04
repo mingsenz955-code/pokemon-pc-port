@@ -44,6 +44,7 @@ class EventRuntime:
         self.save_event = True
         self.trigger_npc_id = 0
         self.present_rewards = False
+        self.on_finish = None
 
     @property
     def running(self):
@@ -348,6 +349,8 @@ class EventRuntime:
         self.file, self.sequence, self.index = '', [], 0
         self.pending, self.active_trigger = None, None
         self.trigger_npc_id = 0
+        if self.on_finish:
+            self.on_finish()
         queued, self.queue = self.queue, []
         self.persist()
         for index, event in enumerate(queued):

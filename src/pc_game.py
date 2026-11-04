@@ -47,6 +47,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.state = GameState(data.tables)
         self.cocos_ui = CocosUI(data)
         self.runtime = EventRuntime(data, self.state)
+        self.runtime.on_finish = self.release_story_camera
         self.runtime.present_rewards = True
         self.booting = True
         self.runtime_error = ''
@@ -111,7 +112,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.87（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.88（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1180,7 +1181,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.87')
+        win.title('任务指引 · 原生 0.2.88')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1719,6 +1720,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         # setViewpointCenter @ 0x2d8f50 follows player + (0, tileHeight)
         # in Cocos bottom-origin space; native map coordinates use top origin.
         return self.x, self.y-self.map.th
+
+    def release_story_camera(self):
+        # Original eventRunningProcess reenables camera follow at plot end.
+        self.camera_focus = self.camera_action = None
 
     def begin_camera_move(self, parameter):
         target = self.follow_focus() if parameter.get('x', -1) == -1 and parameter.get('y', -1) == -1 else (
@@ -2270,6 +2275,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             migrate(state)
             self.repair_legacy_obstacle_coordinates(state)
             runtime = EventRuntime(self.data, state)
+            runtime.on_finish = self.release_story_camera
             runtime.present_rewards = True
             TaskProgress(state).update()
             runtime.restore(state.pending_runtime)
@@ -2294,6 +2300,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 if key in state.presentation:
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
+            if not runtime.running:
+                self.release_story_camera()
             if 'screen_mask_map' not in state.presentation and self.screen_black:
                 # Old builds carried the previous map's mask into new plots.
                 self.screen_black = False

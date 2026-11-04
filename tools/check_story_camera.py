@@ -44,6 +44,20 @@ def host(parameters):
 
 
 class CameraChecks(unittest.TestCase):
+    def test_cave_switch_releases_fixed_camera_at_plot_end(self):
+        app = host({})
+        app.runtime = EventRuntime(DATA, app.state)
+        app.runtime.on_finish = app.release_story_camera
+        app.runtime.start('pEvent7501901.json')
+        app.runtime.jump(10)
+        app.drive()
+        self.assertIsNotNone(app.camera_focus)
+        self.assertEqual('screen', app.runtime.pending.kind)
+        app.screen_fade_until = 0.01
+        app.drive()
+        self.assertFalse(app.runtime.running)
+        self.assertIsNone(app.camera_focus)
+
     def test_screen_waits_for_native_fade_before_next_dialogue(self):
         from unittest.mock import patch
         app = host({})
