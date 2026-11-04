@@ -26,6 +26,7 @@
 - 全部 500 场 NPC 战斗和 668 个野外配置成功实例化，并各自实际跑完一场到胜负结果。
 - 战斗捕捉核心在 X 野生战斗中用大师球跑通：产生 `catch_attempt`、`caught` 事件并得到 `caught_pet`。
 - X 捕捉 UI 动画也跑通：`Animation1` 球动画、成功事件、`caught` 结果和结果页均正常。
+- 战斗结算页的 `PetCatchedEffectUI`（捕捉）和 `ChallengeResultUI`（胜负）按原始时间轴推进，不再固定在单帧。
 - 全部 162 个 X 技能在真实 `Battle` 回合中逐一使用，无异常。
 - 全部 162 个技能的 `SkillEffect` 计划可解析；8 种剧情表情 `face` 骨架可渲染。APK 唯一缺失的特效资源是「突袭」的 `133_tuxi`，未伪造替代特效。
 - 全部 320 个技能特效层级（含前后层）实际离屏绘制成功；修复 X 的 Cocos plist UTF-8 BOM 与 `<ustring>` 标签解析，星界洪流、异能引爆、时空归位等特效不再报错。

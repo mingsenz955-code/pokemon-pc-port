@@ -58,6 +58,7 @@ class BattleUI:
         self._pose_cache = OrderedDict()
         self._background_cache = {}
         self.result_page = 'outcome'
+        self.result_age = 0.0
         # Replay authored action callbacks. Unsupported plans retain the
         # explicitly provisional 26-tick fallback.
         self.anim = None
@@ -89,6 +90,13 @@ class BattleUI:
                 self.opening_frame = None
             self.frame = None
         self.anim_idle += steps
+        if self.battle.result and self.result_page == 'outcome':
+            # PetCatchedEffectUI (200 frames) and ChallengeResultUI (170)
+            # are authored timelines; keep them moving while the result page
+            # waits for the player's confirmation tap.
+            self.result_age += steps*60/25
+            self.frame = None
+            self._signature = None
         remaining = steps
         while self.anim and remaining > 0:
             amount = min(remaining, self.anim['duration']-self.anim['age'])
@@ -708,7 +716,8 @@ class BattleUI:
                     text['arrt'+name+'_BitmapFontLabel'] = str(value)
                 rarity = int(self.app.data.tables['Pet'][pet.species]['starLevel'])
                 layer = self.app.cocos_ui.render('PetCatchedEffectUI', (W, H), text,
-                    visible={f'star_Sprite_{i}': i <= rarity for i in range(1, 6)}, timeline_frame=60)
+                    visible={f'star_Sprite_{i}': i <= rarity for i in range(1, 6)},
+                    timeline_frame=int(min(199, self.result_age)))
                 art = self.app.data.pet_image(pet.species)
                 if art is not None:
                     art = art.copy()
@@ -719,7 +728,8 @@ class BattleUI:
                     visible={'success_Panel': result == 'win', 'fail_Panel': result == 'lose',
                              'rank_Panel': False, 'rankUp_Sprite': False, 'cool_Sprite': False},
                     resources={'success_Sprite': 'UI/RankChallenge/rankChallenge_shengli.png'}, native_resources=('success_Sprite',),
-                    positions={'success_Sprite': (0, 0), 'fail_Sprite': (0, 0)}, timeline_frame=60)
+                    positions={'success_Sprite': (0, 0), 'fail_Sprite': (0, 0)},
+                    timeline_frame=int(min(169, self.result_age)))
             frame.alpha_composite(layer)
         else:
             lines = self._result_lines()

@@ -340,6 +340,7 @@ class XFullChecks(unittest.TestCase):
                     ui.advance(seconds=.05)
                     ui.render()
                     root.update()
+                self.assertGreater(ui.result_age, 0)
                 self.assertEqual(app.battle.result, 'caught')
             finally:
                 for job in root.tk.call('after', 'info'):
