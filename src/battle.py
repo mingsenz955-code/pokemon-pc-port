@@ -111,9 +111,31 @@ class BattlePet:
         self._apply_talent_stats()
 
     # -- original talent passives -------------------------------------------
+    # Talent.state uses its own enum, not SkillState keys.  These mappings
+    # are taken from the descriptions of the talents in the X data:
+    # 0 restrict, 1 bind, 2 petrify, 3 charm, 4 poison, 5 drain, 6 speed
+    # down, 7 power down, 8 defence down, 10 sleep, 45 fear, 46 nightmare.
+    TALENT_STATUS_STATES = {
+        0: '10', 1: '9', 2: '7', 3: '1', 4: '2', 5: '13',
+        6: '4', 7: '15', 8: '3', 10: '5', 45: '30', 46: '31',
+    }
+
     def _apply_talent_stats(self):
         row = self.tables['Pet'][self.pet.species]
         boost = {0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        self.energy_cost_reduction = 0.0
+        self.crit_bonus = 0.0
+        self.talent_boost = boost
+        self.talent_chance = {}
+        self.talent_resist = {}
+        self.talent_immune = set()
+        self.immune_all_debuffs = False
+        self.damage_up = 0.0
+        self.damage_down = 0.0
+        self.dot_up = {}
+        self.dot_down = {}
+        self.regen_pct = 0.0
+        self.half_damage_chance = 0.0
         for key in self.pet.talents:
             talent = self.tables['Talent'].get(str(key))
             if not talent:
@@ -123,19 +145,47 @@ class BattlePet:
                 if len(values) < 3:
                     continue
                 state, mode, value = int(values[0]), int(values[1]), values[2]
-                if mode != 9:
-                    continue
-                if state == 24:
-                    boost[0] += value
-                elif state == 25:
-                    boost[2] += value
-                elif state == 26:
-                    boost[4] += value
-                elif state == 27:
-                    self.energy_cost_reduction = min(100.0, value)
-                elif state == 28:
-                    self.crit_bonus = value
-        self.talent_boost = boost
+                mapped = self.TALENT_STATUS_STATES.get(state)
+                if mode == 9:
+                    if state == 14:
+                        self.regen_pct += value
+                    elif state == 41:
+                        self.half_damage_chance += value
+                    elif state == 24:
+                        boost[0] += value
+                    elif state == 25:
+                        boost[2] += value
+                    elif state == 26:
+                        boost[4] += value
+                    elif state == 27:
+                        self.energy_cost_reduction = min(100.0, value)
+                    elif state == 28:
+                        self.crit_bonus += value
+                elif mode == 0:
+                    if state == 28:
+                        self.crit_bonus += value
+                    elif state == 60:
+                        self.immune_all_debuffs = True
+                    elif mapped and value < 100:
+                        self.talent_chance[mapped] = (
+                            self.talent_chance.get(mapped, 0.0)+value)
+                elif mode == 1:
+                    if mapped:
+                        if value >= 100:
+                            self.talent_immune.add(mapped)
+                        else:
+                            self.talent_resist[mapped] = (
+                                self.talent_resist.get(mapped, 0.0)+value)
+                elif mode == 2:
+                    if state == 42:
+                        self.damage_up += value
+                    elif mapped in ('2', '13'):
+                        self.dot_up[mapped] = self.dot_up.get(mapped, 0.0)+value
+                elif mode == 3:
+                    if state == 43:
+                        self.damage_down += value
+                    elif mapped in ('2', '13'):
+                        self.dot_down[mapped] = self.dot_down.get(mapped, 0.0)+value
         for index, pct in boost.items():
             if pct:
                 self.stats[index] = int(self.stats[index]*(1+pct/100))
@@ -674,7 +724,13 @@ class Battle:
         if skill is not None:
             damage = skill_damage(damage, int(skill.get('attack', 0) or 0),
                                   round(float(skill.get('attackCoe', 0) or 0)*100))
+        if getattr(unit, 'damage_up', 0):
+            damage = int(damage*(1+unit.damage_up/100))
         damage = self._reduce_talent_damage(damage, target)
+        if (getattr(target, 'half_damage_chance', 0)
+                and self.rng.randrange(100) < target.half_damage_chance):
+            damage = max(1, damage//2)
+            self.messages.append(f'{target.name} 的替身木偶将伤害减半了！')
         if unit.has('leech') and damage > 0:
             for buff in unit.buffs:
                 if buff.kind == 'leech':
@@ -716,14 +772,9 @@ class Battle:
         raise ValueError(f'Unknown original damage attribute {attribute}')
 
     def _reduce_talent_damage(self, damage, target):
-        for key in target.pet.talents:
-            talent = self.tables['Talent'].get(str(key))
-            if not talent:
-                continue
-            for part in talent['state'].split(':'):
-                values = [float(v) for v in part.split(',') if v.strip()]
-                if len(values) >= 3 and int(values[1]) == 3 and int(values[0]) == 43:
-                    damage = int(damage*(1-values[2]/100))
+        reduction = getattr(target, 'damage_down', 0)
+        if reduction:
+            damage = int(damage*(1-reduction/100))
         return max(1, int(damage))
 
     # -- states --------------------------------------------------------------
@@ -735,6 +786,9 @@ class Battle:
                 receiver = unit if int(index) in SELF_STATES else target
                 if not receiver.alive:
                     continue
+                chance += unit.talent_chance.get(str(index), 0.0)
+                chance -= receiver.talent_resist.get(str(index), 0.0)
+                chance = max(0, min(100, chance))
                 roll = self.rng.randrange(100)
                 if roll >= chance:
                     continue
@@ -752,14 +806,12 @@ class Battle:
                                         'name': receiver.name})
 
     def _immune(self, unit, key):
-        for talent_id in unit.pet.talents:
-            talent = self.tables['Talent'].get(str(talent_id))
-            if not talent:
-                continue
-            for part in talent['state'].split(':'):
-                values = [int(float(v)) for v in part.split(',') if v.strip()]
-                if len(values) >= 3 and int(values[1]) == 1 and values[0] == int(key) and values[2] >= 100:
-                    return True
+        if key in unit.talent_immune:
+            return True
+        if unit.immune_all_debuffs:
+            kind = STATE_NAMES.get(key, ('未知状态', 'unknown'))[1]
+            if kind in DEBUFF_KINDS:
+                return True
         return False
 
     def _apply_state(self, unit, receiver, key, state):
@@ -821,12 +873,23 @@ class Battle:
         for unit in self.player+self.enemy:
             if not unit.alive:
                 continue
+            if getattr(unit, 'regen_pct', 0):
+                healed = unit.heal(max(1, int(unit.max_hp*unit.regen_pct/100)))
+                self.messages.append(f'{unit.name} 通过天赋回复了 {healed} 点生命。')
+                self.events.append({'type': 'heal', 'side': unit.side, 'name': unit.name,
+                                    'uid': unit.pet.uid, 'amount': healed, 'hp': unit.hp,
+                                    'max_hp': unit.max_hp})
             for buff in list(unit.buffs):
                 kind = buff.kind
                 values = buff.values
                 if kind == 'poison':
                     pct = values[1] if len(values) > 1 else 15
                     amount = max(1, unit.max_hp*pct//100)
+                    source = next((p for p in self.enemy+self.player
+                                   if p.pet.uid == buff.source), None)
+                    if source is not None:
+                        amount = max(1, int(amount*(100+source.dot_up.get('2', 0)
+                                                   - unit.dot_down.get('2', 0))/100))
                     taken = unit.take_damage(amount)
                     self.messages.append(f'{unit.name} 受到中毒伤害 {taken}。')
                     self.events.append({'type': 'damage', 'side': unit.side, 'name': unit.name,
@@ -837,6 +900,11 @@ class Battle:
                 elif kind == 'drain':
                     pct = values[1] if len(values) > 1 else 10
                     amount = max(1, unit.max_hp*pct//100)
+                    source = next((p for p in self.enemy+self.player
+                                   if p.pet.uid == buff.source), None)
+                    if source is not None:
+                        amount = max(1, int(amount*(100+source.dot_up.get('13', 0)
+                                                   - unit.dot_down.get('13', 0))/100))
                     taken = unit.take_damage(amount)
                     self.messages.append(f'{unit.name} 受到生命流失 {taken}。')
                     self.events.append({'type': 'damage', 'side': unit.side, 'name': unit.name,

@@ -30,6 +30,32 @@ class XFullChecks(unittest.TestCase):
         cls.state.initialize(1)
         cls.state.add_preset(next(iter(cls.data.tables['InitPet'])))
 
+    def test_x_talent_passives(self):
+        """Passive talent state codes parse into combat modifiers."""
+        pet = generate_pet(self.data.tables, random.Random(41), '100160', 80)
+        pet.talents = ['400121', '400214', '400215', '400216', '400217',
+                       '400117', '400122']
+        battle = make_wild_battle(self.data.tables, [pet],
+                                  next(iter(self.data.tables['VillageEnemy'])),
+                                  random.Random(42))
+        unit = battle.player[0]
+        self.assertAlmostEqual(20, unit.crit_bonus)
+        self.assertAlmostEqual(30, unit.half_damage_chance)
+        self.assertAlmostEqual(15, unit.damage_up)
+        self.assertAlmostEqual(15, unit.damage_down)
+        self.assertAlmostEqual(10, unit.regen_pct)
+        self.assertAlmostEqual(25, unit.talent_chance['2'])
+        self.assertAlmostEqual(10, unit.dot_up['2'])
+        self.assertAlmostEqual(25, unit.talent_resist['13'])
+        self.assertIn('9', unit.talent_immune)
+        self.assertTrue(battle._immune(unit, '9'))
+        self.assertFalse(battle._immune(unit, '2'))
+        self.assertEqual(85, battle._reduce_talent_damage(100, unit))
+        unit.hp = max(1, unit.max_hp//2)
+        before = unit.hp
+        battle._end_round()
+        self.assertGreater(unit.hp, before)
+
     def test_complete_data_counts(self):
         tables = self.data.tables
         self.assertEqual(len(tables['VillageMap']), 575)
