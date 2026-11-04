@@ -205,6 +205,22 @@ class XFullChecks(unittest.TestCase):
                 errors.append((name, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_every_x_ui_timeline(self):
+        from csb_render import CocosUI
+        from pathlib import Path
+        ui = CocosUI(self.data)
+        errors = []
+        for path in Path(self.data_dir, 'assets', 'res', 'UI').glob('*.csb'):
+            try:
+                layout = ui.layout(path.stem)
+                duration = int((layout.get('action') or {}).get('duration') or 0)
+                for frame in range(0, duration+1, 20):
+                    if ui.render(path.stem, (800, 480), timeline_frame=frame) is None:
+                        errors.append((path.stem, frame, 'none'))
+            except Exception as error:  # noqa: BLE001 - collect every UI timeline
+                errors.append((path.stem, type(error).__name__, str(error)))
+        self.assertFalse(errors, errors[:10])
+
     def test_every_x_skill_effect_draws(self):
         from PIL import Image
         from battle_effects import BattleEffects

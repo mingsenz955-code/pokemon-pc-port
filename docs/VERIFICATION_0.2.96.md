@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**25 个测试全部通过**。
+结果：**26 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
@@ -40,6 +40,7 @@
 - 启动 `OpeningUI` 可渲染，跳过序章后进入 7401。
 - X 序章播放原生 `BGM_101.mp3`，跳过/进入游戏时停止并切回地图音乐。
 - `OpeningUI` 全 1,165 帧和 `BattleStartEffectUI` 全 61 帧按时间轴逐段渲染成功，无缺帧异常。
+- X 全部 19 个带动作的 UI 时间轴（升级、捕捉、孵化、进化、挑战结果、卡牌、转盘、等待、旁白、对话框、加载等，共 3,273 帧）抽样 336 帧渲染成功。
 - `gzip` TMX、外置 TSX、`pcWalkThrough` 和特殊路线修正均已加入。
 
 另运行了回归：
