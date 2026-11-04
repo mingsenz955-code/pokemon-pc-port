@@ -36,7 +36,8 @@ class XFullChecks(unittest.TestCase):
         pet.talents = ['400121', '400214', '400215', '400216', '400217',
                        '400117', '400122', '400136', '400137', '400138',
                        '400140', '400141', '400206', '400208', '400134', '400135',
-                       '400144', '400146', '400145']
+                       '400144', '400146', '400145', '400127', '400128', '400129',
+                       '400131', '400132', '400201']
         battle = make_wild_battle(self.data.tables, [pet],
                                   next(iter(self.data.tables['VillageEnemy'])),
                                   random.Random(42))
@@ -64,6 +65,21 @@ class XFullChecks(unittest.TestCase):
         self.assertTrue(unit.cleanse_on_switch)
         self.assertTrue(unit.copy_status_on_switch)
         self.assertEqual(200, unit.opponent_energy_penalty)
+        self.assertEqual(100, unit.reflect_damage['power'])
+        self.assertEqual(30, unit.talent_boost[3])
+        self.assertEqual(200, unit.low_hp_boost)
+        self.assertEqual(35, unit.poison_skin)
+        self.assertTrue(unit.last_stand)
+        self.assertEqual(2.0, unit.exp_multiplier)
+        enemy = battle.enemy[0]
+        unit.hp = 10
+        battle._deal(enemy, unit, 9999, 'power')
+        self.assertEqual(1, unit.hp)
+        self.assertTrue(unit.last_stand_used)
+        unit.poison_skin = 100
+        battle._deal(enemy, unit, 1, 'power')
+        self.assertTrue(enemy.has_state('2'))
+        enemy.hp = enemy.max_hp
         chance_with = battle.capture_chance('220004')
         unit.capture_bonus = 0
         self.assertEqual(chance_with-20, battle.capture_chance('220004'))

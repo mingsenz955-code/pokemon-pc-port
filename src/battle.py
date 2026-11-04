@@ -147,6 +147,11 @@ class BattlePet:
         self.cleanse_on_switch = False
         self.copy_status_on_switch = False
         self.opponent_energy_penalty = 0.0
+        self.low_hp_boost = 0.0
+        self.poison_skin = 0.0
+        self.last_stand = False
+        self.last_stand_used = False
+        self.exp_multiplier = 1.0
         for key in self.pet.talents:
             talent = self.tables['Talent'].get(str(key))
             if not talent:
@@ -172,6 +177,19 @@ class BattlePet:
                         self.energy_cost_reduction = min(100.0, value)
                     elif state == 28:
                         self.crit_bonus += value
+                    elif state == 29:
+                        self.exp_multiplier = max(self.exp_multiplier, value/100)
+                    elif state == 47:
+                        self.reflect_damage['power'] = max(
+                            self.reflect_damage.get('power', 0), value)
+                    elif state == 48:
+                        boost[3] += value
+                    elif state == 49:
+                        self.low_hp_boost = value
+                    elif state == 50:
+                        self.poison_skin = value
+                    elif state == 51:
+                        self.last_stand = True
                 elif mode == 0:
                     if state == 28:
                         self.crit_bonus += value
@@ -816,6 +834,10 @@ class Battle:
             return
         if getattr(unit, 'damage_up', 0):
             damage = int(damage*(1+unit.damage_up/100))
+        if (getattr(unit, 'low_hp_boost', 0)
+                and unit.hp/unit.max_hp < .3):
+            damage = int(damage*(1+unit.low_hp_boost/100))
+            self.messages.append(f'{unit.name} 的背水一战让伤害大幅提高！')
         damage = self._reduce_talent_damage(damage, target)
         if (getattr(target, 'half_damage_chance', 0)
                 and self.rng.randrange(100) < target.half_damage_chance):
@@ -849,6 +871,25 @@ class Battle:
                                 'attribute': attribute, 'hp': unit.hp,
                                 'max_hp': unit.max_hp, 'hit_index': 0,
                                 'source': 'reflect'})
+        if (getattr(target, 'poison_skin', 0) and taken > 0
+                and self.rng.randrange(100) < target.poison_skin
+                and not unit.has_state('2')):
+            state = self.tables['SkillState'].get('2')
+            if state:
+                unit.add_buff('2', Buff('2', max(1, int(state['round'])),
+                                        state['parameter'], int(state['buffType']),
+                                        target.pet.uid, '中毒'))
+                self.messages.append(f'{target.name} 的毒性皮肤让 {unit.name} 中毒了！')
+                self.events.append({'type': 'buff', 'side': unit.side, 'name': '中毒',
+                                    'rounds': max(1, int(state['round'])), 'key': '2'})
+        if (not target.alive and getattr(target, 'last_stand', False)
+                and not getattr(target, 'last_stand_used', False)):
+            target.hp = 1
+            target.last_stand_used = True
+            self.messages.append(f'{target.name} 凭着顽强抵抗保留了 1 点生命！')
+            self.events.append({'type': 'heal', 'side': target.side, 'name': target.name,
+                                'uid': target.pet.uid, 'amount': 1, 'hp': target.hp,
+                                'max_hp': target.max_hp})
         if unit.has('recoil') and damage > 0:
             recoil = max(1, int(damage*0.15))
             unit.take_damage(recoil)
@@ -1151,7 +1192,7 @@ class Battle:
         total = shared_exp(level, 1.0, 0, len(alive))
         for unit in alive:
             before = unit.pet.level
-            gained = total
+            gained = int(total*getattr(unit, 'exp_multiplier', 1.0))
             levels = unit.pet.add_exp(gained, self.tables)
             self.exp_gained.append((unit.name, gained, levels))
             self.messages.append(f'{unit.name} 获得 {gained} 点经验。')
