@@ -209,7 +209,14 @@ class OriginalData:
             return {}
         frames = {}
         for plist in folder.glob(f'{name}[0-9]*.plist'):
-            pd = plistlib.loads(plist.read_bytes())
+            raw = plist.read_bytes()
+            if raw.startswith(b'\xef\xbb\xbf'):
+                # Cocos Studio exports some X plists with a UTF-8 BOM.
+                raw = raw[3:]
+            # Cocos Studio writes <ustring> for UTF-8 strings; plistlib only
+            # accepts <string>, so normalize before parsing.
+            raw = raw.replace(b'<ustring>', b'<string>').replace(b'</ustring>', b'</string>')
+            pd = plistlib.loads(raw)
             atlas_path = plist.with_suffix('.png')
             if not atlas_path.exists():
                 continue

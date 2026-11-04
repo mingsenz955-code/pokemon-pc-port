@@ -13,7 +13,11 @@ from PIL import Image, ImageChops
 @lru_cache(maxsize=16)
 def emitter(path_string):
     path = Path(path_string)
-    data = plistlib.loads(path.read_bytes())
+    raw = path.read_bytes()
+    if raw.startswith(b'\xef\xbb\xbf'):
+        raw = raw[3:]
+    raw = raw.replace(b'<ustring>', b'<string>').replace(b'</ustring>', b'</string>')
+    data = plistlib.loads(raw)
     encoded = data.get('textureImageData')
     if encoded:
         raw = base64.b64decode(encoded)

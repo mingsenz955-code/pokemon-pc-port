@@ -194,6 +194,56 @@ class XFullChecks(unittest.TestCase):
                 missing.append((species, type(error).__name__, str(error)))
         self.assertFalse(missing, missing[:10])
 
+    def test_every_x_skill_effect_draws(self):
+        from PIL import Image
+        from battle_effects import BattleEffects
+        from pet_factory import generate_pet
+        pet = generate_pet(self.data.tables, random.Random(1), '100160', 50)
+
+        class UI:
+            pet_bones = {'player': {'p_center': (400, 300), 'p_shadow': (400, 320)},
+                         'enemy': {'p_center': (600, 300), 'p_shadow': (600, 320)}}
+            pet_positions = {'player': (400, 300), 'enemy': (600, 300)}
+            anim = None
+
+            def presentation_unit(self, enemy):
+                return type('Unit', (), {'pet': pet})()
+
+        ui = UI()
+        effects = BattleEffects(self.data)
+        errors = []
+        for skill_id in self.data.tables['Skill']:
+            plan = effects.plan(skill_id, 'player')
+            if not plan:
+                continue
+            ui.anim = {'effect': plan,
+                       'age': plan['hit'] if plan['hit'] is not None else plan['duration']/2,
+                       'side': 'player'}
+            for rear in (False, True):
+                try:
+                    frame = Image.new('RGBA', (800, 480))
+                    effects.draw(frame, ui, rear)
+                except Exception as error:  # noqa: BLE001 - collect every effect
+                    errors.append((skill_id, rear, type(error).__name__, str(error)))
+        self.assertFalse(errors, errors[:10])
+
+    def test_every_x_skill_effect_plan_and_face(self):
+        from battle_effects import BattleEffects
+        effects = BattleEffects(self.data)
+        missing = []
+        for skill_id in self.data.tables['Skill']:
+            try:
+                effects.plan(skill_id, 'player')
+            except Exception as error:  # noqa: BLE001 - collect every skill
+                missing.append((skill_id, type(error).__name__, str(error)))
+        self.assertFalse(missing, missing[:10])
+        # The only missing authored effect asset in this APK is 突袭 (133_tuxi).
+        for row_id in ('3209',):
+            row = self.data.tables['SkillEffect'].get(row_id, {})
+            self.assertEqual(row.get('path1'), '133_tuxi')
+        for face in range(1, 9):
+            self.assertIsNotNone(self.data.armature('face', str(face), 10), face)
+
     def test_every_x_skill_executes_in_battle(self):
         from battle import Battle
         from pet_factory import generate_pet
@@ -395,6 +445,16 @@ class XFullChecks(unittest.TestCase):
                     root.destroy()
                 except tk.TclError:
                     pass
+
+    def test_x_opening_and_battle_timelines(self):
+        from csb_render import CocosUI
+        ui = CocosUI(self.data)
+        for name in ('OpeningUI', 'BattleStartEffectUI'):
+            layout = ui.layout(name)
+            duration = int(layout['action']['duration'])
+            for frame in range(0, duration+1, 20):
+                art = ui.render(name, (800, 480), timeline_frame=frame)
+                self.assertIsNotNone(art, f'{name} frame {frame}')
 
     def test_x_opening_and_battle_start_render(self):
         with tempfile.TemporaryDirectory() as save:
