@@ -24,12 +24,14 @@ def mailbox_icon(app, size, unread):
     draw.line([(32, 49), (72, 80), (112, 49)], fill='#b87638', width=4)
     draw.ellipse((62, 70, 82, 90), fill='#c62e32', outline='#7c2226', width=2)
     draw.ellipse((65, 73, 71, 78), fill='#ff9a84')
-    glyphs = Image.new('L', (100, 52))
-    ImageDraw.Draw(glyphs).text((50, 25), '邮件', font=app.cocos_ui.font('', 34),
-                                anchor='mm', fill=255, stroke_width=2, stroke_fill=255)
-    glyphs = glyphs.crop(glyphs.getbbox()).resize((53, 24), Image.Resampling.LANCZOS)
-    label = Image.new('L', (65, 36))
-    label.paste(glyphs, (6, 6))
+    label = Image.new('L', (65, 38))
+    for char, x, y, angle in (('邮', 5, 6, 9), ('件', 29, 7, -8)):
+        glyph = Image.new('L', (48, 48))
+        ImageDraw.Draw(glyph).text((24, 24), char, font=app.cocos_ui.font('', 34),
+                                   anchor='mm', fill=255, stroke_width=2, stroke_fill=255)
+        glyph = glyph.crop(glyph.getbbox()).resize((26, 23), Image.Resampling.LANCZOS)
+        glyph = glyph.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
+        label.paste(255, (x, y, x+glyph.width, y+glyph.height), glyph)
     gradient = Image.new('RGBA', label.size)
     gold = ImageDraw.Draw(gradient)
     for y in range(label.height):
@@ -37,9 +39,9 @@ def mailbox_icon(app, size, unread):
         gold.line((0, y, label.width, y), fill=(255, green, 57, 255))
     outline = Image.new('RGBA', label.size, '#5d2b12')
     outline.putalpha(label.filter(ImageFilter.MaxFilter(9)))
-    icon.alpha_composite(outline, (39, 111))
+    icon.alpha_composite(outline, (39, 120))
     gradient.putalpha(label)
-    icon.alpha_composite(gradient, (39, 111))
+    icon.alpha_composite(gradient, (39, 120))
     if unread:
         badge = app.data.image('res/UI/button_about.png')
         icon.alpha_composite(badge.resize((38, 38), Image.Resampling.LANCZOS), (100, 9))
