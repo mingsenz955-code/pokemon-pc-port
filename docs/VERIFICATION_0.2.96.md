@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**24 个测试全部通过**。
+结果：**25 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
@@ -25,6 +25,7 @@
 - 全部 2,318 个可执行事件文件成功载入 `EventRuntime`，含 X 的重复/零步骤 id。
 - 全部 500 场 NPC 战斗和 668 个野外配置成功实例化，并各自实际跑完一场到胜负结果。
 - 战斗捕捉核心在 X 野生战斗中用大师球跑通：产生 `catch_attempt`、`caught` 事件并得到 `caught_pet`。
+- X 捕捉 UI 动画也跑通：`Animation1` 球动画、成功事件、`caught` 结果和结果页均正常。
 - 全部 162 个 X 技能在真实 `Battle` 回合中逐一使用，无异常。
 - 全部 162 个技能的 `SkillEffect` 计划可解析；8 种剧情表情 `face` 骨架可渲染。APK 唯一缺失的特效资源是「突袭」的 `133_tuxi`，未伪造替代特效。
 - 全部 320 个技能特效层级（含前后层）实际离屏绘制成功；修复 X 的 Cocos plist UTF-8 BOM 与 `<ustring>` 标签解析，星界洪流、异能引爆、时空归位等特效不再报错。

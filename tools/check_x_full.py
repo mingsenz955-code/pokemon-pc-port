@@ -299,6 +299,43 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_capture_ui_animation(self):
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.state.initialize(2)
+                key = next(iter(self.data.tables['VillageEnemy']))
+                app.start_battle(key)
+                root.update()
+                ui = app.battle_ui
+                ui.advance(seconds=3)
+                self.assertIsNone(ui.opening_frame)
+                app.battle.enemy[0].hp = 1
+                app.battle.choose_item('220006')
+                ui._after_action()
+                self.assertIsNotNone(ui.anim)
+                self.assertEqual(ui.anim['kind'], 'capture')
+                self.assertEqual(ui.anim['capture_clip'], 'Animation1')
+                for _ in range(80):
+                    ui.advance(seconds=.05)
+                    ui.render()
+                    root.update()
+                self.assertEqual(app.battle.result, 'caught')
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_wild_capture_reaches_caught(self):
         pets = [generate_pet(self.data.tables, random.Random(22), '100160', 80)
                 for _ in range(2)]
