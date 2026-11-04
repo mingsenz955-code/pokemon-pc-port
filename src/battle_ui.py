@@ -828,8 +828,7 @@ class BattleUI:
             index = getattr(self, 'result_index', 0)
             text = lines[index] if index < len(lines) else '战斗结束。'
             layer = self.app.cocos_ui.render('BattleCalculationUI', (W, H),
-                       text={'chat_Text': text}, visible={'head_Sprite': False},
-                       positions={'chat_Text': (234, 64)}, sizes={'chat_Text': (340, 84)}, timeline_frame=60)
+                       text={'chat_Text': text}, timeline_frame=60)
             frame.alpha_composite(layer)
         # The original calculation layer advances on a screen tap.
         self.hits['result_continue'] = (0, 0, W, H)
