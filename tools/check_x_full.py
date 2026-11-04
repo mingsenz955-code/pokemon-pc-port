@@ -194,6 +194,17 @@ class XFullChecks(unittest.TestCase):
                 missing.append((species, type(error).__name__, str(error)))
         self.assertFalse(missing, missing[:10])
 
+    def test_every_x_armature_loads(self):
+        from pathlib import Path
+        errors = []
+        for export in Path(self.data_dir).rglob('*.ExportJson'):
+            name = export.stem
+            try:
+                self.data.armature_frames(name)
+            except Exception as error:  # noqa: BLE001 - collect every armature
+                errors.append((name, type(error).__name__, str(error)))
+        self.assertFalse(errors, errors[:10])
+
     def test_every_x_skill_effect_draws(self):
         from PIL import Image
         from battle_effects import BattleEffects
