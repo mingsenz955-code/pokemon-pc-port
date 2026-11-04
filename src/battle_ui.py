@@ -198,6 +198,14 @@ class BattleUI:
                            'duration': frames*25/60, 'damages': [],
                            'capture_clip': name, 'capture_success': success}
                 self.anim_queue.append(current)
+                if success:
+                    species = next((str(e.get('name')) for e in fresh
+                                    if e.get('type') == 'caught' and e.get('name')), None)
+                    if species:
+                        row = self.app.data.tables['Pet'].get(species, {})
+                        sound = str(row.get('wowSound', '0'))
+                        if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
+                            self.effect_audio.play(sound)
             elif kind in ('attack', 'skill'):
                 current = {'side': event.get('side', 'player'), 'target': '', 'kind': kind,
                            'source_uid': event.get('uid'), 'amount': 0, 'crit': False,

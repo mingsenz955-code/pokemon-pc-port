@@ -8,6 +8,7 @@ import tempfile
 import tkinter as tk
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT/'src'))
@@ -741,6 +742,8 @@ class XFullChecks(unittest.TestCase):
                 ui = app.battle_ui
                 ui.advance(seconds=3)
                 self.assertIsNone(ui.opening_frame)
+                played = []
+                ui.effect_audio = SimpleNamespace(play=lambda value: played.append(str(value)))
                 app.battle.enemy[0].hp = 1
                 app.battle.choose_item('220006')
                 ui._after_action()
@@ -753,6 +756,10 @@ class XFullChecks(unittest.TestCase):
                     root.update()
                 self.assertGreater(ui.result_age, 0)
                 self.assertEqual(app.battle.result, 'caught')
+                row = self.data.tables['Pet'].get(app.battle.caught_pet.species, {})
+                cry = str(row.get('wowSound', '0'))
+                if cry not in ('', '0') and cry in self.data.tables.get('Sound', {}):
+                    self.assertIn(cry, played)
             finally:
                 for job in root.tk.call('after', 'info'):
                     try:
