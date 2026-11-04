@@ -1123,6 +1123,44 @@ class ActivityUI:
 
         probe = Page(self, 'CardLegendUI', timeline_frame=60)
 
+        def start():
+            current = self.state.activities.get('cards')
+            if current and current.get('result') == 1 and not current.get('claimed'):
+                show_result(current)
+                return
+            try:
+                activity.start_cards()
+            except (ValueError, KeyError) as error:
+                self._page_tip(str(error), paint)
+                return
+            self.save()
+            paint()
+
+        def show_enter():
+            row = self.data.tables['CardLegend']['1']
+            ids = numbers(row['itemIds'])
+            weights = numbers(row['probabilitys'], float)
+            counts = numbers(row['itemCounts'])
+            best = min(range(min(len(ids), len(weights), len(counts))),
+                       key=lambda index: weights[index], default=0)
+            reward = ids[best] if ids else '0'
+            count = counts[best] if best < len(counts) else 1
+            name, icon = self._item_data(reward)
+            page = Page(self, 'CardLegendEnterConfirmUI', timeline_frame=60,
+                        text={'cost_BitmapFontLabel': 'x1',
+                              'have_BitmapFontLabel': f'x{self.state.count("220008")}',
+                              'rewardCount_BitmapFontLabel': f'x{count}'},
+                        resources={'rewardIcon_Image': icon},
+                        visible={'Particle_1': False})
+            def enter():
+                self.save()
+                start()
+            page.actions['enter_Button'] = enter
+            page.actions['close_Button'] = paint
+            if not live():
+                return
+            page.publish()
+
         def paint():
             match = self.state.activities.get('cards')
             if match and match.get('result') is not None:
@@ -1154,19 +1192,6 @@ class ActivityUI:
                 self.save()
                 paint()
 
-            def start():
-                current = self.state.activities.get('cards')
-                if current and current.get('result') == 1 and not current.get('claimed'):
-                    show_result(current)
-                    return
-                try:
-                    activity.start_cards()
-                except (ValueError, KeyError) as error:
-                    self._page_tip(str(error), paint)
-                    return
-                self.save()
-                paint()
-
             if match:
                 for index, card in enumerate(match['player']):
                     rect = probe.rects[f'Layer/root_Panel/our_Panel/card_Panel/card_{index+1}_ProjectNode']
@@ -1179,7 +1204,15 @@ class ActivityUI:
                     rect = probe.rects[f'Layer/root_Panel/other_Panel/card_Panel/card_{index+1}_ProjectNode']
                     page.add('CardLegendCardItemUI', (round(rect[0]), round(rect[1])),
                              prefix=f'other_card_{index}/', **card_args(card, revealed))
-            page.actions['open_Button'] = start
+            def begin():
+                current = self.state.activities.get('cards')
+                if current and current.get('result') is None:
+                    paint()
+                elif current and current.get('result') == 1 and not current.get('claimed'):
+                    show_result(current)
+                else:
+                    show_enter()
+            page.actions['open_Button'] = begin
             page.actions['close_Button'] = self.close_ui
             if not any(k.endswith('/close_Button') for k in page.hits):
                 self._add_page_close(page)
