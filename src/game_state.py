@@ -694,6 +694,11 @@ class GameState:
             next_task = int(row.get('nextTaskId', 0))
             self.main_task = next_task or task_id
             self.main_state = 3 if next_task else 5
+            if not next_task:
+                # Achievement condition 21 compares the play clock at the
+                # moment the final MainTask is submitted (not at claim time).
+                self.activities['story_completed_seconds'] = int(
+                    self.activities.get('play_seconds', 0))
             if next_task:
                 from task_progress import TaskProgress
                 TaskProgress(self).update()

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 class Achievements:
-    SUPPORTED = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 22, 23, 24}
+    SUPPORTED = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24}
     COUNTERS = {3: ('caught_total', '野外捕获'),
                 4: ('hatch_total', '孵化'),
                 5: ('evolve_total', '进化'),
@@ -130,6 +130,16 @@ class Achievements:
         if condition_type == 22:
             current = int(self.state.activities.get('play_seconds', 0))//60
             return current, target, f'游戏时间 {current} 分钟'
+        if condition_type == 21:
+            # 3201/3301: finish the whole main story within 50/20 hours.
+            limit_minutes = values[0] if values else 0
+            seconds = self.state.activities.get('story_completed_seconds')
+            if seconds is None or limit_minutes <= 0:
+                return 0, 1, (f'尚未完成全部主线剧情（限制 {limit_minutes} 分钟）'
+                              if limit_minutes > 0 else '成就条件无效')
+            minutes = int(seconds)//60
+            return (1 if minutes <= limit_minutes else 0), 1, (
+                f'主线完成用时 {minutes} 分钟，限制 {limit_minutes} 分钟')
         if condition_type == 12:
             obstacle_type = values[0] if values else -1
             current = sum(1 for entry in self.state.removed_obstacles

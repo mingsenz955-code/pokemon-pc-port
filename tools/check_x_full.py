@@ -397,6 +397,25 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_story_speed_achievements(self):
+        from achievements import Achievements
+        state = self.state
+        state.activities['play_seconds'] = 1000
+        state.main_task, state.main_state = 260, 4
+        self.assertTrue(state.submit_task(260))
+        self.assertEqual(5, state.main_state)
+        self.assertEqual(1000, state.activities['story_completed_seconds'])
+        achievements = Achievements(state)
+        # 3201 allows 50 game hours, 3301 allows 20.
+        self.assertEqual((1, 1), achievements.progress('3201')[:2])
+        self.assertEqual((1, 1), achievements.progress('3301')[:2])
+        state.activities['story_completed_seconds'] = 1300*60
+        self.assertEqual((1, 1), achievements.progress('3201')[:2])
+        self.assertEqual((0, 1), achievements.progress('3301')[:2])
+        state.activities['story_completed_seconds'] = 3100*60
+        self.assertEqual((0, 1), achievements.progress('3201')[:2])
+        self.assertEqual((0, 1), achievements.progress('3301')[:2])
+
     def test_battle_levelup_queue_advances(self):
         from types import SimpleNamespace
         from battle_ui import BattleUI
