@@ -5,10 +5,31 @@ its complete original gameplay exists. See the mechanics evidence ledger.
 """
 import time
 from tkinter import messagebox
+from PIL import Image, ImageDraw
 from event_runtime import Request
 from mounts import Mounts
 from offline_tutorials import REMOVED_SCENE_BUTTONS
 from guide import exit_map_id
+
+
+def mailbox_icon(app, size, unread):
+    icon = Image.new('RGBA', (144, 156))
+    bubble = app.data.image('res/UI/button_ui_status.png')
+    icon.alpha_composite(bubble.resize((130, 130), Image.Resampling.LANCZOS), (7, 12))
+    draw = ImageDraw.Draw(icon)
+    draw.rounded_rectangle((26, 42, 118, 104), radius=10, fill='#7a4325', outline='#fff3ca', width=3)
+    draw.rounded_rectangle((30, 45, 114, 99), radius=7, fill='#ffe0a0', outline='#ad692a', width=3)
+    draw.polygon([(32, 95), (72, 65), (112, 95)], fill='#ffc972')
+    draw.polygon([(32, 49), (72, 80), (112, 49)], fill='#fff2cb')
+    draw.line([(32, 49), (72, 80), (112, 49)], fill='#b87638', width=4)
+    draw.ellipse((62, 70, 82, 90), fill='#c62e32', outline='#7c2226', width=2)
+    draw.ellipse((65, 73, 71, 78), fill='#ff9a84')
+    draw.text((72, 130), '邮箱', font=app.cocos_ui.font('', 34), anchor='mm',
+              fill='#ffdf45', stroke_width=5, stroke_fill='#743900')
+    if unread:
+        badge = app.data.image('res/UI/button_about.png')
+        icon.alpha_composite(badge.resize((38, 38), Image.Resampling.LANCZOS), (100, 9))
+    return icon.resize(size, Image.Resampling.LANCZOS)
 
 
 class SceneUI:
@@ -151,16 +172,13 @@ class SceneUI:
                      and visible.get(key, True) is not False
                      and alphas.get(key, 255) > 0
                      and (key not in self.ride_buttons or self.groups['left']['target'] == 1)}
-        if right==0 and not self.hidden:
-            from PIL import ImageDraw
-            scale=app.WIDTH/800;d=ImageDraw.Draw(layer)
-            box=tuple(round(v*scale) for v in (565,394,637,472))
-            d.ellipse(box,fill='#236c72',outline='#f3e2ba',width=3)
-            d.rounded_rectangle(tuple(round(v*scale) for v in (577,408,625,439)),radius=4,fill='#f6dfab',outline='#9d662e',width=2)
-            d.line([(round(x*scale),round(y*scale)) for x,y in [(578,409),(601,427),(624,409)]],fill='#9d662e',width=2)
-            d.text((601*scale,454*scale),'邮箱',font=app.cocos_ui.font('',round(16*scale)),fill='#ffe65c',anchor='mm',stroke_width=1,stroke_fill='#734200')
-            if unread:d.ellipse(tuple(round(v*scale) for v in (620,395,635,410)),fill='#f43e47')
-            self.hits['mailbox_Button']=box
+        if 'task_Button' in self.hits:
+            left_edge, top, right_edge, bottom = self.hits['task_Button']
+            width, height = round(right_edge-left_edge), round(bottom-top)
+            gap = round(3*app.WIDTH/800)
+            x = left_edge-width-gap
+            layer.alpha_composite(mailbox_icon(app, (width, height), unread), (round(x), round(top)))
+            self.hits['mailbox_Button'] = (x, top, x+width, top+height)
         self.cached_key, self.cached_layer = signature, layer
         frame.alpha_composite(layer)
 

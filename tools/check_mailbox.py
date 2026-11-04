@@ -1,4 +1,4 @@
-import unittest,tempfile
+import json,unittest,tempfile
 from pathlib import Path
 from unittest.mock import patch
 import check_single_window_flows as fixtures
@@ -38,6 +38,23 @@ class MailChecks(unittest.TestCase):
    self.assertEqual(a.original_page.specs[0][0],'GetItemUI');self.click('confirm_Button')
    self.click('mail_claim');self.assertEqual(b.data['claimed'].count('test-1'),1)
    a.ui_base_layer.save('outputs/verification/mailbox.png')
+ def test_balance_mail_confirms_before_lowering_and_only_grants_once(self):
+  a=self.app;s=a.state;b=Mailbox(s)
+  feed=json.loads((Path(__file__).resolve().parents[1]/'distribution/mailbox.json').read_text('utf8'))
+  kid=feed['messages'][0]['id'];b.merge(feed)
+  s.inventory.update({'700001':125000,'700002':7})
+  with patch('mail_pages.download',return_value=feed):
+   a.mailbox_ui();self.click('mail_row_0');self.click('mail_claim')
+   self.assertEqual(a.original_page.specs[0][0],'SecondConfirmUI')
+   self.click('cancel_Button')
+   self.assertEqual(s.count('700001'),125000)
+   self.assertEqual(s.count('700002'),7)
+   self.click('mail_claim');self.click('confirm_Button')
+   self.assertEqual(s.count('700001'),20000)
+   self.assertEqual(s.count('700002'),17)
+   self.click('confirm_Button');self.click('mail_claim')
+   self.assertEqual(s.count('700002'),17)
+   self.assertIn(kid,Mailbox(GameState.load(a.data.tables,a.save_path)).data['claimed'])
  def test_nurse_is_free_revives_and_keeps_all_currency(self):
   a=self.app;s=a.state;pet=s.pets[0];pet.hp=0;pet.energy=0
   before=dict(s.inventory);self.assertEqual(s.cure_cost(),(None,0));s.cure_party()
@@ -60,6 +77,8 @@ class MailChecks(unittest.TestCase):
   a=self.app;a.scene_ui.render(Image.new('RGBA',(960,576)))
   mail=a.scene_ui.hits['mailbox_Button'];task=a.scene_ui.hits['task_Button']
   self.assertLessEqual(mail[2],task[0])
+  self.assertAlmostEqual(mail[2]-mail[0],task[2]-task[0],delta=0.5)
+  self.assertAlmostEqual(mail[3]-mail[1],task[3]-task[1],delta=0.5)
   with patch.object(a,'mailbox_ui') as opened:a.scene_ui.action('mailbox_Button');opened.assert_called_once()
 
 if __name__=='__main__':unittest.main(verbosity=2)

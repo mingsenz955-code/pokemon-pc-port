@@ -2,7 +2,7 @@
 import queue,threading
 from PIL import Image,ImageDraw
 from event_runtime import Request
-from mailbox_system import Mailbox,download
+from mailbox_system import GOLD_ID,Mailbox,download
 
 class MailPages:
     def mailbox_ui(self):
@@ -42,11 +42,12 @@ class MailPages:
             mail=next((m for m in messages if m['id']==selected[0]),None)
             if mail:
                 text_box(page,(320,110,714,150),mail['title']+'  · '+mail['sender'],self.cocos_ui.font('',19))
-                rewards='、'.join(self._item_data(r['item'])[0]+' ×'+str(r['count']) for r in mail['rewards'])
+                gold=mail.get('set_gold')
+                rewards='、'.join(self._item_data(r['item'])[0]+' ×'+str(r['count']) for r in mail['rewards']) if gold is None else ''
                 text_box(page,(320,158,714,337),mail['body']+('\n\n附件：'+rewards if rewards else ''),self.cocos_ui.font('',16),scroll[0])
                 claimed=mail['id'] in box.data['claimed'];expired=box.expired(mail)
-                label='已领取' if claimed else '已过期' if expired else '领取附件' if mail['rewards'] else '无附件'
-                button('mail_claim',(480,365,710,411),label,lambda:claim(mail))
+                label='已领取' if claimed else '已过期' if expired else '领取附件' if mail['rewards'] or gold is not None else '无附件'
+                button('mail_claim',(480,365,710,411),label,lambda:request_claim(mail))
             else:
                 text_box(page,(325,160,710,310),'请选择邮件。' if messages else '暂无邮件。联网刷新后可收到管理员邮件，已缓存的邮件离线也可查看。',self.cocos_ui.font('',18))
             text_box(page,(80,425,710,447),status[0],self.cocos_ui.font('',12))
@@ -56,16 +57,34 @@ class MailPages:
         def turn(delta):
             offset[0]=max(0,min(max(0,len(Mailbox(self.state).messages())-1),offset[0]+delta));paint()
         def wheel(event):scroll[0]=max(0,scroll[0]+(-55 if event.delta>0 else 55));paint();return 'break'
+        def request_claim(mail):
+            box=Mailbox(self.state)
+            if mail['id'] in box.data['claimed'] or box.expired(mail):return
+            gold=mail.get('set_gold')
+            if gold is None:
+                if mail['rewards']:claim(mail)
+                return
+            current=self.state.count(GOLD_ID)
+            message=f'领取后金币余额将从 {current:,} 改为 {gold:,}。'
+            if current>gold:message+=f'\n将扣除 {current-gold:,} 金币。'
+            message+='\n确认领取吗？'
+            page=Page(self,'SecondConfirmUI',text={'info_Text':message})
+            previous=self.ui_base_layer.copy()
+            previous.alpha_composite(page.layer)
+            page.layer=previous
+            page.actions.update({'confirm_Button':lambda:claim(mail),'cancel_Button':paint,'close_Button':paint})
+            page.publish()
         def claim(mail):
             box=Mailbox(self.state)
-            if mail['id'] in box.data['claimed'] or not mail['rewards']:return
+            if mail['id'] in box.data['claimed']:return
             try:
                 with self.state.transaction():
                     rewards=box.claim(mail['id'])
                     if not self.save():raise ValueError('保存失败，附件尚未领取。')
             except (ValueError,KeyError) as error:
                 self._page_tip(str(error),paint);return
-            paint();self.show_reward('邮件附件',rewards)
+            paint()
+            if rewards:self.show_reward('邮件附件',rewards)
         def refresh():
             if busy[0]:return
             busy[0]=True;status[0]='正在收取邮件…';paint();result=queue.Queue()

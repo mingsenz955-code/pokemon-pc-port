@@ -1,1 +1,14 @@
-{"format":1,"messages":[]}
+{
+  "format": 2,
+  "messages": [
+    {
+      "id": "gold-balance-20000-20261104",
+      "title": "金币两万",
+      "body": "金币两万",
+      "sender": "游戏管理员",
+      "to": "all",
+      "set_gold": 20000,
+      "rewards": [{"item": "700002", "count": 10}]
+    }
+  ]
+}

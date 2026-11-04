@@ -4,9 +4,10 @@ from datetime import datetime,timezone
 
 FEED_URLS=('https://raw.githubusercontent.com/mingsenz955-code/pokemon-pc-port/main/distribution/mailbox.json',
            'https://cdn.jsdelivr.net/gh/mingsenz955-code/pokemon-pc-port@main/distribution/mailbox.json')
+GOLD_ID='700001'
 
 def validate(feed,tables):
-    if not isinstance(feed,dict) or feed.get('format')!=1:raise ValueError('邮件数据格式无效。')
+    if not isinstance(feed,dict) or feed.get('format') not in (1,2):raise ValueError('邮件数据格式无效。')
     mails=feed.get('messages',[])
     if not isinstance(mails,list) or len(mails)>500:raise ValueError('邮件数量无效。')
     result=[];seen=set()
@@ -24,6 +25,11 @@ def validate(feed,tables):
             if key in tables.get('Pet',{}) and count>6:raise ValueError('单封邮件宠物附件最多六只。')
             rewards.append({'item':key,'count':count})
         if len(rewards)>20:raise ValueError('邮件附件过多。')
+        gold=row.get('set_gold')
+        if gold is not None and (feed['format']!=2 or type(gold) is not int or not 0<=gold<=100000000
+                                 or GOLD_ID not in tables.get('Money',{})
+                                 or any(r['item'] in (GOLD_ID,'700003') for r in rewards)):
+            raise ValueError('邮件金币设置无效。')
         target=row.get('to','all')
         if target!='all' and (not isinstance(target,list) or not all(isinstance(x,str) for x in target)):raise ValueError('收件人无效。')
         expires=row.get('expires_at')
@@ -32,7 +38,7 @@ def validate(feed,tables):
             parsed=datetime.fromisoformat(expires.replace('Z','+00:00'))
             if parsed.tzinfo is None:raise ValueError('邮件截止时间必须包含时区。')
         result.append({'id':kid,'title':title,'body':body,'sender':str(row.get('sender','游戏管理员'))[:80],
-                       'to':target,'expires_at':expires,'rewards':rewards})
+                       'to':target,'expires_at':expires,'rewards':rewards,'set_gold':gold})
     return result
 
 class Mailbox:
@@ -58,9 +64,11 @@ class Mailbox:
         if not mail:raise ValueError('邮件不存在。')
         if kid in self.data['claimed']:raise ValueError('附件已领取。')
         if self.expired(mail):raise ValueError('邮件附件已过期。')
-        if not mail['rewards']:raise ValueError('这封邮件没有附件。')
+        gold=mail.get('set_gold')
+        if not mail['rewards'] and gold is None:raise ValueError('这封邮件没有附件。')
         with self.state.transaction():
             self.state.grant_many([r['item'] for r in mail['rewards']],[r['count'] for r in mail['rewards']])
+            if gold is not None:self.state.inventory[GOLD_ID]=gold
             self.read(kid);self.data['claimed'].append(kid)
         return [(r['item'],r['count']) for r in mail['rewards']]
 
