@@ -548,6 +548,37 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_screen_type_white_overlay(self):
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                from event_runtime import Request
+                app = NativeGame(root, self.data)
+                app.apply_visual(Request('screen', 0, 0, {'parameters': {'type': 1}}))
+                self.assertTrue(app.screen_white)
+                self.assertFalse(app.screen_black)
+                app.screen_fade_until = time.monotonic()+1
+                frame = app.make_frame()
+                pixel = frame.convert('RGB').getpixel((frame.width//2, frame.height//2))
+                self.assertGreater(min(pixel), 220)
+                app.apply_visual(Request('screenclose', 0, 0, {'parameters': {}}))
+                self.assertFalse(app.screen_white)
+                self.assertFalse(app.screen_black)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_opening_and_battle_timelines(self):
         from csb_render import CocosUI
         ui = CocosUI(self.data)

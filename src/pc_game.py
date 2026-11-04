@@ -173,6 +173,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         if hasattr(self, 'state'):
             self.apply_scenery_visibility()
         self.screen_black = False
+        self.screen_white = False
         self.screen_fade_until = 0
         self.chest_fx = None
         self.obstacle_fx = None
@@ -1469,7 +1470,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.save()
         elif kind in ['screen', 'screenclose', 'screenflash', 'mainuivisible', 'addteachnode', 'closeui']:
             if kind in ['screen', 'screenclose']:
-                self.screen_black = kind == 'screenclose' or int(parameter.get('type', 0)) == 0
+                if kind == 'screenclose':
+                    self.screen_black = False
+                    self.screen_white = False
+                else:
+                    kind_type = int(parameter.get('type', 0))
+                    self.screen_black = kind_type == 0
+                    self.screen_white = kind_type != 0
                 # showScreenSwitch @ 0x39d4b4 runs a half-second fade,
                 # then invokes the plot callback. screenclose is immediate.
                 if kind == 'screen':
@@ -2300,14 +2307,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.dialogue = original_dialogue
         self.draw_exit_markers(frame)
         black = getattr(self, 'screen_black', False)
+        white = getattr(self, 'screen_white', False)
         remaining = max(0, getattr(self, 'screen_fade_until', 0)-time.monotonic())
         opacity = min(1, remaining/.5)
         if black:
             opacity = 1-opacity
         if self.main_ui_visible and opacity < 1:
             self.scene_ui.render(frame)
-        if opacity:
-            frame = Image.blend(frame, Image.new('RGBA', frame.size, 'black'), opacity)
+        if opacity and (black or white):
+            mask = Image.new('RGBA', frame.size, 'black' if black else 'white')
+            frame = Image.blend(frame, mask, opacity)
         else:
             self.draw_map_name(frame)
             self.draw_story_face_icons(frame)
@@ -2404,6 +2413,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 'npc_motion': self.npc_motion.snapshot() if getattr(self, 'npc_motion', None) else None,
                 'scene_animation_time': getattr(self, 'scene_animation_time', 0.0),
                 'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
+                'screen_white': getattr(self, 'screen_white', False),
                 'screen_mask_map': self.map_id,
                 'encounter_distance': self.encounter_distance,
                 'encounter_threshold': self.encounter_threshold,
@@ -2452,12 +2462,12 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             state.rng.setstate(random_state)
             self.runtime_error, self.display_request, self.dialogue = '', None, None
             self.pending_wait, self.wait_until = None, 0
-            self.camera_focus, self.screen_black, self.flash_until = None, False, 0
+            self.camera_focus, self.screen_black, self.screen_white, self.flash_until = None, False, False, 0
             self.camera_action = None
             self.player_visible, self.main_ui_visible = True, True
             self.teach_nodes, self.battle_tips = [], []
             for key in ('face', 'player_visible', 'camera_focus', 'main_ui_visible',
-                        'teach_nodes', 'screen_black', 'encounter_distance', 'encounter_threshold',
+                        'teach_nodes', 'screen_black', 'screen_white', 'encounter_distance', 'encounter_threshold',
                         'camera_action', 'scene_animation_time'):
                 if key in state.presentation:
                     setattr(self, key, state.presentation[key])
@@ -2467,10 +2477,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             if 'screen_mask_map' not in state.presentation and self.screen_black:
                 # Old builds carried the previous map's mask into new plots.
                 self.screen_black = False
+                self.screen_white = False
                 for step in runtime.sequence[:runtime.index]:
                     if step['type'] in ('screenclose', 'tomap', 'screen'):
-                        self.screen_black = (step['type'] == 'screenclose' or
-                            (step['type'] == 'screen' and int(step.get('parameters', {}).get('type', 0)) == 0))
+                        if step['type'] in ('screenclose', 'tomap'):
+                            self.screen_black = False
+                            self.screen_white = False
+                        else:
+                            kind_type = int(step.get('parameters', {}).get('type', 0))
+                            self.screen_black = kind_type == 0
+                            self.screen_white = kind_type != 0
             self.teach_nodes = []
             self.state.trial_ride = 0
             self.main_ui_visible = True
