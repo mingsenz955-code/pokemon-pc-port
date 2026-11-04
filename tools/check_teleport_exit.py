@@ -46,6 +46,9 @@ class TeleportExitChecks(unittest.TestCase):
             else:
                 a.story_motion.advance(.1)
                 a.advance_camera(.1)
+                for timer in ('story_face_until', 'screen_fade_until', 'flash_until'):
+                    if getattr(a, timer, 0):
+                        setattr(a, timer, .01)
                 a.drive()
         self.fail('Original story failed to finish')
 

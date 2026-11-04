@@ -4,12 +4,14 @@ import argparse
 import subprocess
 import sys
 from install_launcher import install_launcher
+from import_story_presentation import apply_story_presentation
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
-parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.90')
+parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.91')
 parser.add_argument('--dist-dir', type=Path, default=root/'outputs')
+parser.add_argument('--story-recovery', type=Path)
 args = parser.parse_args()
 name = args.name
 if Path(name).name != name or '/' in name or '\\' in name:
@@ -34,6 +36,8 @@ if data.exists() and data.resolve() != (root/'original-1.20.4').resolve():
         raise ValueError('Refusing to replace a data directory outside the build package')
     shutil.rmtree(data)
 shutil.copytree(root/'original-1.20.4', data, dirs_exist_ok=True)
+if args.story_recovery:
+    apply_story_presentation(data, args.story_recovery)
 shutil.copytree(root/'generated-assets/lottery', data/'cache/lottery', dirs_exist_ok=True)
 for filename in ['README.md', 'docs/DEEPSEEK_HANDOVER.md', 'docs/MECHANICS_EVIDENCE.md',
                  'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.61.md', 'docs/VERIFICATION_0.2.62.md', 'docs/VERIFICATION_0.2.63.md', 'docs/VERIFICATION_0.2.66.md', 'docs/VERIFICATION_0.2.67.md', 'docs/VERIFICATION_0.2.68.md', 'docs/VERIFICATION_0.2.69.md', 'docs/VERIFICATION_0.2.70.md', 'docs/VERIFICATION_0.2.71.md', 'docs/VERIFICATION_0.2.72.md', 'docs/VERIFICATION_0.2.73.md', 'docs/VERIFICATION_0.2.74.md', 'docs/VERIFICATION_0.2.75.md', 'docs/VERIFICATION_0.2.76.md', 'docs/VERIFICATION_0.2.77.md', 'docs/VERIFICATION_0.2.78.md', 'docs/VERIFICATION_0.2.79.md', 'docs/VERIFICATION_0.2.80.md']:

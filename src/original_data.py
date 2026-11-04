@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import json
 import math
 import plistlib
@@ -361,13 +362,20 @@ class OriginalMap:
         self.layers = []
         self.tilesets = []
         self.objects = []
-        for ts in self.xml.findall('tileset'):
+        for reference in self.xml.findall('tileset'):
+            source = reference.get('source')
+            tileset_path = self.path.parent/source if source else self.path
+            ts = ET.parse(tileset_path).getroot() if source else reference
             image = ts.find('image')
             if image is None:
                 continue
             properties = {int(t.get('id')): props(t) for t in ts.findall('tile')}
-            self.tilesets.append({'first': int(ts.get('firstgid')), 'name': ts.get('name'),
-                                  'image': image.get('source'), 'props': properties,
+            image_path = (tileset_path.parent/image.get('source')).resolve()
+            assets = self.data.assets.resolve()
+            asset_path = (image_path.relative_to(assets).as_posix()
+                          if image_path.is_relative_to(assets) else 'Map/'+image_path.name)
+            self.tilesets.append({'first': int(reference.get('firstgid')), 'name': ts.get('name'),
+                                  'image': asset_path, 'props': properties,
                                   'tw': int(ts.get('tilewidth')), 'th': int(ts.get('tileheight'))})
         for node in self.xml.findall('layer'):
             content = node.find('data')
@@ -376,6 +384,8 @@ class OriginalMap:
                 b = base64.b64decode(content.text)
                 if compression == 'zlib':
                     b = zlib.decompress(b)
+                elif compression == 'gzip':
+                    b = gzip.decompress(b)
                 vals = struct.unpack('<'+'I'*(len(b)//4), b)
             elif encoding == 'csv':
                 vals = tuple(int(s.strip()) for s in content.text.split(',') if s.strip())
@@ -450,9 +460,9 @@ class OriginalMap:
             return None
         if 'spriteId' in self.tile_properties(gid):
             return None
-        if not (self.data.assets/'Map'/ts['image']).exists() and Path(ts['image']).name not in self.data.image_paths:
+        if not (self.data.assets/ts['image']).exists() and Path(ts['image']).name not in self.data.image_paths:
             return None
-        image = self.data.image('Map/'+ts['image'])
+        image = self.data.image(ts['image'])
         n = (gid & 0x1fffffff)-ts['first']
         columns = image.width//ts['tw']
         x, y = n % columns*ts['tw'], n//columns*ts['th']
