@@ -44,6 +44,23 @@ def host(parameters):
 
 
 class CameraChecks(unittest.TestCase):
+    def test_screen_waits_for_native_fade_before_next_dialogue(self):
+        from unittest.mock import patch
+        app = host({})
+        app.runtime.sequence[0].update(type='screen', parameters={'type': 1})
+        app.screen_black = True
+        with patch('pc_game.time.monotonic', return_value=100):
+            app.drive()
+        self.assertEqual(100.5, app.screen_fade_until)
+        self.assertEqual('screen', app.runtime.pending.kind)
+        with patch('pc_game.time.monotonic', return_value=100.25):
+            app.drive()
+        self.assertIsNone(app.display_request)
+        with patch('pc_game.time.monotonic', return_value=100.5):
+            app.drive()
+        self.assertFalse(app.screen_black)
+        self.assertEqual('talk', app.display_request.kind)
+
     def test_move_delay_then_original_script_callback(self):
         app = host({'x': 29, 'y': 22, 'speedscale': 2, 'stop': 1})
         app.drive()

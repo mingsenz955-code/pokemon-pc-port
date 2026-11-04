@@ -111,7 +111,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.85（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.86（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -132,6 +132,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def load_map(self, mid, x=None, y=None):
         super().load_map(mid, x, y)
+        self.screen_black = False
+        self.screen_fade_until = 0
         self.chest_fx = None
         self.obstacle_fx = None
         self.treasure_search_fx = None
@@ -1178,7 +1180,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.85')
+        win.title('任务指引 · 原生 0.2.86')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1396,7 +1398,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.save()
         elif kind in ['screen', 'screenclose', 'screenflash', 'mainuivisible', 'addteachnode', 'closeui']:
             if kind in ['screen', 'screenclose']:
-                self.screen_black = kind == 'screenclose' or parameter.get('type') == 0
+                self.screen_black = kind == 'screenclose' or int(parameter.get('type', 0)) == 0
+                # showScreenSwitch @ 0x39d4b4 runs a half-second fade,
+                # then invokes the plot callback. screenclose is immediate.
+                if kind == 'screen':
+                    self.screen_fade_until = time.monotonic()+.5
             elif kind == 'screenflash':
                 self.flash_until = time.monotonic()+.2
             elif kind == 'mainuivisible':
@@ -1751,6 +1757,17 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 self.runtime.resume()
 
     def drive(self):
+        fade_until = getattr(self, 'screen_fade_until', 0)
+        if fade_until:
+            if time.monotonic() < fade_until:
+                return
+            self.screen_fade_until = 0
+            if self.runtime.pending and self.runtime.pending.kind == 'screen':
+                self.runtime.resume()
+        if (self.display_request and self.display_request.kind == 'airtalk'
+                and time.monotonic() >= getattr(self, 'air_talk_until', float('inf'))):
+            self.display_request = self.dialogue = None
+            self.runtime.resume()
         if getattr(self, 'camera_action', None):
             return
         if getattr(getattr(self, 'story_motion', None), 'actions', []):
@@ -1785,8 +1802,9 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                         DailyTasks(self.state).record('talk')
                     self.display_request = request
                     self.dialogue = request.data.get('text') or '\n'.join(request.data.get('texts', []))
-                    if request.kind == 'aside':
-                        self.dialogue = '旁白:'+self.dialogue
+                    if request.kind == 'airtalk':
+                        # showAirTalk @ 0x39f39c schedules a two-second DelayTime.
+                        self.air_talk_until = time.monotonic()+2
                     return
                 if request.kind == 'reward':
                     self.show_reward('获得奖励', request.data['items'])
@@ -1865,7 +1883,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     self.runtime.resume()
                     continue
                 self.apply_visual(request)
-                if self.camera_action or getattr(getattr(self, 'story_motion', None), 'actions', []):
+                if (self.camera_action or getattr(self, 'screen_fade_until', 0)
+                        or getattr(getattr(self, 'story_motion', None), 'actions', [])):
                     return
                 self.runtime.resume()
                 self.player_sprite = self.state.sprite_id
@@ -2090,6 +2109,28 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             origin = marker.info.get('origin', (marker.width/2, marker.height/2))
             frame.alpha_composite(marker, (round((rect[0]+rect[2])/2-origin[0]), round((rect[1]+rect[3])/2-origin[1])))
 
+    def draw_air_talk(self, frame, request):
+        camera_x, camera_y = self.camera_origin()
+        actors = {str(oid): (x, y) for oid, _, x, y in self.actors()}
+        texts = request.data.get('texts', [])
+        rows = request.data.get('parameters', [])
+        bubbles = {}
+        for row in rows if isinstance(rows, list) else [rows]:
+            kind, identifier = int(row.get('spritetype', 2)), str(row.get('spriteid', 0))
+            point = (self.x, self.y) if kind == 1 else actors.get(('temp:' if kind == 7 else '')+identifier)
+            index = int(row.get('index', 0))
+            if point is None or not 0 <= index < len(texts):
+                continue
+            x, y = point[0]*self.SCALE-camera_x, point[1]*self.SCALE-camera_y
+            if index not in bubbles:
+                width, height = round(160*self.WIDTH/800), round(92*self.HEIGHT/480)
+                bubbles[index] = self.cocos_ui.render('BubbleDialogNode', (width,height),
+                    text={'dialog_Text': texts[index]}, canvas_size=(160,92), offset=(width/2,height/2))
+            bubble = bubbles[index]
+            left = round(max(0, min(x-bubble.width/2, self.WIDTH-bubble.width)))
+            top = round(max(0, min(y-60*self.SCALE-bubble.height, self.HEIGHT-bubble.height)))
+            frame.alpha_composite(bubble, (left,top))
+
     def make_frame(self):
         if self.battle and self.battle_ui:
             return self.battle_ui.render()
@@ -2100,15 +2141,26 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         finally:
             self.dialogue = original_dialogue
         self.draw_exit_markers(frame)
-        if getattr(self, 'screen_black', False):
-            frame.paste('#101010', (0, 0, self.WIDTH, self.HEIGHT))
-        elif self.main_ui_visible:
+        black = getattr(self, 'screen_black', False)
+        remaining = max(0, getattr(self, 'screen_fade_until', 0)-time.monotonic())
+        opacity = min(1, remaining/.5)
+        if black:
+            opacity = 1-opacity
+        if self.main_ui_visible and opacity < 1:
             self.scene_ui.render(frame)
+        if opacity:
+            frame = Image.blend(frame, Image.new('RGBA', frame.size, 'black'), opacity)
         if original_dialogue is None:
             self._draw_chest_fx(frame)
             self._draw_obstacle_fx(frame)
             self._draw_treasure_search(frame)
-        if original_dialogue is not None:
+        request = self.display_request
+        if request and request.kind == 'airtalk':
+            self.draw_air_talk(frame, request)
+        elif request and request.kind == 'aside':
+            frame.alpha_composite(self.cocos_ui.render('AsideUI', (self.WIDTH, self.HEIGHT),
+                                  text={'aside_Text': original_dialogue or ''}))
+        elif original_dialogue is not None:
             name, sep, content = original_dialogue.replace('：', ':', 1).partition(':')
             if not sep:
                 name, content = '', original_dialogue
@@ -2189,6 +2241,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 'npc_motion': self.npc_motion.snapshot() if getattr(self, 'npc_motion', None) else None,
                 'scene_animation_time': getattr(self, 'scene_animation_time', 0.0),
                 'teach_nodes': self.teach_nodes, 'screen_black': getattr(self, 'screen_black', False),
+                'screen_mask_map': self.map_id,
                 'encounter_distance': self.encounter_distance,
                 'encounter_threshold': self.encounter_threshold,
             }
@@ -2241,6 +2294,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 if key in state.presentation:
                     setattr(self, key, state.presentation[key])
             self.keys.clear()
+            if 'screen_mask_map' not in state.presentation and self.screen_black:
+                # Old builds carried the previous map's mask into new plots.
+                self.screen_black = False
+                for step in runtime.sequence[:runtime.index]:
+                    if step['type'] in ('screenclose', 'tomap', 'screen'):
+                        self.screen_black = (step['type'] == 'screenclose' or
+                            (step['type'] == 'screen' and int(step.get('parameters', {}).get('type', 0)) == 0))
             self.teach_nodes = []
             self.state.trial_ride = 0
             self.main_ui_visible = True
