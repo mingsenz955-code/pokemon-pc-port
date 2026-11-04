@@ -370,7 +370,7 @@ class Preview:
         if hasattr(self, 'viewport'):
             self.viewport.present(self.frame)
         else:
-            self.tk_image = ImageTk.PhotoImage(self.frame)
+            self.tk_image = ImageTk.PhotoImage(self.frame, master=self.root)
         if not hasattr(self, 'canvas_image'):
             self.canvas_image = self.canvas.create_image(0, 0, anchor='nw', image=self.tk_image)
         else:

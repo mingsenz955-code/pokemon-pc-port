@@ -77,7 +77,7 @@ class GameArtLabel(tk.Label):
         if hasattr(app, 'viewport'):
             app.viewport.present(scene)
         else:
-            app.tk_image = ImageTk.PhotoImage(scene)
+            app.tk_image = ImageTk.PhotoImage(scene, master=app.root)
             if hasattr(app, 'canvas_image'):
                 app.canvas.itemconfigure(app.canvas_image, image=app.tk_image)
             else:
@@ -118,7 +118,7 @@ class GameArtLabel(tk.Label):
         if old is not None and old.width() == frame.width and old.height() == frame.height:
             old.paste(frame)
         else:
-            self.composited_image = ImageTk.PhotoImage(frame)
+            self.composited_image = ImageTk.PhotoImage(frame, master=self.master.app.root)
         return self.composited_image
 
     def show_frame(self, frame):

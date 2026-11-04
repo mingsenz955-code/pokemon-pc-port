@@ -341,6 +341,11 @@ class PetPages:
             self._page_wheel(wheel)
         def choose(value):
             selected[0] = value
+            if value < len(self.state.pets):
+                row = self.data.tables['Pet'].get(str(self.state.pets[value].species), {})
+                if str(row.get('nameSound', '0')) not in ('', '0'):
+                    # PetListUI selection plays the authored species voice.
+                    self.audio.effect(str(row['nameSound']))
             paint()
         def training():
             train[0] = not train[0]

@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**43 个测试全部通过**。
+结果：**44 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
@@ -108,3 +108,7 @@
 - 幸运之星（Talent state 31）在野外遇敌时按原版 5% 权重偏向当前地图星级最高的野生宠物；新增遇敌偏置回归测试。
 
 - 战斗中的宠物尺寸会保留 `Pet.scale`：此前 setup 图和动作帧都乘过 scale，目标高度又把它抵消，所有宠物看起来一样大；现在按原表缩放，并新增尺寸回归测试。
+
+- `PetListUI` 选中宠物时播放原表 `nameSound`（例如妙蛙种子 `1001 → SE_N_1.mp3`），不再静音；新增音效触发回归测试。
+
+- 场景/Panel 的 `PhotoImage` 绑定到所属 Tk root，连续创建窗口或测试时不依赖全局默认 root，避免 `image "pyimageN" doesn't exist`。

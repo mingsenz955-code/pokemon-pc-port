@@ -525,6 +525,35 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_pet_list_plays_name_voice(self):
+        """Selecting a PetListUI row plays its original nameSound."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.state.pets.clear()
+                app.state.bank.clear()
+                app.state.add_generated_pet('100001', 5)
+                app.state.active_pet = 0
+                app.pets_ui()
+                played = []
+                app.audio.effect = lambda value: played.append(str(value))
+                app.ui_actions['pet_row_0']()
+                self.assertIn('1001', played)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_battle_pet_scale_uses_original(self):
         """Pet.scale survives the battle target-height resize."""
         from types import SimpleNamespace

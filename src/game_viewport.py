@@ -78,7 +78,7 @@ class GameViewport:
             old.paste(shown)
             replaced = False
         else:
-            self.app.tk_image = ImageTk.PhotoImage(shown)
+            self.app.tk_image = ImageTk.PhotoImage(shown, master=self.app.root)
             replaced = True
         if not hasattr(self.app, 'canvas_image'):
             self.app.canvas_image = self.app.canvas.create_image(*self.offset, anchor='nw', image=self.app.tk_image)
