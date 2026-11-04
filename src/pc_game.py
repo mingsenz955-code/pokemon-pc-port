@@ -112,7 +112,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.88（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.89（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -133,6 +133,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def load_map(self, mid, x=None, y=None):
         super().load_map(mid, x, y)
+        self.map_name_started = time.monotonic()
+        self.story_face_icons = {}
+        self.story_face_until = 0
+        if hasattr(self, 'state'):
+            self.apply_scenery_visibility()
         self.screen_black = False
         self.screen_fade_until = 0
         self.chest_fx = None
@@ -168,6 +173,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         with self.state.transaction():
             self.state.consume([kid], [1])
             self.state.activities['perfume'] = {'item': str(kid), 'steps': steps, 'until': time.time()+seconds}
+
+    def apply_scenery_visibility(self):
+        prefix = f'{self.map_id}:5:'
+        self.map.set_hidden_scenery({key[len(prefix):] for key, visible in self.state.visible.items()
+                                     if key.startswith(prefix) and not visible})
 
     def _apply_removed_obstacles(self):
         entries = getattr(getattr(self, 'state', None), 'removed_obstacles', [])
@@ -1181,7 +1191,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.88')
+        win.title('任务指引 · 原生 0.2.89')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1364,8 +1374,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.story_motion.begin(rows)
         elif kind in ['face', 'toface']:
             for p in rows:
-                self.story_motion.set_face(int(p.get('spritetype', 2)), int(p.get('spriteid', 0)),
-                                           int(p.get('face', 0)))
+                actor = int(p.get('spritetype', 2)), int(p.get('spriteid', 0))
+                face = int(p.get('face', 0))
+                if kind == 'face' and 5 <= face <= 8:
+                    if not hasattr(self, 'story_face_icons'):
+                        self.story_face_icons = {}
+                    started = time.monotonic()
+                    self.story_face_icons[actor] = (face, started)
+                    self.story_face_until = started+2
+                else:
+                    self.story_motion.set_face(*actor, face)
         elif kind == 'tempnpc':
             for p in rows:
                 point = destination(p, (self.x, self.y), self.face, (self.map.tw, self.map.th)) if 'x' in p and 'y' in p else None
@@ -1385,6 +1403,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     from npc_visibility import set_value
                     set_value(self.state,self.map_id,p.get('spritetype',2),
                               p.get('spriteid',0),p['visible'])
+                    if int(p.get('spritetype', 2)) == 5:
+                        self.apply_scenery_visibility()
         elif kind == 'screenmove':
             self.begin_camera_move(parameter)
         elif kind == 'tomap':
@@ -1762,6 +1782,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 self.runtime.resume()
 
     def drive(self):
+        face_until = getattr(self, 'story_face_until', 0)
+        if face_until:
+            if time.monotonic() < face_until:
+                return
+            self.story_face_until = 0
+            if self.runtime.pending and self.runtime.pending.kind == 'face':
+                self.runtime.resume()
         fade_until = getattr(self, 'screen_fade_until', 0)
         if fade_until:
             if time.monotonic() < fade_until:
@@ -1889,6 +1916,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     continue
                 self.apply_visual(request)
                 if (self.camera_action or getattr(self, 'screen_fade_until', 0)
+                        or getattr(self, 'story_face_until', 0)
                         or getattr(getattr(self, 'story_motion', None), 'actions', [])):
                     return
                 self.runtime.resume()
@@ -2114,6 +2142,25 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             origin = marker.info.get('origin', (marker.width/2, marker.height/2))
             frame.alpha_composite(marker, (round((rect[0]+rect[2])/2-origin[0]), round((rect[1]+rect[3])/2-origin[1])))
 
+    def draw_story_face_icons(self, frame):
+        icons = getattr(self, 'story_face_icons', {})
+        if not icons:
+            return
+        camera_x, camera_y = self.camera_origin()
+        for actor, (face, started) in list(icons.items()):
+            age = time.monotonic()-started
+            if age >= 2:
+                del icons[actor]
+                continue
+            try:
+                x, y = self.story_motion.position(*actor)
+            except PendingMechanic:
+                continue
+            art = self.data.armature('face', str(face), int(age*60))
+            if art is not None:
+                frame.alpha_composite(art, (round(x*self.SCALE-camera_x-art.width/2),
+                                            round((y-64)*self.SCALE-camera_y-art.height)))
+
     def draw_air_talk(self, frame, request):
         camera_x, camera_y = self.camera_origin()
         actors = {str(oid): (x, y) for oid, _, x, y in self.actors()}
@@ -2136,6 +2183,21 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             top = round(max(0, min(y-60*self.SCALE-bubble.height, self.HEIGHT-bubble.height)))
             frame.alpha_composite(bubble, (left,top))
 
+    def draw_map_name(self, frame):
+        age = time.monotonic()-getattr(self, 'map_name_started', -1e9)
+        if age >= 2.5:
+            return
+        key = self.map.info['name'], self.WIDTH, self.HEIGHT
+        if getattr(self, '_map_name_key', None) != key:
+            width, height = round(228*self.WIDTH/800), round(60*self.HEIGHT/480)
+            self._map_name_art = self.cocos_ui.render('MapNameNode', (width, height),
+                text={'name_Text': key[0]}, canvas_size=(228, 60), offset=(width/2, height/2))
+            self._map_name_key = key
+        art = self._map_name_art
+        if age > 2:
+            art = Image.blend(art, Image.new('RGBA', art.size), max(0, (age-2)*2))
+        frame.alpha_composite(art, ((self.WIDTH-art.width)//2, round(24*self.HEIGHT/480-art.height/2)))
+
     def make_frame(self):
         if self.battle and self.battle_ui:
             return self.battle_ui.render()
@@ -2153,8 +2215,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             opacity = 1-opacity
         if self.main_ui_visible and opacity < 1:
             self.scene_ui.render(frame)
+            self.draw_map_name(frame)
         if opacity:
             frame = Image.blend(frame, Image.new('RGBA', frame.size, 'black'), opacity)
+        else:
+            self.draw_story_face_icons(frame)
         if original_dialogue is None:
             self._draw_chest_fx(frame)
             self._draw_obstacle_fx(frame)

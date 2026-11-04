@@ -396,6 +396,8 @@ class OriginalMap:
                 self.obstacles[(tx, ty)] = obs
         self.removed_obstacles = set()
         self.sprite_collision = set()
+        self.named_scenery_collision = {}
+        self.hidden_scenery = set()
         self._scenery = None
         for obj in self.objects:
             if obj['group'] != 'spriteTileLayer' or not obj.get('gid'):
@@ -410,7 +412,20 @@ class OriginalMap:
             for dx, dy in json.loads(definition.get('collideInfo', '[]')):
                 cell = (tx+int(dx), ty-int(dy))
                 if 0 <= cell[0] < self.width and 0 <= cell[1] < self.height:
-                    self.sprite_collision.add(cell)
+                    name = obj.get('name')
+                    if name:
+                        self.named_scenery_collision.setdefault(name, set()).add(cell)
+                    else:
+                        self.sprite_collision.add(cell)
+        self._fixed_sprite_collision = self.sprite_collision.copy()
+        self.set_hidden_scenery(set())
+
+    def set_hidden_scenery(self, names):
+        self.hidden_scenery = set(names)
+        self.sprite_collision = self._fixed_sprite_collision.copy()
+        for name, cells in self.named_scenery_collision.items():
+            if name not in self.hidden_scenery:
+                self.sprite_collision.update(cells)
 
     def tileset(self, gid):
         gid = gid & 0x1fffffff
@@ -484,9 +499,10 @@ class OriginalMap:
                                                     image.height/2+float(definition['y']))
                     images[key] = image
                 if images[key] is not None:
-                    self._scenery.append((float(obj['x'])+self.tw/2, float(obj['y'])-self.th/2, images[key]))
-        return [(x, y, image) for x, y, image in self._scenery
-                if (int((x-self.tw/2)//self.tw), int(y//self.th)) not in self.removed_obstacles]
+                    self._scenery.append((float(obj['x'])+self.tw/2, float(obj['y'])-self.th/2, images[key], obj.get('name')))
+        return [(x, y, image) for x, y, image, name in self._scenery
+                if name not in self.hidden_scenery
+                and (int((x-self.tw/2)//self.tw), int(y//self.th)) not in self.removed_obstacles]
 
     def sprite_blocked(self, x, y, mounts=None):
         cell = (int(x//self.tw), int(y//self.th))
