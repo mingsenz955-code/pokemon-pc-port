@@ -299,6 +299,18 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_wild_capture_reaches_caught(self):
+        pets = [generate_pet(self.data.tables, random.Random(22), '100160', 80)
+                for _ in range(2)]
+        key = next(iter(self.data.tables['VillageEnemy']))
+        battle = make_wild_battle(self.data.tables, pets, key, random.Random(23))
+        battle.enemy[0].hp = 1
+        event_types = [event['type'] for event in battle.choose_item('220006')]
+        self.assertEqual(battle.result, 'caught')
+        self.assertIn('catch_attempt', event_types)
+        self.assertIn('caught', event_types)
+        self.assertIsNotNone(battle.caught_pet)
+
     def test_every_x_trigger_target_exists(self):
         triggers = self.data.event('pEventContents.json')
         files = {path.name for path in (self.data.root/'events').glob('pEvent*.json')}
