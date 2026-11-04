@@ -151,6 +151,8 @@ class BattlePet:
         self.poison_skin = 0.0
         self.last_stand = False
         self.last_stand_used = False
+        self.revive_percent = 0.0
+        self.revive_used = False
         self.exp_multiplier = 1.0
         self.off_field_exp = False
         for key in self.pet.talents:
@@ -180,6 +182,8 @@ class BattlePet:
                         self.crit_bonus += value
                     elif state == 29:
                         self.exp_multiplier = max(self.exp_multiplier, value/100)
+                    elif state == 30:
+                        self.revive_percent = max(self.revive_percent, value)
                     elif state == 44:
                         self.off_field_exp = True
                     elif state == 47:
@@ -893,6 +897,15 @@ class Battle:
             self.events.append({'type': 'heal', 'side': target.side, 'name': target.name,
                                 'uid': target.pet.uid, 'amount': 1, 'hp': target.hp,
                                 'max_hp': target.max_hp})
+        if (not target.alive and getattr(target, 'revive_percent', 0)
+                and not getattr(target, 'revive_used', False)):
+            target.hp = max(1, int(target.max_hp*min(100, target.revive_percent)/100))
+            target.revive_used = True
+            self.messages.append(f'{target.name} 的重生之心发动，重新站了起来！')
+            self.events.append({'type': 'heal', 'side': target.side, 'name': target.name,
+                                'uid': target.pet.uid, 'amount': target.hp,
+                                'hp': target.hp, 'max_hp': target.max_hp,
+                                'source': 'revive'})
         if unit.has('recoil') and damage > 0:
             recoil = max(1, int(damage*0.15))
             unit.take_damage(recoil)
