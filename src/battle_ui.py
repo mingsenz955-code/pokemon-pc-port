@@ -692,7 +692,11 @@ class BattleUI:
             self._label(draw, ((rect[0]+rect[2])//2, (rect[1]+rect[3])//2), label, 19, anchor='mm')
 
     def _result_lines(self):
-        lines = [f'{name} 获得 {gained} 点经验。' for name, gained, _levels in self.battle.exp_gained]
+        lines = []
+        for name, gained, levels in self.battle.exp_gained:
+            lines.append(f'{name} 获得 {gained} 点经验。')
+            if levels:
+                lines.append(f'{name} 升到了 Lv.{levels[-1]}！')
         lines += [f'获得 {self._reward_name(item)} ×{amount}' for item, amount in self.battle.drops]
         outcome = {'win': 'battleWin', 'lose': 'battleLose'}.get(self.battle.result)
         if outcome:

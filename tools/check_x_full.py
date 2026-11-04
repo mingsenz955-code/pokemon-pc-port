@@ -72,6 +72,16 @@ class XFullChecks(unittest.TestCase):
                 errors.append((path.name, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_battle_result_lists_level_up(self):
+        from types import SimpleNamespace
+        from battle_ui import BattleUI
+        battle = SimpleNamespace(exp_gained=[('皮卡丘', 120, [10, 11])], drops=[],
+                                 result='win', caught_pet=None)
+        fake = SimpleNamespace(battle=battle, app=SimpleNamespace(data=self.data))
+        lines = BattleUI._result_lines(fake)
+        self.assertIn('皮卡丘 获得 120 点经验。', lines)
+        self.assertIn('皮卡丘 升到了 Lv.11！', lines)
+
     def test_every_battle_definition_instantiates(self):
         errors = []
         for key in self.data.tables['NpcFight']:
