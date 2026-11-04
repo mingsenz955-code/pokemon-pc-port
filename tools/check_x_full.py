@@ -131,6 +131,9 @@ class XFullChecks(unittest.TestCase):
                 self.assertTrue(battle.enemy)
                 self.assertTrue(all(unit.pet.species in configured for unit in battle.enemy))
                 self.assertTrue(all(unit.pet.species in self.data.tables['Pet'] for unit in battle.enemy))
+                self.assertEqual(app.battle_ui.render().size, (960, 576))
+                app.battle_ui.advance(seconds=2)
+                self.assertEqual(app.battle_ui.render().size, (960, 576))
                 self.assertEqual(app.runtime_error, '')
             finally:
                 for job in root.tk.call('after', 'info'):
