@@ -36,6 +36,7 @@
 - 从 X 地图 5801 的 NPC `580101` 触发对话，确认地图触发、`pEventContents` 条件、事件脚本和 UI 对话串联正常。
 - 旧 1.20.4 存档可载入 X 数据并恢复到相同地图。
 - 启动 `OpeningUI` 可渲染，跳过序章后进入 7401。
+- X 序章播放原生 `BGM_101.mp3`，跳过/进入游戏时停止并切回地图音乐。
 - `OpeningUI` 全 1,165 帧和 `BattleStartEffectUI` 全 61 帧按时间轴逐段渲染成功，无缺帧异常。
 - `gzip` TMX、外置 TSX、`pcWalkThrough` 和特殊路线修正均已加入。
 

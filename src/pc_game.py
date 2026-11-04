@@ -127,6 +127,9 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.autosave_job = root.after(30000, self.autosave)
         root.protocol('WM_DELETE_WINDOW', self.close_game)
         if show_opening:
+            # The native opening timeline uses BGM_101.mp3 (string table next
+            # to OpeningUI.csb). It must stop as soon as the opening is skipped.
+            self.audio.music('BGM_101.mp3')
             clips = self.cocos_ui.layout('OpeningUI')['action']['clips']
             self.opening = (tuple(clips[f'animation{i}'] for i in range(7)), 0, time.monotonic())
             return
@@ -134,6 +137,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def enter_game(self):
         self.opening = None
+        self.audio.music(None)
         if self.save_path.exists() and self.restore():
             return
         self.load_map(7401, 17*64+32, (30-14)*64)
@@ -2310,7 +2314,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             name, sep, content = original_dialogue.replace('：', ':', 1).partition(':')
             if not sep:
                 name, content = '', original_dialogue
-            is_player = name in ['尼尔', '皮尔']
+            is_player = name == getattr(self.state, 'player_name', '') or name in ['尼尔', '皮尔']
             portrait = next((r['icon'] for r in self.data.tables['Npc'].values() if r['name'] == name), None)
             if name == '宠物护士':
                 # The generic pink-haired nurse (village npc9) shares the

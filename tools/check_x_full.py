@@ -477,11 +477,13 @@ class XFullChecks(unittest.TestCase):
                 app = NativeGame(root, self.data, show_opening=True)
                 root.update()
                 self.assertIsNotNone(app.opening)
+                self.assertEqual(app.audio.requested, 'BGM_101.mp3')
                 frame = app.make_frame()
                 self.assertEqual(frame.size, (960, 576))
                 app.opening_input(skip=True)
                 root.update()
                 self.assertIsNone(app.opening)
+                self.assertNotEqual(app.audio.requested, 'BGM_101.mp3')
                 self.assertEqual(app.map_id, 7401)
             finally:
                 for job in root.tk.call('after', 'info'):
