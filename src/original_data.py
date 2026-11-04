@@ -362,9 +362,16 @@ class OriginalMap:
         self.layers = []
         self.tilesets = []
         self.objects = []
-        for reference in self.xml.findall('tileset'):
+        references = self.xml.findall('tileset')
+        missing_tilesets = []
+        for index, reference in enumerate(references):
             source = reference.get('source')
             tileset_path = self.path.parent/source if source else self.path
+            if source and not tileset_path.is_file():
+                first = int(reference.get('firstgid'))
+                stop = int(references[index+1].get('firstgid')) if index+1 < len(references) else 1 << 29
+                missing_tilesets.append((first, stop, source))
+                continue
             ts = ET.parse(tileset_path).getroot() if source else reference
             image = ts.find('image')
             if image is None:
@@ -395,6 +402,12 @@ class OriginalMap:
         for group in self.xml.findall('objectgroup'):
             for node in group.findall('object'):
                 self.objects.append({'group': group.get('name'), **node.attrib, 'props': props(node)})
+        if missing_tilesets:
+            used = {gid & 0x1fffffff for _, layer, _ in self.layers for gid in layer}
+            used.update(int(obj.get('gid', 0)) & 0x1fffffff for obj in self.objects)
+            for first, stop, source in missing_tilesets:
+                if any(first <= gid < stop for gid in used):
+                    raise FileNotFoundError(f'{self.path.name}: missing referenced tileset {source}')
         # 1.20.4 draws cuttable trees and breakable rocks as spriteTileLayer
         # objects carrying obsType (1=wood, 2=stone).  They are not part of
         # collideLayer, so the old terrain-only collision let the player walk

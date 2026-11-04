@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from audit_story_migration import audit, numbers
+from import_story_presentation import apply_pet_catalog, apply_compatible_dialogue
 
 
 def write_json(path, value):
@@ -26,6 +27,40 @@ def stage(source, baseline, output):
         for key, row in apk[table].items():
             if key not in pc[table] and ('petId' not in row or row['petId'] in pc['Pet']):
                 pc[table][key] = row
+    known = set(pc['Item']) | set(pc['Money']) | set(pc['Pet']) | {'0'}
+    pc['StoryToken'] = {
+        str(key): apk['Item'][str(key)]['name']
+        for table in ('MainTask', 'BranchTask')
+        for task in pc[table].values()
+        for key in numbers(task['costIds'])
+        if str(key) not in known
+    }
+    # The crystal petal is awarded and removed within the same quest scene.
+    if '270101' in pc['StoryToken']:
+        pc['StoryToken']['270100'] = apk['Item']['270100']['name']
+    pc['StoryContinuation'] = {'155': 156}
+    known |= pc['StoryToken'].keys()
+    omitted_rewards = set()
+
+    def retain_rewards(row, fields):
+        vectors = [numbers(row[field]) for field in fields]
+        if all(str(key) in known for key in vectors[0]):
+            return
+        entries = []
+        for entry in zip(*vectors):
+            if str(entry[0]) in known:
+                entries.append(entry)
+            else:
+                omitted_rewards.add(str(entry[0]))
+        for index, field in enumerate(fields):
+            row[field] = ','.join(str(entry[index]) for entry in entries) or '0'
+
+    for table in ('MainTask', 'BranchTask'):
+        for task in pc[table].values():
+            retain_rewards(task, ('rewardIds', 'rewardCounts'))
+    for table in ('NpcFight', 'VillageEnemy'):
+        for row in pc[table].values():
+            retain_rewards(row, ('dropItemIds', 'dropItemCounts', 'dropPros'))
     for row in pc['VillageMap'].values():
         enemy_ids = numbers(row['enemyIds'])
         if not enemy_ids or enemy_ids == [0]:
@@ -49,10 +84,16 @@ def stage(source, baseline, output):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(file, target)
     retained_events = []
+    missing_scripts = []
     for file in (source/'events').glob('*.json'):
         target = output/'events'/file.name
         rows = json.loads(file.read_bytes())
-        if file.name != 'pEventContents.json':
+        if file.name == 'pEventContents.json':
+            missing_scripts = [row['id'] for row in rows
+                               if not (source/'events'/f'pEvent{row["id"]}.json').is_file()
+                               and not (baseline/'events'/f'pEvent{row["id"]}.json').is_file()]
+            rows = [row for row in rows if row['id'] not in missing_scripts]
+        else:
             if target.exists():
                 if json.loads(target.read_bytes()) != rows:
                     retained_events.append(file.name)
@@ -65,9 +106,23 @@ def stage(source, baseline, output):
                 if 'id' not in row:
                     row['id'] = free
                     free += 1
+                if row['type'] == 'giveitem':
+                    rewards = row['parameters']
+                    rewards = rewards if isinstance(rewards, list) else [rewards]
+                    accepted = [reward for reward in rewards if str(reward['itemid']) in known]
+                    omitted_rewards.update(str(reward['itemid']) for reward in rewards if reward not in accepted)
+                    if accepted:
+                        row['parameters'] = accepted
+                    else:
+                        row.update(type='eventstate', parameters=[])
         write_json(target, rows)
     write_json(output/'tables.json', pc)
+    apply_pet_catalog(output, source)
+    apply_compatible_dialogue(output, source)
     report['retained_pc_event_versions'] = sorted(retained_events)
+    report['missing_trigger_scripts'] = missing_scripts
+    report['omitted_reward_item_ids'] = sorted(omitted_rewards)
+    report['story_token_ids'] = sorted(pc['StoryToken'])
     report['staged_species_count'] = len(pc['Pet'])
     report['unresolved_npc_fights'] = sorted(key for key, row in pc['NpcFight'].items()
                                             if any(str(pet) not in pc['NpcPet'] and str(pet) not in pc['BossPet']

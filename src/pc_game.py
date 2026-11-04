@@ -114,7 +114,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.93（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.94（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1223,7 +1223,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.93')
+        win.title('任务指引 · 原生 0.2.94')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2415,6 +2415,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             runtime = EventRuntime(self.data, state)
             runtime.on_finish = self.release_story_camera
             runtime.present_rewards = True
+            if (state.main_state == 5 and state.main_task in state.completed_main
+                    and str(state.main_task) in self.data.tables.get('StoryContinuation', {})
+                    and not state.pending_runtime):
+                state.main_state = 3
             TaskProgress(state).update()
             runtime.restore(state.pending_runtime)
             self.close_transient_ui()

@@ -212,7 +212,8 @@ class EventRuntime:
             if kind == 'giveitem':
                 rows = parameter if isinstance(parameter, list) else [parameter]
                 for row in rows:
-                    if not any(str(row['itemid']) in self.state.tables[table] for table in ('Pet', 'Item', 'Money')):
+                    if not any(str(row['itemid']) in self.state.tables.get(table, {})
+                               for table in ('Pet', 'Item', 'Money', 'StoryToken')):
                         raise ValueError(f'Unknown reward {row["itemid"]}')
                 with self.state.transaction():
                     # Native AddDropItemsEvent accepts signed deltas. Quest
@@ -224,7 +225,8 @@ class EventRuntime:
                         else:
                             self.state.grant(key, count)
                 rewards = [(str(row['itemid']), int(row['itemcount'])) for row in rows
-                           if int(row['itemcount']) > 0 and str(row['itemid']) != '0']
+                           if int(row['itemcount']) > 0 and str(row['itemid']) != '0'
+                           and str(row['itemid']) not in self.state.tables.get('StoryToken', {})]
             elif kind == 'eventstate':
                 for row in parameter if isinstance(parameter, list) else [parameter]:
                     self.state.events[str(row['eventid'])] = int(row['state'])
