@@ -827,33 +827,63 @@ class Battle:
                 if kind == 'poison':
                     pct = values[1] if len(values) > 1 else 15
                     amount = max(1, unit.max_hp*pct//100)
-                    unit.take_damage(amount)
-                    self.messages.append(f'{unit.name} 受到中毒伤害 {amount}。')
+                    taken = unit.take_damage(amount)
+                    self.messages.append(f'{unit.name} 受到中毒伤害 {taken}。')
+                    self.events.append({'type': 'damage', 'side': unit.side, 'name': unit.name,
+                                        'uid': unit.pet.uid, 'amount': taken, 'crit': False,
+                                        'attribute': 'power', 'hp': unit.hp,
+                                        'max_hp': unit.max_hp, 'hit_index': 0,
+                                        'source': 'poison'})
                 elif kind == 'drain':
                     pct = values[1] if len(values) > 1 else 10
                     amount = max(1, unit.max_hp*pct//100)
-                    unit.take_damage(amount)
-                    self.messages.append(f'{unit.name} 受到生命流失 {amount}。')
+                    taken = unit.take_damage(amount)
+                    self.messages.append(f'{unit.name} 受到生命流失 {taken}。')
+                    self.events.append({'type': 'damage', 'side': unit.side, 'name': unit.name,
+                                        'uid': unit.pet.uid, 'amount': taken, 'crit': False,
+                                        'attribute': 'power', 'hp': unit.hp,
+                                        'max_hp': unit.max_hp, 'hit_index': 0,
+                                        'source': 'drain'})
                 elif kind == 'leech':
                     pct = values[1] if len(values) > 1 else 10
                     amount = max(1, unit.max_hp*pct//100)
-                    unit.take_damage(amount)
+                    taken = unit.take_damage(amount)
                     source = next((p for p in self.enemy+self.player if p.pet.uid == buff.source), None)
+                    self.events.append({'type': 'damage', 'side': unit.side, 'name': unit.name,
+                                        'uid': unit.pet.uid, 'amount': taken, 'crit': False,
+                                        'attribute': 'power', 'hp': unit.hp,
+                                        'max_hp': unit.max_hp, 'hit_index': 0,
+                                        'source': 'leech'})
                     if source and source.alive:
-                        source.heal(amount)
-                    self.messages.append(f'{unit.name} 被汲取了 {amount} 点生命。')
+                        healed = source.heal(amount)
+                        self.events.append({'type': 'heal', 'side': source.side,
+                                            'name': source.name, 'uid': source.pet.uid,
+                                            'amount': healed, 'hp': source.hp,
+                                            'max_hp': source.max_hp})
+                    self.messages.append(f'{unit.name} 被汲取了 {taken} 点生命。')
                 elif kind == 'regen':
                     pct = values[1] if len(values) > 1 else 15
                     healed = unit.heal(unit.max_hp*pct//100)
                     self.messages.append(f'{unit.name} 回复了 {healed} 点生命。')
+                    self.events.append({'type': 'heal', 'side': unit.side, 'name': unit.name,
+                                        'uid': unit.pet.uid, 'amount': healed, 'hp': unit.hp,
+                                        'max_hp': unit.max_hp})
                 elif kind == 'nightmare':
                     amount = max(1, unit.max_hp*15//100)
-                    unit.take_damage(amount)
+                    taken = unit.take_damage(amount)
                     unit.energy = max(0, unit.energy-unit.max_energy*15//100)
+                    self.events.append({'type': 'damage', 'side': unit.side, 'name': unit.name,
+                                        'uid': unit.pet.uid, 'amount': taken, 'crit': False,
+                                        'attribute': 'power', 'hp': unit.hp,
+                                        'max_hp': unit.max_hp, 'hit_index': 0,
+                                        'source': 'nightmare'})
                 elif kind == 'doom':
                     if buff.rounds <= 1:
                         unit.hp = 1
                         self.messages.append(f'{unit.name} 的死亡预言应验了，生命降为 1！')
+                        self.events.append({'type': 'doom', 'side': unit.side, 'name': unit.name,
+                                            'uid': unit.pet.uid, 'hp': unit.hp,
+                                            'max_hp': unit.max_hp})
                 buff.rounds -= 1
                 if buff.rounds <= 0:
                     unit.buffs.remove(buff)

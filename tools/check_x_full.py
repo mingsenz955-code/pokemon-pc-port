@@ -397,6 +397,25 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_dot_damage_emits_battle_events(self):
+        from battle import Battle, Buff
+        from pet_factory import generate_pet
+        player = generate_pet(self.data.tables, random.Random(1), '100160', 50)
+        enemy = generate_pet(self.data.tables, random.Random(2), '100160', 50)
+        battle = Battle(self.data.tables, [player], [enemy],
+                        random.Random(3), kind='trainer', name='dot')
+        unit = battle.player[0]
+        unit.hp = unit.max_hp
+        unit.add_buff('2', Buff('2', 2, '2,15', 1, unit.pet.uid, '中毒'))
+        battle.events = []
+        before = unit.hp
+        battle._end_round()
+        damage = [event for event in battle.events
+                  if event['type'] == 'damage' and event.get('side') == 'player']
+        self.assertTrue(damage)
+        self.assertEqual(before-damage[0]['amount'], unit.hp)
+        self.assertEqual('poison', damage[0]['source'])
+
     def test_story_speed_achievements(self):
         from achievements import Achievements
         state = self.state
