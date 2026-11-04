@@ -1475,6 +1475,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     self.screen_white = False
                 else:
                     kind_type = int(parameter.get('type', 0))
+                    # showScreenSwitch @ 0x39cfcc: type 0 selects
+                    # Color3B(0,0,0), every other type selects 0xff/white.
                     self.screen_black = kind_type == 0
                     self.screen_white = kind_type != 0
                 # showScreenSwitch @ 0x39d4b4 runs a half-second fade,
