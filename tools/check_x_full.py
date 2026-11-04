@@ -538,17 +538,23 @@ class XFullChecks(unittest.TestCase):
                 app = NativeGame(root, self.data)
                 unit = SimpleNamespace(side='player', hp=10, alive=True,
                                        pet=SimpleNamespace(uid=1, species='100001'))
-                battle = SimpleNamespace(player=[unit], enemy=[], events=[],
+                enemy = SimpleNamespace(side='enemy', hp=10, alive=True,
+                                        pet=SimpleNamespace(uid=2, species='100001'))
+                battle = SimpleNamespace(player=[unit], enemy=[enemy], events=[],
                                         result=None, kind='wild',
-                                        player_active=unit, enemy_active=None)
+                                        player_active=unit, enemy_active=enemy)
                 ui = BattleUI(app, battle, opening=True)
                 played = []
-                ui.effect_audio = SimpleNamespace(play=lambda value: played.append(str(value)))
+                enemy_played = []
+                ui.effect_audio = SimpleNamespace(
+                    play=lambda value: played.append(str(value)),
+                    effect2=lambda value: enemy_played.append(str(value)))
                 for _ in range(20):
                     ui.advance(seconds=1)
                     if ui.opening_frame is None:
                         break
                 self.assertIn('2001', played)
+                self.assertIn('2001', enemy_played)
             finally:
                 for job in root.tk.call('after', 'info'):
                     try:

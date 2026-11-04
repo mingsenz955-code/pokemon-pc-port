@@ -55,6 +55,13 @@ class GameAudio:
 
     play = effect
 
+    def effect2(self, value):
+        """Second simultaneous effect channel (enemy and player entry cries)."""
+        if self.effects_enabled:
+            path = self.resolve(value)
+            if path:
+                self.queue.put(('effect2', path, False))
+
     def pause_music(self):
         self.queue.put(('pause', None, False))
 
@@ -70,13 +77,14 @@ class GameAudio:
             self.effects_enabled = bool(enabled)
             if not enabled:
                 self.queue.put(('effect', None, False))
+                self.queue.put(('effect2', None, False))
 
     def _run(self):
         while True:
             item = self.queue.get()
             try:
                 if item is None:
-                    for alias in ('pocket_bgm', 'pocket_effect'):
+                    for alias in ('pocket_bgm', 'pocket_effect', 'pocket_effect2'):
                         self._command('close '+alias)
                     return
                 kind, path, loop = item
@@ -84,7 +92,8 @@ class GameAudio:
                     if self.current is not None:
                         self._command(kind+' pocket_bgm')
                     continue
-                alias = 'pocket_bgm' if kind == 'music' else 'pocket_effect'
+                alias = {'music': 'pocket_bgm', 'effect': 'pocket_effect',
+                         'effect2': 'pocket_effect2'}.get(kind, 'pocket_effect')
                 self._command('close '+alias)
                 if path and not self._command(f'open "{path}" type mpegvideo alias {alias}'):
                     self._command(f'play {alias}'+(' repeat' if loop else ' from 0'))
