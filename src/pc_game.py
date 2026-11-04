@@ -31,7 +31,7 @@ from achievements import Achievements
 from task_progress import TaskProgress
 from mounts import Mounts
 from guide import Guide, GuideTarget
-from story_motion import StoryMotion, FACES
+from story_motion import StoryMotion, FACES, destination
 from scene_ui import SceneUI
 from npc_motion import NpcMotion
 from exit_markers import ExitMarkers
@@ -111,7 +111,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.84（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.85（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1178,7 +1178,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.84')
+        win.title('任务指引 · 原生 0.2.85')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -1365,9 +1365,12 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                                            int(p.get('face', 0)))
         elif kind == 'tempnpc':
             for p in rows:
+                point = destination(p, (self.x, self.y), self.face, (self.map.tw, self.map.th)) if 'x' in p and 'y' in p else None
+                previous = self.state.temp_npcs.get(str(p['npcid']))
+                if point is None:
+                    point = (previous['x'], previous['y']) if previous and previous['map'] == self.map_id else (self.map.tw/2, self.map.th/2)
                 self.state.temp_npcs[str(p['npcid'])] = dict(p, map=self.map_id,
-                    x=(float(p.get('x', 0))+.5)*self.map.tw,
-                    y=(float(p.get('y', 0))+.5)*self.map.th)
+                    x=point[0], y=point[1])
         elif kind == 'spritevisible':
             for p in rows:
                 if p.get('spritetype') == 1:
@@ -2252,12 +2255,27 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.npc_motion.restore(state.presentation.get('npc_motion'))
             self.repair_legacy_sprite_collision()
             self.repair_legacy_sunshine_arrival()
+            self.repair_legacy_cg_chase()
             self._play_clock = time.monotonic()
             self.drive()
             return True
         except (ValueError, KeyError, OSError) as error:
             self.game_tip(str(error))
             return False
+
+    def repair_legacy_cg_chase(self):
+        pending = self.runtime.pending
+        if (self.map_id != 507 or not pending or pending.event != 'pEvent507001.json'
+                or pending.kind != 'toplace' or pending.step != 3 or self.story_motion.actions):
+            return
+        companion = self.state.temp_npcs.get('1')
+        if (not companion or companion['map'] != self.map_id or companion.get('pspace') != 1
+                or (companion['x'], companion['y']) != (-self.map.tw/2, self.map.th/2)):
+            return
+        # The preceding step has already put the player in position. Restore
+        # the companion to the adjacent slot this pending walk was meant to reach.
+        companion['x'], companion['y'] = destination(
+            pending.data['parameters'], (self.x, self.y), self.face, (self.map.tw, self.map.th))
 
     def repair_legacy_sunshine_arrival(self):
         # Old request_map advanced task 14 before checking the town plot's

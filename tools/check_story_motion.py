@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT/'src'))
-from event_runtime import EventRuntime, PendingMechanic
+from event_runtime import EventRuntime, PendingMechanic, Request
 from game_state import GameState
 from original_data import OriginalData
 from pc_game import NativeGame
@@ -51,6 +51,29 @@ def move(kind=1, identifier=0, x=3, y=1, speed=1, **extra):
 
 
 class StoryChecks(unittest.TestCase):
+    def test_temp_npc_spawn_resolves_player_relative_coordinates(self):
+        app = host(move())
+        script = DATA.event('pEvent507001.json')
+        app.apply_visual(Request('tempnpc', 'pEvent507001.json', 1, script[0]))
+        companion = app.state.temp_npcs['1']
+        self.assertEqual((32, 96), (companion['x'], companion['y']))
+        self.assertEqual([1568, 352], app.story_motion.position(7, 2))
+
+    def test_cg_chase_recovers_the_saved_pending_walk(self):
+        app = host(move())
+        app.map_id, app.x, app.y = 507, 1632, 160
+        app.map = DATA.load_map(507)
+        app.runtime = EventRuntime(DATA, app.state)
+        app.runtime.start('pEvent507001.json')
+        app.runtime.index = 2
+        app.runtime.pending = Request('toplace', app.runtime.file, 3, app.runtime.sequence[2])
+        app.state.temp_npcs['1'].update(map=507, pspace=1, x=-32, y=32)
+        app.repair_legacy_cg_chase()
+        app.drive()
+        self.assertEqual([1568, 160], app.story_motion.position(7, 1))
+        self.assertEqual('talk', app.display_request.kind)
+        self.assertEqual(5, app.display_request.step)
+
     def test_zero_speed_is_original_top_origin_position(self):
         app = host(move(x=4, y=6, speed=0, face=3))
         app.drive()
