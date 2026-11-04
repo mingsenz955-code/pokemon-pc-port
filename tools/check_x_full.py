@@ -868,6 +868,40 @@ class XFullChecks(unittest.TestCase):
                     pass
 
 
+
+    def test_x_battle_item_uses_original_sound(self):
+        """PetItem.soundId is the authored battle item sound."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.state.initialize(2)
+                key = next(iter(self.data.tables['VillageEnemy']))
+                app.start_battle(key)
+                root.update()
+                ui = app.battle_ui
+                ui.advance(seconds=3)
+                played = []
+                ui.effect_audio = SimpleNamespace(play=lambda value: played.append(str(value)))
+                unit = app.battle.player_active
+                unit.hp = max(1, unit.max_hp-10)
+                app.battle.choose_item('230007')
+                ui._after_action()
+                self.assertIn('4057', played)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_wild_escape_uses_enemy_life_thresholds(self):
         """VillageEnemy.escapeLife/escapePro raise the wild escape rate."""
         key = next(k for k, r in self.data.tables['VillageEnemy'].items()
