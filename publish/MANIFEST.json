@@ -1,0 +1,456 @@
+{
+  "files": [
+    {
+      "path": "release/pokemon-pc-0.1.zip.part01",
+      "source": "outputs/口袋妖怪-PC移植验证版.zip",
+      "bytes": 36700160,
+      "sha256": "30cd11981c5b5175cdef2b12b82b914d36e7de13179db32b9b852689ee613eff",
+      "part": 1,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.1.zip.part02",
+      "source": "outputs/口袋妖怪-PC移植验证版.zip",
+      "bytes": 36700160,
+      "sha256": "e8920bc3e980c225ff40605bb15c5fb6f6c387a8202483b3a6c4a1023df88e79",
+      "part": 2,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.1.zip.part03",
+      "source": "outputs/口袋妖怪-PC移植验证版.zip",
+      "bytes": 8591846,
+      "sha256": "125ae6303847e0ce02ed6081c659fda1638552cbd6d75495e16a462a235ac30c",
+      "part": 3,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.2.zip.part01",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.zip",
+      "bytes": 36700160,
+      "sha256": "03716cc73fcd871ae13e8fa6235d77e071b8af0015a99ae15aedffcf1466309d",
+      "part": 1,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.2.zip.part02",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.zip",
+      "bytes": 36700160,
+      "sha256": "8d3fc7c3e55ff809594840ef752bb63a7c9cf44cf932c120ead3fcebf67add0c",
+      "part": 2,
+      "of": 3
+    },
+    {
+      "path": "release/pokemon-pc-0.2.zip.part03",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.zip",
+      "bytes": 7945410,
+      "sha256": "aa41c3454be25c51df5974234c785cccbfe7544d79ea4fd434cbd4df7b3f8c65",
+      "part": 3,
+      "of": 3
+    },
+    {
+      "path": "resources/pokemon-1.20.4-original.apk.part01",
+      "source": "resources/口袋妖怪_1.20.4_候选旧版.apk",
+      "bytes": 36700160,
+      "sha256": "f83e6475e52ee80eeb11a9bdb371dbe5f24eae57905397efd9e0bebb16f768e9",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "resources/pokemon-1.20.4-original.apk.part02",
+      "source": "resources/口袋妖怪_1.20.4_候选旧版.apk",
+      "bytes": 29779336,
+      "sha256": "6161f6c6b8bde95bd58712badc2db4d351dc537ff5f7841d06e379b005c33378",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "resources/pokemon-1.33.0-mod.apk.part01",
+      "source": "resources/口袋妖怪_1.33.0_玩家修改包.apk",
+      "bytes": 36700160,
+      "sha256": "7ccfc9fd86796e8b9a98a55013dc06f0f44f5ab756aff8ee3048226cb331c53a",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "resources/pokemon-1.33.0-mod.apk.part02",
+      "source": "resources/口袋妖怪_1.33.0_玩家修改包.apk",
+      "bytes": 15697712,
+      "sha256": "640af3aa7ae40e5e89ee7e2ee9e53e0ee08ee269f13cef640b0ab309be055380",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "research/early_mod_1.1.0.apk.part01",
+      "source": "research/early_mod_1.1.0.apk",
+      "bytes": 36700160,
+      "sha256": "98297fb0b4ba9dc7d80057ecf19263d2acf90f565d0be7da419c586c41d1392c",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "research/early_mod_1.1.0.apk.part02",
+      "source": "research/early_mod_1.1.0.apk",
+      "bytes": 1356084,
+      "sha256": "7f6bd6ebf85280e17440849e89bd720c9c8f551abe90175293e7a71032752c37",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "archive/original-1.20.4.zip.part01",
+      "source": "archive/original-1.20.4.zip",
+      "bytes": 36700160,
+      "sha256": "3e2018a168beb89f734dd19f48b6ea5ce871c0300dddb5bd3bcefa678ba4f543",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "archive/original-1.20.4.zip.part02",
+      "source": "archive/original-1.20.4.zip",
+      "bytes": 9175436,
+      "sha256": "9569a3954ac031aba5a4b49ef3fc2fa4fa3f77cd312a6ad5d7ccc44f10c4e9bf",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "archive/research-extracted.zip.part01",
+      "source": "archive/research-extracted.zip",
+      "bytes": 36700160,
+      "sha256": "09b7939077316b25908ecf4be9d3db6fce20722153335a78f60c7a43c75da2a1",
+      "part": 1,
+      "of": 2
+    },
+    {
+      "path": "archive/research-extracted.zip.part02",
+      "source": "archive/research-extracted.zip",
+      "bytes": 11922521,
+      "sha256": "dfe99dd8de5842f6987d04ff7685dfbce82112b4abf84ccf1e9df03f756e9e26",
+      "part": 2,
+      "of": 2
+    },
+    {
+      "path": "archive/outputs-verification.zip",
+      "source": "archive/outputs-verification.zip",
+      "bytes": 19243279,
+      "sha256": "cfcd968a47c04bd705395254197889ece629ceff01ed1f9a51eccd4749bc5ffe"
+    },
+    {
+      "path": "archive/research-root.zip",
+      "source": "archive/research-root.zip",
+      "bytes": 3039844,
+      "sha256": "c86c52a2174b173b16b6b2af98aa207faf6f94334225a217862602b8be8850d9"
+    },
+    {
+      "path": "research/original-core.so",
+      "source": "research/original-core.so",
+      "bytes": 8226468,
+      "sha256": "4580d73ae47e66f67c7d12afd8bfaedf321279db5720a9befeb833d2a142d0cc"
+    },
+    {
+      "path": "research/demangled-symbols.json",
+      "source": "research/demangled-symbols.json",
+      "bytes": 5447220,
+      "sha256": "2c533b520c892e5e833579e2c1991bfda0289168dc4eb28bc856e3001dfadcca"
+    },
+    {
+      "path": "research/original-symbols.json",
+      "source": "research/original-symbols.json",
+      "bytes": 2839745,
+      "sha256": "81c0d82be048eb983529291e221a06b59befd490293b863e835bf6202df6e54c"
+    },
+    {
+      "path": "research/evidence/face1_10.png",
+      "source": "research/evidence/face1_10.png",
+      "bytes": 4782,
+      "sha256": "14b4f69869faef01c2b1867b42b67575bdc3b98feee37eb1c57fac065033c41c"
+    },
+    {
+      "path": "research/evidence/face1_11.png",
+      "source": "research/evidence/face1_11.png",
+      "bytes": 5159,
+      "sha256": "82df8a02024d411ab5b2c55bf7293e1e5dcff2f59479de71a5aed8968569231d"
+    },
+    {
+      "path": "research/evidence/face1_2.png",
+      "source": "research/evidence/face1_2.png",
+      "bytes": 4325,
+      "sha256": "0f2bcb40096e88904c00c87bb74ea054b4ccf5349491608f99da52710ba53da1"
+    },
+    {
+      "path": "research/evidence/face1_3.png",
+      "source": "research/evidence/face1_3.png",
+      "bytes": 4230,
+      "sha256": "774c827e49686106d65ea889bc42dbd438c6da5655affb03cfe272cf7d584467"
+    },
+    {
+      "path": "research/evidence/face1_4.png",
+      "source": "research/evidence/face1_4.png",
+      "bytes": 4402,
+      "sha256": "8680f2ca8499f12f2cb7a24ee786238b88b72838f66ff82ad9058b4a63761c4f"
+    },
+    {
+      "path": "research/evidence/face1_5.png",
+      "source": "research/evidence/face1_5.png",
+      "bytes": 4203,
+      "sha256": "25744cd9332c11c5de814c5b552d8cf9c400ed8268c5aa36aa2909c0026c4d95"
+    },
+    {
+      "path": "research/evidence/face1_6.png",
+      "source": "research/evidence/face1_6.png",
+      "bytes": 4230,
+      "sha256": "774c827e49686106d65ea889bc42dbd438c6da5655affb03cfe272cf7d584467"
+    },
+    {
+      "path": "research/evidence/face1_7.png",
+      "source": "research/evidence/face1_7.png",
+      "bytes": 2995,
+      "sha256": "7f67ff8f37414961d9f3068c6e851dd79a5b06b48ef62c2b9989c822eecd5853"
+    },
+    {
+      "path": "research/evidence/face1_8.png",
+      "source": "research/evidence/face1_8.png",
+      "bytes": 4530,
+      "sha256": "6f4406661e720311d02793793b9da3d34db6344ac9b379debabddbc736d1cc43"
+    },
+    {
+      "path": "research/evidence/face1_9.png",
+      "source": "research/evidence/face1_9.png",
+      "bytes": 3779,
+      "sha256": "a6396c38dc64f2febd7be632c502b8bedb74de2448b7123ab2310788a9ce9318"
+    },
+    {
+      "path": "research/evidence/faces.jpg",
+      "source": "research/evidence/faces.jpg",
+      "bytes": 44654,
+      "sha256": "3dbc70e446f0ea2f59828bdea9f0974278a4067227212f09ef620faceafe4f5b"
+    },
+    {
+      "path": "research/evidence/icon.png",
+      "source": "research/evidence/icon.png",
+      "bytes": 12804,
+      "sha256": "107a9ec158c9d161a14cadd1e8a0a40c4c4ea12d2e59aee9c98fd26ea58e08e7"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.2.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.2.zip",
+      "bytes": 81457707,
+      "sha256": "c7b362ba70fef8f2cc7655bf54d1b45bbf9eca02a808ad06c8e5bc4bb9e36b94"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.3.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.3.zip",
+      "bytes": 80894747,
+      "sha256": "c15a9a40c51d1cfb8393636c3f70d1c0d6c1bd81f1460abc9e6e45a1d6945683"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.4.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.4.zip",
+      "bytes": 81497865,
+      "sha256": "f6bb9c9c6a73a94340ee77a7b846beba16ce33add767ba712370d12645d4bc83"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.5.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.5.zip",
+      "bytes": 81502193,
+      "sha256": "1085fa32afd0a95d3bc3a1a619a8d64c4d389426aad2c34c6d605d9f9adb3eb9"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.6.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.6.zip",
+      "bytes": 81512553,
+      "sha256": "f39d30e3c61cbd55126fa8b6f0dd6d3575624918d4200fe9fd9794a8869b4ecc"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.7.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.7.zip",
+      "bytes": 81532707,
+      "sha256": "edf0ce7692140aef7a295fc4f2978062f9bcfc29795ebcf348c8e2a11ca94d9f"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.8.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.8.zip",
+      "bytes": 81542495,
+      "sha256": "e0a49d84967f0e6f4f3eb755e1b81018013c4772dc9faa786cfd7bcb3b11ef07"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.9.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.9.zip",
+      "bytes": 81551355,
+      "sha256": "c1123f1075aec8c1b8f4657abe8ba522bac93b7617ad41dc7958bb16edaaa20b"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.10.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.10.zip",
+      "bytes": 81571221,
+      "sha256": "095d06dd00c7ca979acd976ffaf81818661c6a5ed1b43859573f33a5ef388e6d"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.11.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.11.zip",
+      "bytes": 81575067,
+      "sha256": "3375ddb463daab60051b19f491250cf9cf9c190fc51cda8ca6dfb3303e5bf1c1"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.12.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.12.zip",
+      "bytes": 81578079,
+      "sha256": "49d5220842f24ee1322e838fad4e0e8c9f3a3e3f7e4ce7e4cbbe28650f474bcc"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.13.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.13.zip",
+      "bytes": 81587918,
+      "sha256": "29ca3eacc96efbb6a84b55b8ddd6e0c7e4f8b030d336852157dd26dfd468e2c9"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.14.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.14.zip",
+      "bytes": 81591349,
+      "sha256": "8a5f81f31d4fac8f5abfda0e7a432c98933a56cb2b7351e983e09b93bec9ad85"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.15.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.15.zip",
+      "bytes": 81592958,
+      "sha256": "4064d2027f4de9b3f732c01deb971fcc8d7194cf91656e8e6b808eacba354765"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.16.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.16.zip",
+      "bytes": 81593672,
+      "sha256": "276aafa825327a388fecca9e44d7bbfee63e3ffdae617482ae3684627078f1bf"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.17.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.17.zip",
+      "bytes": 81594920,
+      "sha256": "941e50183254fc5566df66323da25b8bbf3e9ee1d57ea8457fc56ee27f1aa80e"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.18.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.18.zip",
+      "bytes": 81597769,
+      "sha256": "643345f17549b4e76740b137501c67967052b44126b7fd9e7844b9e8f14ca9a1"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.19.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.19.zip",
+      "bytes": 81598748,
+      "sha256": "524d8f985be46633d9044c89b937cbe67f622e7e82f9a03bd30d1a0afaa865a0"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.20.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.20.zip",
+      "bytes": 81601996,
+      "sha256": "eba42ee2fd53b38c7149a36b27e248a5eb3b5e97498e429ae6bb692c59021b2b"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.21.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.21.zip",
+      "bytes": 81603808,
+      "sha256": "47a5ee318ad1c14afd1820d85e92cf7ff07493bf8bf6b9cbefdb989d88fff97a"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.22.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.22.zip",
+      "bytes": 81605595,
+      "sha256": "5d92ca8ab1e214143ff4fb66a90fc5ab893a2f1981927541a9c98435c091118d"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.23.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.23.zip",
+      "bytes": 81603276,
+      "sha256": "88f430313f4425c31755fda5a750ad01bba46cffe23fbb752a5a1d2d5667d535"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.24.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.24.zip",
+      "bytes": 81608054,
+      "sha256": "31cd98e7a8c8e6d2a1e3c60ed5f5df7ec3af4ed3e1571f4e4fb77613b4193a97"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.25.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.25.zip",
+      "bytes": 81609601,
+      "sha256": "ecd4b072259852deeb77add3689218062b8238d13a14c644ed9e3152a41f83c0"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.26.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.26.zip",
+      "bytes": 81613781,
+      "sha256": "5b8138fe0e5e059bd412ca7c3d528d4fe12ebe3f8ded09a12138d08406937c3e"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.27.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.27.zip",
+      "bytes": 81614780,
+      "sha256": "54e22050a58bba07c82392ce6c98bb0a7e6a11e115603b7f875981c251d37d25"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.28.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.28.zip",
+      "bytes": 81613352,
+      "sha256": "d4e57c176103ffaf472b79bb0859b31f51a9fd58ccd257f546e997c06a4d2577"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.29.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.29.zip",
+      "bytes": 81617322,
+      "sha256": "45d539bb08c8a0756f83674888b6c69bd0c809b8011098b567ea61ce52b544cd"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.30.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.30.zip",
+      "bytes": 81619338,
+      "sha256": "00bdc76ed4887dc9e808b3314a88310027a91318fcf5f3491c54c4cb16207feb"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.31.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.31.zip",
+      "bytes": 81620213,
+      "sha256": "600c4b5fda3103c291c7cabbbef2b910255776ce1aeaeedaaedf62c21499a0c5"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.32.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.32.zip",
+      "bytes": 81621235,
+      "sha256": "945eb124e8ca351e7cec71a35877d21edf2ee5a4e47f401d875c37e14fb9af8f"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.33.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.33.zip",
+      "bytes": 81622498,
+      "sha256": "c6163ecd8229d29bf9f39fbeb7a305e959c310bd5065d7ba5f552542a10de742"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.34.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.34.zip",
+      "bytes": 81621669,
+      "sha256": "853c648fc042a90a0c88c4ad0a567478aba92e20ad58bdaf738a6fbae7ea4ad8"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.35.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.35.zip",
+      "bytes": 81625198,
+      "sha256": "f302033123d1352767aa362abcee7a90ce7d354f0aa28816c38570cef5d22c17"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.36.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.36.zip",
+      "bytes": 81628104,
+      "sha256": "44d86db4f5b81957d5eec6b1bade1d91eb347d6b8a0ec14c67be4c59ea67e5d9"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.49.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.49.zip",
+      "bytes": 81719881,
+      "sha256": "aa7d1a5af21399c351ab809a24a3100118538376fb744ee651279586f59aa429"
+    },
+    {
+      "path": "release/pokemon-pc-0.2.50.zip",
+      "source": "outputs/口袋妖怪-PC移植开发版0.2.50.zip",
+      "bytes": 81721015,
+      "sha256": "728150dffbd658196fd59e5aa53a143797cfe4593a3cf1723abbaf2ce996cb37"
+    }
+  ]
+}

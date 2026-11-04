@@ -1,0 +1,15 @@
+.venv/
+research/
+original-1.20.4/
+generated-assets/
+resources/
+outputs/
+build/*
+!build/_*.py
+__pycache__/
+*.pyc
+*.spec
+*.apk
+*.zip
+*.7z
+*.log

@@ -1,0 +1,233 @@
+"""Original MainUI hit targets and hidden-player save repair, without visible windows."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import tkinter as tk
+from types import SimpleNamespace
+import unittest
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT/'src'))
+from csb_render import CocosUI
+from game_state import GameState
+from original_data import OriginalData
+from pc_game import NativeGame
+from scene_ui import SceneUI
+
+DATA = OriginalData(ROOT/'original-1.20.4')
+
+
+class SceneChecks(unittest.TestCase):
+    def test_starter_save_boundary_repair_allows_real_host_click_and_tick(self):
+        from event_runtime import EventRuntime
+        import time
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder)/'slot1.json'
+            state = GameState(DATA.tables, seed=43)
+            state.initialize(1)
+            state.add_preset(1)
+            state.starter_id = 1
+            state.map_id, state.x, state.y = 5801, 1376, 1024
+            state.main_task, state.main_state = 3, 4
+            state.presentation = {'player_visible': False, 'player_visibility_map': 5801,
+                                  'sprite_collision_version': 1, 'screen_black': False}
+            runtime = EventRuntime(DATA, state)
+            runtime.start('pEvent5801002.json')
+            runtime.index = 8
+            runtime.persist()
+            state.save(source)
+            original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            clone = Path(folder)/'playtest'
+            clone.mkdir()
+            (clone/'slot1.json').write_bytes(source.read_bytes())
+            previous = os.environ.get('POCKET_NATIVE_SAVE_DIR')
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = str(clone)
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                app = NativeGame(root, DATA)
+                self.assertTrue(app.player_visible)
+                self.assertLess(app.x, app.map.width*app.map.tw)
+                self.assertFalse(app.map.blocked(app.x, app.y))
+                # Finish both real starter dialogue rows, then use the real
+                # MainUI hit test and host tick, not Guide's isolated fake host.
+                app.on_click(SimpleNamespace(x=480, y=400))
+                app.on_click(SimpleNamespace(x=480, y=400))
+                self.assertFalse(app.runtime.running)
+                app.make_frame()
+                before = (app.x, app.y)
+                goal = (app.x-64, app.y)
+                camx, camy = app.camera_origin()
+                app.on_click(SimpleNamespace(x=goal[0]*app.SCALE-camx,
+                                             y=goal[1]*app.SCALE-camy))
+                self.assertTrue(app.guide.active)
+                for _ in range(10):
+                    app._play_clock = time.monotonic()-.04
+                    app.tick()
+                self.assertNotEqual(before, (app.x, app.y))
+                self.assertAlmostEqual(goal[0], app.x)
+                self.assertAlmostEqual(goal[1], app.y)
+                self.assertEqual(1, len(app.state.pets))
+                rect = app.scene_ui.hits['task_Button']
+                app.on_click(SimpleNamespace(x=(rect[0]+rect[2])/2, y=(rect[1]+rect[3])/2))
+                self.assertIsNotNone(app.task_page)
+                self.assertIsNone(app.ui_window)
+                app.task_page.render()
+                self.assertNotIn('receive_Button', app.task_page.hits)
+                self.assertEqual((960, 576), app.make_frame().size)
+                app.ui_actions['receive_Button']()
+                self.assertTrue(app.ui_open)
+                self.assertFalse(app.guide.active)
+                app.close_ui('no')
+                app.guide_toggle()
+                self.assertTrue(app.guide.active)
+                for _ in range(160):
+                    app.guide.step(.04)
+                    if not app.guide.active:
+                        break
+                self.assertFalse(app.guide.active)
+                self.assertEqual('pEvent5801006.json', app.runtime.file)
+                self.assertEqual('toplace', app.runtime.pending.kind)
+                self.assertEqual(original_hash, hashlib.sha256(source.read_bytes()).hexdigest())
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    root.after_cancel(job)
+                root.destroy()
+                if previous is None:
+                    os.environ.pop('POCKET_NATIVE_SAVE_DIR', None)
+                else:
+                    os.environ['POCKET_NATIVE_SAVE_DIR'] = previous
+
+    def test_starter_repair_preserves_valid_position_and_prologue_hiding(self):
+        app = NativeGame.__new__(NativeGame)
+        app.state = GameState(DATA.tables)
+        app.state.main_task, app.state.main_state = 3, 4
+        app.state.starter_id = 1
+        app.map_id, app.player_visible = 5801, True
+        app.map = DATA.load_map(5801)
+        app.x, app.y = 1248, 992
+        app.runtime = SimpleNamespace(file='pEvent5801002.json', index=8,
+                                      sequence=DATA.event('pEvent5801002.json'))
+        app.repair_starter_save_position()
+        self.assertEqual((1248, 992), (app.x, app.y))
+        self.assertFalse(app.state.audit)
+        app.map_id, app.player_visible = 7401, False
+        app.repair_starter_save_position()
+        self.assertFalse(app.player_visible)
+        app.map_id = 5801
+        app.runtime.sequence = [{'type': 'spritevisible', 'parameters': {'spritetype': 1, 'visible': 0}}]
+        app.repair_starter_save_position()
+        self.assertFalse(app.player_visible)
+
+    def test_original_main_ui_button_hits_and_page_callbacks(self):
+        calls = []
+        app = SimpleNamespace(WIDTH=960, HEIGHT=576, cocos_ui=CocosUI(DATA), data=DATA)
+        for name in ('save', 'save_ui', 'store_ui', 'recharge_ui', 'tasks_ui', 'guide_toggle', 'lottery_ui', 'bag_ui', 'pets_ui', 'illustrated_ui', 'achievements_ui', 'treasure_ui'):
+            setattr(app, name, lambda name=name: calls.append(name))
+        app.guide_shop = lambda kind: calls.append(('shop', kind))
+        app.map, app.data = DATA.load_map(101), DATA
+        ui = SceneUI(app)
+        image = Image.new('RGBA', (960, 576))
+        ui.render(image)
+        for name in ('task_Button', 'mainLeft_Button', 'mainRight_Button', 'mainUp_Button', 'save_Button'):
+            self.assertIn(name, ui.hits)
+        rect = ui.hits['task_Button']
+        self.assertTrue(ui.click((rect[0]+rect[2])/2, (rect[1]+rect[3])/2))
+        self.assertEqual(['tasks_ui'], calls)
+        ui.action('right_left_1_Button')
+        ui.action('right_left_4_Button')
+        ui.action('up_left_2_Button')
+        self.assertEqual(['tasks_ui', 'bag_ui', 'achievements_ui', ('shop', 2)], calls)
+        ui.action('uiDisappear_Button')
+        ui.render(image)
+        self.assertIn('uiDisappear_Button', ui.hits)
+        self.assertNotIn('save_Button', ui.hits)
+        ui.action('uiDisappear_Button')
+        ui.render(image)
+        self.assertIn('save_Button', ui.hits)
+
+    def test_repair_does_not_override_new_or_scripted_hidden_states(self):
+        app = NativeGame.__new__(NativeGame)
+        app.state = GameState(DATA.tables)
+        app.map_id, app.player_visible = 101, False
+        app.runtime = SimpleNamespace(file='pEvent101001.json', index=5,
+                                      sequence=DATA.event('pEvent101001.json'))
+        app.state.presentation = {'player_visible': False, 'player_visibility_map': 101}
+        app.repair_legacy_player_visibility()
+        self.assertFalse(app.player_visible)
+        app.state.presentation.pop('player_visibility_map')
+        app.repair_legacy_player_visibility()
+        self.assertTrue(app.player_visible)
+        app.player_visible = False
+        app.runtime.sequence = [{'id': 1, 'type': 'spritevisible',
+                                 'parameters': {'spritetype': 1, 'visible': 0}}]
+        app.repair_legacy_player_visibility()
+        self.assertFalse(app.player_visible)
+
+    def test_cloned_legacy_visibility_fixture_renders_player_without_developer_bars(self):
+        # This regression is the reported Stata-town save, not an assumption
+        # that every current user save must show the player (the prologue can
+        # legitimately hide them). Never depend on or mutate a real save.
+        from event_runtime import EventRuntime
+        original = tempfile.TemporaryDirectory()
+        self.addCleanup(original.cleanup)
+        source = Path(original.name)/'slot1.json'
+        state = GameState(DATA.tables, seed=40)
+        state.initialize(1)
+        state.map_id, state.x, state.y = 101, 928, 1056
+        state.main_task, state.main_state = 1, 4
+        state.presentation = {'player_visible': False, 'screen_black': False}
+        runtime = EventRuntime(DATA, state)
+        runtime.start('pEvent101001.json')
+        runtime.index = 5
+        runtime.next()
+        state.save(source)
+        raw = source.read_bytes()
+        snapshot = json.loads(raw)
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, 'slot1.json').write_bytes(raw)
+            previous = os.environ.get('POCKET_NATIVE_SAVE_DIR')
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = directory
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                app = NativeGame(root, DATA)
+                self.assertEqual(snapshot['state']['main_task'], app.state.main_task)
+                self.assertEqual(snapshot['state']['map_id'], app.map_id)
+                self.assertTrue(app.player_visible)
+                self.assertIsNotNone(app.player_image(app.face))
+                self.assertEqual(['Canvas'], [child.winfo_class() for child in root.winfo_children()
+                                              if child.winfo_manager()])
+                self.assertEqual((960, 576), (app.WIDTH, app.HEIGHT))
+                image = app.make_frame()
+                from PIL import ImageChops
+                app.player_visible = False
+                without_player = app.make_frame()
+                app.player_visible = True
+                camx, camy = app.camera_origin()
+                px, py = app.x*app.SCALE-camx, app.y*app.SCALE-camy
+                region = (max(0, int(px-80)), max(0, int(py-120)),
+                          min(app.WIDTH, int(px+80)), min(app.HEIGHT, int(py+10)))
+                difference = ImageChops.difference(image.convert('RGB'), without_player.convert('RGB'))
+                self.assertIsNotNone(difference.crop(region).getbbox(), 'player has no visible scene pixels')
+                output = ROOT/'outputs/verification/player-mainui-repair.png'
+                output.parent.mkdir(parents=True, exist_ok=True)
+                image.save(output)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    root.after_cancel(job)
+                root.destroy()
+                if previous is None:
+                    os.environ.pop('POCKET_NATIVE_SAVE_DIR', None)
+                else:
+                    os.environ['POCKET_NATIVE_SAVE_DIR'] = previous
+        # Never write the source save; this is a read-only clone.
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), hashlib.sha256(source.read_bytes()).hexdigest())
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
