@@ -1402,6 +1402,9 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     def apply_visual(self, request):
         kind, parameter = request.kind, request.data.get('parameters', {})
         rows = parameter if isinstance(parameter, list) else [parameter]
+        if len(rows) == 1 and kind in ('screenmove', 'screen', 'tomap', 'areamapmove',
+                                       'trialride', 'mainuivisible'):
+            parameter = rows[0]
         if kind == 'toplace':
             self.story_motion.begin(rows)
         elif kind in ['face', 'toface']:
@@ -1897,6 +1900,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     return
                 if request.kind == 'fight':
                     parameters = request.data.get('parameters', {})
+                    if isinstance(parameters, list) and len(parameters) == 1:
+                        parameters = parameters[0]
                     npcid = parameters.get('npcid')
                     if npcid is None:
                         raise PendingMechanic('原战斗指令没有 npcid，不能改用虚构对手')

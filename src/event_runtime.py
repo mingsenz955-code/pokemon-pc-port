@@ -24,6 +24,14 @@ class Request:
     data: dict
 
 
+def one(parameter):
+    """Recovered X files sometimes wrap a single command object in a list."""
+    if (isinstance(parameter, list) and len(parameter) == 1
+            and isinstance(parameter[0], dict)):
+        return parameter[0]
+    return parameter
+
+
 class EventRuntime:
     PRESENTATION = {'toplace', 'face', 'toface', 'spritevisible', 'tempnpc', 'screenmove',
                     'screen', 'screenclose', 'screenflash', 'areamapmove', 'button',
@@ -131,6 +139,12 @@ class EventRuntime:
 
     def jump(self, identifier):
         self.index = next((i for i, step in enumerate(self.sequence) if int(step['id']) == int(identifier)), -1)
+        if self.index < 0 and self.file == 'pEvent1614001.json' and int(identifier) == 1:
+            # The recovered X scene points both fightover branches at id 1,
+            # which is absent; its first post-battle dialogue is id 2. Keep the
+            # authored continuation instead of stopping the story on bad data.
+            self.index = next((i for i, step in enumerate(self.sequence)
+                               if int(step['id']) == 2), -1)
         if self.index < 0:
             raise ValueError(f'Missing original jump destination {identifier} in {self.file}')
 
@@ -186,6 +200,7 @@ class EventRuntime:
             if kind not in self.PRESENTATION | self.STATE_COMMANDS | self.INTERACTIVE:
                 raise PendingMechanic(f'Unknown original command {kind}')
             if kind == 'fightover':
+                parameter = one(parameter)
                 if self.battle_result is None:
                     self.pending = Request('battleover', self.file, int(step['id']),
                                            copy.deepcopy(step))
@@ -231,15 +246,18 @@ class EventRuntime:
                 for row in parameter if isinstance(parameter, list) else [parameter]:
                     self.state.events[str(row['eventid'])] = int(row['state'])
             elif kind == 'taskstate':
-                if 'mtask' in parameter and int(parameter['mtask']) == self.state.main_task:
-                    self.state.main_state = int(parameter['state'])
-                elif 'btask' in parameter:
-                    self.state.branch_states[str(parameter['btask'])] = int(parameter['state'])
+                rows = parameter if isinstance(parameter, list) else [parameter]
+                for row in rows:
+                    if 'mtask' in row and int(row['mtask']) == self.state.main_task:
+                        self.state.main_state = int(row['state'])
+                    elif int(row.get('btask', 0) or 0):
+                        self.state.branch_states[str(row['btask'])] = int(row['state'])
             elif kind == 'submittask':
+                parameter = one(parameter)
                 # Original mtask is a nonzero flag; the handler submits the
                 # current task, not that numeric ID (e.g. pEvent101005 uses 5
                 # while the current task is 6). Branch IDs remain explicit.
-                branch = 'btask' in parameter
+                branch = bool(int(parameter.get('btask', 0) or 0))
                 key = parameter['btask'] if branch else self.state.main_task
                 task = self.state.tables['BranchTask' if branch else 'MainTask'][str(key)]
                 if self.state.submit_task(key, branch):
@@ -261,6 +279,7 @@ class EventRuntime:
                         target = condition['id']
                         break
             elif kind == 'end':
+                parameter = one(parameter)
                 # PlotEventItemEnd::begin -> eventForceEnd(state). Unlike natural
                 # EOF, an explicit end without state=1 does not mark completion.
                 self.save_event = int(parameter.get('state', 0)) == 1
@@ -288,6 +307,8 @@ class EventRuntime:
             self.persist()
             return
         parameter = request.data.get('parameters', {})
+        if request.kind in ('fight', 'battleover', 'costtaskitem'):
+            parameter = one(parameter)
         target = None
         if request.kind == 'costtaskitem':
             from task_costs import TaskCosts

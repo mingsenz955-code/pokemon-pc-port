@@ -183,6 +183,127 @@ class XFullChecks(unittest.TestCase):
                         pass
                 root.destroy()
 
+    def test_every_battle_reaches_a_result(self):
+        from pet_factory import generate_pet
+        pets = [generate_pet(self.data.tables, random.Random(21), '100160', 200)
+                for _ in range(3)]
+        errors = []
+        for maker, table in ((make_npc_battle, 'NpcFight'),
+                             (make_wild_battle, 'VillageEnemy')):
+            for key in self.data.tables[table]:
+                try:
+                    battle = maker(self.data.tables, pets, key, random.Random(17))
+                    for _ in range(160):
+                        if battle.result:
+                            break
+                        if battle.force_switch:
+                            index = next((i for i, unit in enumerate(battle.player)
+                                          if unit.alive), None)
+                            if index is None:
+                                break
+                            battle.choose_switch(index)
+                        else:
+                            battle.choose_skill(0)
+                    if not battle.result:
+                        errors.append((table, key, 'no result'))
+                except Exception as error:  # noqa: BLE001 - collect every battle
+                    errors.append((table, key, type(error).__name__, str(error)))
+        self.assertFalse(errors, errors[:10])
+
+    def test_all_x_event_scripts_execute(self):
+        """Drive every recovered script through one headless state as a data audit."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        errors = []
+        for path in sorted((self.data_dir/'events').glob('*.json')):
+            if path.name == 'pEventContents.json':
+                continue
+            state = GameState(self.data.tables)
+            state.initialize(1)
+            state.add_preset(next(iter(self.data.tables['InitPet'])))
+            for key in self.data.tables['Item']:
+                state.inventory[key] = 9999
+            for key in self.data.tables['Money']:
+                state.inventory[key] = 9999999
+            runtime = EventRuntime(self.data, state)
+            try:
+                runtime.start(path.name)
+                for _ in range(1000):
+                    request = runtime.next()
+                    if request is None:
+                        if runtime.running:
+                            errors.append((path.name, 'stuck'))
+                        break
+                    if request.kind in ('fight', 'battleover'):
+                        runtime.resume('win')
+                    elif request.kind == 'costtaskitem':
+                        runtime.resume([])
+                    elif request.kind == 'accepttask':
+                        runtime.resume(True)
+                    else:
+                        runtime.resume()
+                else:
+                    errors.append((path.name, 'loop'))
+            except Exception as error:  # noqa: BLE001 - collect every script
+                errors.append((path.name, type(error).__name__, str(error)))
+        self.assertFalse(errors, errors[:10])
+
+    def test_list_wrapped_x_commands(self):
+        """X wraps single fight/fightover/submittask/end parameters in a list."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        for filename in ('pEvent1602001.json', 'pEvent1602002.json',
+                         'pEvent1602004.json', 'pEvent1602005.json'):
+            state = GameState(self.data.tables)
+            state.initialize(1)
+            state.add_preset(next(iter(self.data.tables['InitPet'])))
+            for key in self.data.tables['Item']:
+                state.inventory[key] = 9999
+            runtime = EventRuntime(self.data, state)
+            runtime.start(filename)
+            for _ in range(500):
+                request = runtime.next()
+                if request is None:
+                    break
+                if request.kind in ('fight', 'battleover'):
+                    runtime.resume('win')
+                elif request.kind == 'accepttask':
+                    runtime.resume(True)
+                elif request.kind == 'costtaskitem':
+                    runtime.resume([])
+                else:
+                    runtime.resume()
+            self.assertFalse(runtime.running, filename)
+
+    def test_list_wrapped_visual_commands(self):
+        from event_runtime import Request
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                root.update()
+                requested = []
+                app.request_map = requested.append
+                app.apply_visual(Request('screen', 'x', 1, {'parameters': [{'type': 0}]}))
+                app.apply_visual(Request('screenmove', 'x', 2,
+                                         {'parameters': [{'x': 5, 'y': 6, 'speedscale': 0}]}))
+                app.apply_visual(Request('tomap', 'x', 3, {'parameters': [{'exit': 910501}]}))
+                self.assertTrue(app.screen_black)
+                self.assertEqual(requested, [910501])
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_map_npc_trigger_starts_dialogue(self):
         with tempfile.TemporaryDirectory() as save:
             os.environ['POCKET_NATIVE_SAVE_DIR'] = save
