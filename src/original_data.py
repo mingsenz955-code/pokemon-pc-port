@@ -39,9 +39,23 @@ class OriginalData:
         self.root = Path(root)
         self.assets = self.root/'assets'
         self.tables = json.loads((self.root/'tables.json').read_text(encoding='utf-8'))
+        self._repair_recovered_maps()
         from economy import adapt_tables
         adapt_tables(self.tables)
         self.image_paths = {p.name: p for p in self.assets.rglob('*.png')}
+
+    def _repair_recovered_maps(self):
+        """Recovered X map 1501 is Morpheus town, not the duplicate Moon Island row."""
+        row = self.tables.get('VillageMap', {}).get('1501')
+        path = self.assets/'Map/map1501.tmx'
+        if not row or row.get('fileName') != 'map1201.tmx' or not path.is_file():
+            return
+        xml = ET.parse(path).getroot()
+        exits = xml.findall(
+            "./objectgroup[@name='spriteLayer']/object/properties/property[@name='toExit']/../..")
+        exit_ids = sorted({node.get('name') for node in exits if not node.get('gid')})
+        if {'150101', '150102', '150103', '150117'} <= set(exit_ids):
+            row.update(fileName='map1501.tmx', name='墨菲斯', exitIds=','.join(exit_ids))
 
     @lru_cache(maxsize=1)
     def sprite_tiles(self):

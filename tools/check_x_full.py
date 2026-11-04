@@ -210,6 +210,41 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_every_x_trigger_target_exists(self):
+        triggers = self.data.event('pEventContents.json')
+        files = {path.name for path in (self.data.root/'events').glob('pEvent*.json')}
+        missing_scripts = [t.get('id') for t in triggers
+                           if f"pEvent{t.get('id')}.json" not in files]
+        self.assertFalse(missing_scripts, missing_scripts[:10])
+        names = set(self.data.tables['Npc'])
+        for key in self.data.tables['VillageMap']:
+            world = self.data.load_map(key)
+            for obj in world.objects:
+                names.add(str(obj.get('name', '')))
+                for field in ('area', 'npcId', 'npcid'):
+                    if obj.get('props', {}).get(field) is not None:
+                        names.add(str(obj['props'][field]))
+        missing = []
+        for trigger in triggers:
+            condition = trigger.get('conditions_add') or {}
+            for field in ('area', 'npcid'):
+                value = condition.get(field)
+                if value is not None and str(value) not in names:
+                    missing.append((trigger.get('id'), field, value))
+        self.assertFalse(missing, missing[:20])
+
+    def test_x_morpheus_map_and_triggers(self):
+        row = self.data.tables['VillageMap']['1501']
+        self.assertEqual(row['fileName'], 'map1501.tmx')
+        self.assertEqual(row['name'], '墨菲斯')
+        self.assertTrue({'150101', '150102', '150103', '150117'} <= set(row['exitIds'].split(',')))
+        world = self.data.load_map(1501)
+        names = {str(obj.get('name')) for obj in world.objects}
+        self.assertTrue({'150101', '150102', '150103', '150134'} <= names)
+        triggers = self.data.event('pEventContents.json')
+        self.assertTrue(any(str(t.get('id')) in ('1501006', '1501009', '1501010', '1501011')
+                            for t in triggers))
+
     def test_all_x_event_scripts_execute(self):
         """Drive every recovered script through one headless state as a data audit."""
         from event_runtime import EventRuntime
