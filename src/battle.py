@@ -544,6 +544,25 @@ class Battle:
             return []
         return self._perform_round({'type': 'switch', 'index': index})
 
+    def _enemy_escape_bonus(self):
+        """VillageEnemy.escapeLife/escapePro raise the player's escape rate.
+
+        The original row stores HP percentages (90,50,30,10) and the matching
+        percentage-point bonus (0,1,3,5).  The weak wild pet is easier to run
+        from, which is why the values are paired by threshold.
+        """
+        enemy = self.enemy_active
+        if not enemy or enemy.max_hp <= 0:
+            return 0
+        life = numbers(self.fight_row.get('escapeLife', '0'))
+        pro = numbers(self.fight_row.get('escapePro', '0'))
+        pct = enemy.hp/enemy.max_hp*100
+        bonus = 0
+        for threshold, value in zip(life, pro):
+            if pct <= threshold:
+                bonus = max(bonus, value)
+        return max(0, int(bonus))
+
     def choose_escape(self):
         if self.result or self.force_switch:
             return []
@@ -556,7 +575,9 @@ class Battle:
             return []
         enemy = self.enemy_active
         rate = escape_rate(unit.effective(4), enemy.effective(4))
-        rate = max(0, min(100, rate + int(getattr(unit, 'escape_bonus', 0))))
+        rate += int(getattr(unit, 'escape_bonus', 0))
+        rate += self._enemy_escape_bonus()
+        rate = max(0, min(100, rate))
         if self.rng.randrange(100) < rate:
             self.messages.append('成功逃走了！')
             self.result = 'escape'

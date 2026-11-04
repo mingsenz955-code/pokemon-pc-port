@@ -867,6 +867,24 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+
+    def test_x_wild_escape_uses_enemy_life_thresholds(self):
+        """VillageEnemy.escapeLife/escapePro raise the wild escape rate."""
+        key = next(k for k, r in self.data.tables['VillageEnemy'].items()
+                   if len(str(r.get('escapeLife', '')).split(',')) >= 4
+                   and len(str(r.get('escapePro', '')).split(',')) >= 4)
+        player = generate_pet(self.data.tables, random.Random(3), '100160', 50)
+        battle = make_wild_battle(self.data.tables, [player], key, random.Random(4))
+        enemy = battle.enemy_active
+        enemy.hp = enemy.max_hp
+        self.assertEqual(0, battle._enemy_escape_bonus())
+        enemy.hp = max(1, int(enemy.max_hp*.40))
+        self.assertEqual(1, battle._enemy_escape_bonus())
+        enemy.hp = max(1, int(enemy.max_hp*.20))
+        self.assertEqual(3, battle._enemy_escape_bonus())
+        enemy.hp = max(1, int(enemy.max_hp*.05))
+        self.assertEqual(5, battle._enemy_escape_bonus())
+
     def test_x_wild_capture_reaches_caught(self):
         pets = [generate_pet(self.data.tables, random.Random(22), '100160', 80)
                 for _ in range(2)]
