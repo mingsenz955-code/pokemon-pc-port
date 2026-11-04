@@ -37,7 +37,7 @@ class XFullChecks(unittest.TestCase):
                        '400117', '400122', '400136', '400137', '400138',
                        '400140', '400141', '400206', '400208', '400134', '400135',
                        '400144', '400146', '400145', '400127', '400128', '400129',
-                       '400131', '400132', '400201', '400202']
+                       '400131', '400132', '400201', '400202', '400213']
         battle = make_wild_battle(self.data.tables, [pet],
                                   next(iter(self.data.tables['VillageEnemy'])),
                                   random.Random(42))
@@ -72,6 +72,7 @@ class XFullChecks(unittest.TestCase):
         self.assertTrue(unit.last_stand)
         self.assertEqual(100, unit.revive_percent)
         self.assertEqual(2.0, unit.exp_multiplier)
+        self.assertEqual('2', unit.terrain_override)
         enemy = battle.enemy[0]
         unit.hp = 10
         battle._deal(enemy, unit, 9999, 'power')
@@ -223,6 +224,36 @@ class XFullChecks(unittest.TestCase):
         pet = generate_pet(self.data.tables, random.Random(1), '101025', 150)
         self.assertEqual(pet.species, '101025')
         self.assertTrue(pet.talents)
+
+    def test_x_terrain_talent_uses_land_background(self):
+        """Ocean Will switches the battle background to the ocean land type."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
+                ui = app.battle_ui
+                base = ui.battle_land()
+                unit = app.battle.player_active
+                unit.pet.talents = ['400213']
+                unit._apply_talent_stats()
+                self.assertEqual('2', unit.terrain_override)
+                self.assertEqual('2', ui.battle_land())
+                self.assertNotEqual('2', base)
+                self.assertEqual((960, 576), ui.render().size)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
 
     def test_x_story_reaches_the_original_battle(self):
         """Play a recovered X scene through its dialogue into its first fight."""

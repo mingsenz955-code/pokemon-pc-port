@@ -307,6 +307,13 @@ class BattleUI:
                   stroke_width=2, stroke_fill=(0, 0, 0, 220))
 
     # -- frame ---------------------------------------------------------------
+    def battle_land(self):
+        land = str(getattr(getattr(self.app, 'map', None), 'info', {}).get('landType', '1'))
+        active = self.battle.player_active
+        if active is not None and getattr(active, 'terrain_override', None):
+            land = active.terrain_override
+        return land
+
     def render(self):
         signature = (self.screen, self.page, self.ball_page, self.notice, self.info, self.result_page, getattr(self, 'result_index', 0),
                      int(self.anim_idle*30/25),
@@ -321,7 +328,7 @@ class BattleUI:
             return self.frame
         self._signature = signature
         frame = Image.new('RGBA', (W, H), (20, 24, 30, 255))
-        land = str(getattr(getattr(self.app, 'map', None), 'info', {}).get('landType', '1'))
+        land = self.battle_land()
         background = None
         for candidate in (land, '1', '2'):
             try:

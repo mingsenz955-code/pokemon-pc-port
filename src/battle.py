@@ -155,6 +155,7 @@ class BattlePet:
         self.revive_used = False
         self.exp_multiplier = 1.0
         self.off_field_exp = False
+        self.terrain_override = None
         for key in self.pet.talents:
             talent = self.tables['Talent'].get(str(key))
             if not talent:
@@ -184,6 +185,9 @@ class BattlePet:
                         self.exp_multiplier = max(self.exp_multiplier, value/100)
                     elif state == 30:
                         self.revive_percent = max(self.revive_percent, value)
+                    elif state in (36, 37, 38, 39, 40):
+                        self.terrain_override = {
+                            36: '1', 37: '4', 38: '3', 39: '5', 40: '2'}[state]
                     elif state == 44:
                         self.off_field_exp = True
                     elif state == 47:
