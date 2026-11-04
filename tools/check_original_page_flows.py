@@ -157,6 +157,16 @@ class PageFlows(unittest.TestCase):
         self.assertIn('infoTitle_1_Text', app.ui_rects)
         app.ui_base_layer.save(OUTPUT/'illustrated-detail.png')
 
+    def test_story_dossier_uses_original_species_parameter(self):
+        app = self.app
+        app.state.encyclopedia = ['100067']
+        step = next(row for row in DATA.event('pEvent7207003.json') if row['type'] == 'openui')
+        app.open_ui(Request('openui', 'pEvent7207003.json', step['id'], step))
+        text = app.original_page.specs[0][2]['text']
+        self.assertEqual('凤王', text['name_Text'])
+        self.assertEqual('55', text['number_BitmapFontLabel'])
+        app.ui_base_layer.save(OUTPUT/'story-ho-oh.png')
+
     def test_achievement_tiers_and_native_rewards_are_visible(self):
         self.open(45)
         app = self.app

@@ -474,7 +474,10 @@ class OriginalPages(PetPages, HatchPages, ServicePages, MergePages, TaskHandover
     def _illustrated_body(self, body, info):
         body.pack_forget()
         tables = self.data.tables
-        key = str(self.ui_parameters.get('species') or next(iter(self.state.encyclopedia), '100001'))
+        species = self.ui_parameters.get('species', self.ui_parameters.get('par1'))
+        if species is None:
+            species = next(iter(self.state.encyclopedia), '100001')
+        key = str(species)
         if key not in tables['Pet']:
             self._page_tip('没有这只宠物的图鉴资料。', self.close_ui)
             return
@@ -518,7 +521,8 @@ class OriginalPages(PetPages, HatchPages, ServicePages, MergePages, TaskHandover
                 limit[0] = max(limits, default=0)
             else:
                 from pet_pages import text_box
-                area = next(r for k, r in page.rects.items() if k.endswith('/info_Text'))
+                panel = page.rects['Layer/root_Panel/info_bg_Image/infoBg_Image']
+                area = (panel[0]+35, panel[1]+32, panel[2]-35, panel[3]-30)
                 limit[0] = text_box(page, area, row.get('des', ''), self.cocos_ui.font('', 16), scroll[0])
             page.actions['check_Button'] = toggle
             page.actions['close_Button'] = self.close_ui
