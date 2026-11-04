@@ -120,9 +120,12 @@ class CocosUI:
                 value = prior['value']
                 for following in frames[1:]:
                     if timeline_frame < following['frame']:
-                        if prior['tween'] and isinstance(value, list):
+                        if prior['tween'] and (isinstance(value, list) or track['property'] == 'Alpha'):
                             amount = (timeline_frame-prior['frame'])/max(1, following['frame']-prior['frame'])
-                            value = [a+(b-a)*amount for a, b in zip(prior['value'], following['value'])]
+                            if isinstance(value, list):
+                                value = [a+(b-a)*amount for a, b in zip(value, following['value'])]
+                            else:
+                                value += (following['value']-value)*amount
                         break
                     prior, value = following, following['value']
                 animated.setdefault(track['tag'], {})[track['property']] = value

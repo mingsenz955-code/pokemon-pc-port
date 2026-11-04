@@ -43,7 +43,7 @@ else:
     stage_full(args.x_source, root/'original-1.20.4', data)
 shutil.copytree(root/'generated-assets/lottery', data/'cache/lottery', dirs_exist_ok=True)
 for filename in ['README.md', 'docs/DEEPSEEK_HANDOVER.md', 'docs/MECHANICS_EVIDENCE.md',
-                 'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.61.md', 'docs/VERIFICATION_0.2.62.md', 'docs/VERIFICATION_0.2.63.md', 'docs/VERIFICATION_0.2.66.md', 'docs/VERIFICATION_0.2.67.md', 'docs/VERIFICATION_0.2.68.md', 'docs/VERIFICATION_0.2.69.md', 'docs/VERIFICATION_0.2.70.md', 'docs/VERIFICATION_0.2.71.md', 'docs/VERIFICATION_0.2.72.md', 'docs/VERIFICATION_0.2.73.md', 'docs/VERIFICATION_0.2.74.md', 'docs/VERIFICATION_0.2.75.md', 'docs/VERIFICATION_0.2.76.md', 'docs/VERIFICATION_0.2.77.md', 'docs/VERIFICATION_0.2.78.md', 'docs/VERIFICATION_0.2.79.md', 'docs/VERIFICATION_0.2.80.md']:
+                 'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.61.md', 'docs/VERIFICATION_0.2.62.md', 'docs/VERIFICATION_0.2.63.md', 'docs/VERIFICATION_0.2.66.md', 'docs/VERIFICATION_0.2.67.md', 'docs/VERIFICATION_0.2.68.md', 'docs/VERIFICATION_0.2.69.md', 'docs/VERIFICATION_0.2.70.md', 'docs/VERIFICATION_0.2.71.md', 'docs/VERIFICATION_0.2.72.md', 'docs/VERIFICATION_0.2.73.md', 'docs/VERIFICATION_0.2.74.md', 'docs/VERIFICATION_0.2.75.md', 'docs/VERIFICATION_0.2.76.md', 'docs/VERIFICATION_0.2.77.md', 'docs/VERIFICATION_0.2.78.md', 'docs/VERIFICATION_0.2.79.md', 'docs/VERIFICATION_0.2.80.md', 'docs/VERIFICATION_0.2.96.md']:
     source = root/filename
     if source.exists():
         shutil.copy2(source, output/('使用说明.md' if filename == 'README.md' else source.name))

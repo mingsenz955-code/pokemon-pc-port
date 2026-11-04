@@ -180,6 +180,33 @@ class XFullChecks(unittest.TestCase):
                         pass
                 root.destroy()
 
+    def test_x_opening_and_battle_start_render(self):
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data, show_opening=True)
+                root.update()
+                self.assertIsNotNone(app.opening)
+                frame = app.make_frame()
+                self.assertEqual(frame.size, (960, 576))
+                app.opening_input(skip=True)
+                root.update()
+                self.assertIsNone(app.opening)
+                self.assertEqual(app.map_id, 7401)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_default_data_root_and_game_boot(self):
         import pc_preview
         old = os.environ.pop('POCKET_NATIVE_DATA', None)

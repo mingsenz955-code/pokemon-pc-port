@@ -42,6 +42,9 @@ class BattleClickChecks(unittest.TestCase):
         app.state.initialize(2)
         app.start_battle(1002011)
         self.ui = app.battle_ui
+        self.assertIsNone(self.ui.click(0, 0))
+        self.ui.advance(seconds=2)
+        self.assertIsNone(self.ui.opening_frame)
         self.ui.render()
 
     def click(self, key, targets=False):

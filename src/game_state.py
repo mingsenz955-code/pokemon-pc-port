@@ -253,6 +253,8 @@ class GameState:
         return self.branch_states.get(str(task_id), 2) == int(state)
 
     def count(self, item_id):
+        if str(item_id) in self.tables.get('StoryToken', {}):
+            return self.activities.get('story_tokens', {}).get(str(item_id), 0)
         if str(item_id) == '700003':
             return self.inventory.get('700001', 0)//GOLD_PER_FEN
         return self.inventory.get(str(item_id), 0)
@@ -268,6 +270,9 @@ class GameState:
         if item_id in self.tables['Pet']:
             for _ in range(amount):
                 self.add_generated_pet(item_id)
+            return
+        if item_id in self.tables.get('StoryToken', {}):
+            self.activities.setdefault('story_tokens', {})[item_id] = self.count(item_id)+amount
             return
         if item_id not in self.tables['Item'] and item_id not in self.tables['Money']:
             raise KeyError(f'Unknown original item {item_id}')
@@ -529,7 +534,9 @@ class GameState:
         if any(self.count(k) < n for k, n in costs.items()):
             raise ValueError('所需道具或货币不足')
         for key, amount in costs.items():
-            self.inventory[key] = self.count(key)-amount
+            bag = (self.activities.setdefault('story_tokens', {}) if key in self.tables.get('StoryToken', {})
+                   else self.inventory)
+            bag[key] = self.count(key)-amount
 
     @atomic_mutation
     def use_item(self, item_id, pet=None):
@@ -659,6 +666,12 @@ class GameState:
         task_id = int(task_id)
         completed = self.completed_branch if branch else self.completed_main
         if task_id in completed:
+            if not branch and task_id == self.main_task:
+                next_task = int(self.tables['MainTask'][str(task_id)].get('nextTaskId', 0))
+                if next_task == self.tables.get('StoryContinuation', {}).get(str(task_id)):
+                    self.main_task, self.main_state = next_task, 3
+                    from task_progress import TaskProgress
+                    TaskProgress(self).update()
             return False
         if not branch and task_id != self.main_task:
             raise ValueError('Cannot submit a main task outside the current original sequence')

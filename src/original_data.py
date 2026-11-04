@@ -349,6 +349,10 @@ class OriginalData:
 
     def load_map(self, map_id):
         info = self.tables['VillageMap'][str(map_id)]
+        # Recovered X 2.10.9 stores the Light City landing as a decorative
+        # tile object; the original client still lists it as an exit.
+        if str(map_id) == '2101' and info.get('fileName') == 'map2101.tmx':
+            info['exitIds'] = '210101,210102'
         return OriginalMap(self, info)
 
 
@@ -362,13 +366,27 @@ class OriginalMap:
         self.layers = []
         self.tilesets = []
         self.objects = []
-        for ts in self.xml.findall('tileset'):
+        references = self.xml.findall('tileset')
+        missing_tilesets = []
+        for index, reference in enumerate(references):
+            source = reference.get('source')
+            tileset_path = self.path.parent/source if source else self.path
+            if source and not tileset_path.is_file():
+                first = int(reference.get('firstgid'))
+                stop = int(references[index+1].get('firstgid')) if index+1 < len(references) else 1 << 29
+                missing_tilesets.append((first, stop, source))
+                continue
+            ts = ET.parse(tileset_path).getroot() if source else reference
             image = ts.find('image')
             if image is None:
                 continue
             properties = {int(t.get('id')): props(t) for t in ts.findall('tile')}
-            self.tilesets.append({'first': int(ts.get('firstgid')), 'name': ts.get('name'),
-                                  'image': image.get('source'), 'props': properties,
+            image_path = (tileset_path.parent/image.get('source')).resolve()
+            assets = self.data.assets.resolve()
+            asset_path = (image_path.relative_to(assets).as_posix()
+                          if image_path.is_relative_to(assets) else 'Map/'+image_path.name)
+            self.tilesets.append({'first': int(reference.get('firstgid')), 'name': ts.get('name'),
+                                  'image': asset_path, 'props': properties,
                                   'tw': int(ts.get('tilewidth')), 'th': int(ts.get('tileheight'))})
         for node in self.xml.findall('layer'):
             content = node.find('data')
@@ -388,6 +406,25 @@ class OriginalMap:
         for group in self.xml.findall('objectgroup'):
             for node in group.findall('object'):
                 self.objects.append({'group': group.get('name'), **node.attrib, 'props': props(node)})
+        if self.path.name == 'map1101.tmx':
+            # The underwater return portal is stored under spriteTileLayer in
+            # the recovered X file, but the original client treats it as an
+            # exit object; move it before exit/collision dispatch.
+            for obj in self.objects:
+                if obj.get('name') == '110108' and obj.get('props', {}).get('toExit') == '570102':
+                    obj['group'] = 'spriteLayer'
+        if self.path.name == 'map7502.tmx':
+            # A decorative floor-2 switch stone occupies area 750201's only
+            # trigger tile.  The original marks it walk-through.
+            for obj in self.objects:
+                if obj.get('x') == '188.0' and obj.get('y') == '1464.0' and obj.get('gid'):
+                    obj.setdefault('props', {})['pcWalkThrough'] = '1'
+        if missing_tilesets:
+            used = {gid & 0x1fffffff for _, layer, _ in self.layers for gid in layer}
+            used.update(int(obj.get('gid', 0)) & 0x1fffffff for obj in self.objects)
+            for first, stop, source in missing_tilesets:
+                if any(first <= gid < stop for gid in used):
+                    raise FileNotFoundError(f'{self.path.name}: missing referenced tileset {source}')
         # 1.20.4 draws cuttable trees and breakable rocks as spriteTileLayer
         # objects carrying obsType (1=wood, 2=stone).  They are not part of
         # collideLayer, so the old terrain-only collision let the player walk
@@ -409,6 +446,8 @@ class OriginalMap:
         self._scenery = None
         for obj in self.objects:
             if obj['group'] != 'spriteTileLayer' or not obj.get('gid'):
+                continue
+            if obj['props'].get('pcWalkThrough') == '1':
                 continue
             properties = self.tile_properties(int(obj['gid']))
             if int(properties.get('obsType', 0)):
@@ -453,9 +492,9 @@ class OriginalMap:
             return None
         if 'spriteId' in self.tile_properties(gid):
             return None
-        if not (self.data.assets/'Map'/ts['image']).exists() and Path(ts['image']).name not in self.data.image_paths:
+        if not (self.data.assets/ts['image']).exists() and Path(ts['image']).name not in self.data.image_paths:
             return None
-        image = self.data.image('Map/'+ts['image'])
+        image = self.data.image(ts['image'])
         n = (gid & 0x1fffffff)-ts['first']
         columns = image.width//ts['tw']
         x, y = n % columns*ts['tw'], n//columns*ts['th']

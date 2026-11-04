@@ -990,7 +990,11 @@ class Battle:
                 messages.append(f'获得了 {row.get("name", item)} × {amount}。')
             if self.caught_pet:
                 name = self.tables['Pet'][self.caught_pet.species]['name']
-                state.receive_pet(self.caught_pet)
+                token = getattr(self, 'capture_story_token', None)
+                if token:
+                    state.grant(token, 1)
+                else:
+                    state.receive_pet(self.caught_pet)
                 messages.append(f'捕捉到了 {name}！')
         self.messages.extend(messages)
         self.rewards_applied = True
@@ -1034,9 +1038,16 @@ def make_npc_battle(tables, player_pets, npcid, rng):
     row = tables['NpcFight'][str(npcid)]
     specs = [enemy_pet_spec(tables, key) for key in numbers(row['petIds'])]
     kind = 'trainer' if row.get('type') in ('1', '2') else 'boss'
-    return Battle(tables, player_pets, specs, rng, kind=kind,
+    token = specs[0].get('held_item') if len(specs) == 1 else None
+    if token in tables.get('StoryToken', {}):
+        specs[0]['held_item'] = '0'
+    else:
+        token = None
+    battle = Battle(tables, player_pets, specs, rng, kind=kind,
                   name='对手', fight_row=row, bgm=row.get('bgmId', '0'),
-                  can_catch=False, can_escape=False)
+                  can_catch=bool(token), can_escape=False)
+    battle.capture_story_token = token
+    return battle
 
 
 def make_wild_battle(tables, player_pets, enemy_id, rng):
