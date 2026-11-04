@@ -397,6 +397,23 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_battle_levelup_queue_advances(self):
+        from types import SimpleNamespace
+        from battle_ui import BattleUI
+        battle = SimpleNamespace(exp_gained=[
+            ('皮卡丘', 100, [10, 11]),
+            ('火绒犬', 80, [20]),
+        ], drops=[], result='win', caught_pet=None)
+        fake = SimpleNamespace(battle=battle, levelup_entries=None,
+                               levelup_index=0, levelup_age=0.0)
+        fake._levelup_data = lambda: BattleUI._levelup_data(fake)
+        self.assertEqual(len(BattleUI._levelup_data(fake)), 2)
+        self.assertTrue(BattleUI._levelup_active(fake))
+        fake.levelup_index = 1
+        self.assertTrue(BattleUI._levelup_active(fake))
+        fake.levelup_index = 2
+        self.assertFalse(BattleUI._levelup_active(fake))
+
     def test_battle_levelup_panel_renders(self):
         with tempfile.TemporaryDirectory() as save:
             os.environ['POCKET_NATIVE_SAVE_DIR'] = save

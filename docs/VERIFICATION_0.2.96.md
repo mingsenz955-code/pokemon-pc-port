@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**31 个测试全部通过**。
+结果：**32 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
