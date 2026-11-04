@@ -38,3 +38,15 @@ def repair_routes(data, tables):
     ET.SubElement(ET.SubElement(landing, 'properties'), 'property', name='face', value='1')
     city.write(city_path, encoding='utf-8', xml_declaration=True)
     tables['VillageMap']['2101']['exitIds'] = '210101,210102'
+
+    cave_path = maps/'map7502.tmx'
+    cave = ET.parse(cave_path)
+    rock = cave.find("./objectgroup[@name='spriteTileLayer']/object[@x='188.0'][@y='1464.0']")
+    if rock is None or rock.get('gid') is None:
+        raise ValueError('Recovered floor 2 switch decoration is missing')
+    properties = rock.find('properties')
+    if properties is None:
+        properties = ET.SubElement(rock, 'properties')
+    # This decorative stone occupies the only trigger tile of area 750201.
+    ET.SubElement(properties, 'property', name='pcWalkThrough', value='1')
+    cave.write(cave_path, encoding='utf-8', xml_declaration=True)

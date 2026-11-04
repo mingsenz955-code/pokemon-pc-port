@@ -430,6 +430,8 @@ class OriginalMap:
         for obj in self.objects:
             if obj['group'] != 'spriteTileLayer' or not obj.get('gid'):
                 continue
+            if obj['props'].get('pcWalkThrough') == '1':
+                continue
             properties = self.tile_properties(int(obj['gid']))
             if int(properties.get('obsType', 0)):
                 continue  # Breakable objects use the removable obstacle layer.
