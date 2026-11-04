@@ -19,7 +19,20 @@ from original_data import OriginalData
 
 def data_root():
     home = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
-    return home/'data' if (home/'data/tables.json').exists() else home/'original-1.20.4'
+    override = os.environ.get('POCKET_NATIVE_DATA')
+    if override:
+        candidate = Path(override)
+        if (candidate/'tables.json').exists():
+            return candidate
+    packaged = home/'data'
+    if (packaged/'tables.json').exists():
+        return packaged
+    # The X 2.10.9 stage is the default development data.  The clean 1.20.4
+    # baseline remains available through POCKET_NATIVE_DATA=original-1.20.4.
+    x_data = home/'x-data'
+    if (x_data/'tables.json').exists():
+        return x_data
+    return home/'original-1.20.4'
 
 
 class Preview:

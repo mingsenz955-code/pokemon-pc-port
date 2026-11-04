@@ -70,6 +70,13 @@ def generate_pet(tables, rng: random.Random, species, level=None, *, row=None, f
     weights = numbers(probability_row['talentProbability'])
     count_choices = numbers(probability_row['talentNum'])
     count_weights = numbers(probability_row['talentNumPro'])
+    if len(count_choices) > 1 and len(count_weights) == 1:
+        # X 2.10.9 row 101025 carries a count choice list but one shared
+        # probability.  The original table is malformed, not a PC reason to
+        # crash a battle; reuse the sole weight for each authored choice.
+        count_weights *= len(count_choices)
+    elif len(count_weights) > 1 and len(count_choices) == 1:
+        count_choices *= len(count_weights)
     count = int(weighted_choice(rng, count_choices, count_weights)) if pool else 0
     count = min(count, len(pool))
     talents = []

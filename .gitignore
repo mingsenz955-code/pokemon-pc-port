@@ -1,6 +1,7 @@
 .venv/
 research/
 original-1.20.4/
+x-data/
 generated-assets/
 resources/
 outputs/

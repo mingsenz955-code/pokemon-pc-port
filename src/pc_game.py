@@ -113,7 +113,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.90（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.96（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -1200,7 +1200,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.90')
+        win.title('任务指引 · 原生 0.2.96')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2938,15 +2938,15 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def _about_body(self, body, info):
         text = self.ui_parameters.get('text') or (
-            '口袋妖怪 · 原生 PC 移植开发版 0.2\n\n'
-            '使用原版 1.20.4 数据和 Cocos 布局，不是安卓模拟器封装。\n'
+            '口袋妖怪 · 原生 PC 移植开发版 0.2.96\n\n'
+            '使用原版 X 2.10.9 数据和 Cocos 布局，不是安卓模拟器封装。\n'
             '剧情、战斗、捕捉、养成、道具、任务和界面仍在持续还原；'
             '缺失机制会停在原位置，不伪造结果。')
         if getattr(self, 'ui_art_label', None) is not None:
             lines = [line.strip() for line in text.split('\n') if line.strip()]
             fields = {
                 'about_Text_0': lines[0] if lines else '口袋妖怪 · 原生 PC 移植',
-                'about_Text_1': '原版数据 1.20.4 · 原生 Windows 开发版',
+                'about_Text_1': '原版数据 X 2.10.9 · 原生 Windows 开发版',
                 'about_Text_2': '不是安卓模拟器封装',
                 'about_Text_3': '剧情 / 战斗 / 捕捉 / 养成 / 道具 / 任务持续还原',
                 'about_Text_9': '缺失机制会停在原位置，不伪造结果',

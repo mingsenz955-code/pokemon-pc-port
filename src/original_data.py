@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import json
 import math
 import plistlib
@@ -376,6 +377,8 @@ class OriginalMap:
                 b = base64.b64decode(content.text)
                 if compression == 'zlib':
                     b = zlib.decompress(b)
+                elif compression == 'gzip':
+                    b = gzip.decompress(b)
                 vals = struct.unpack('<'+'I'*(len(b)//4), b)
             elif encoding == 'csv':
                 vals = tuple(int(s.strip()) for s in content.text.split(',') if s.strip())
