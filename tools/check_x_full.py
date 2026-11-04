@@ -126,7 +126,7 @@ class XFullChecks(unittest.TestCase):
         pet = generate_pet(self.data.tables, random.Random(51), '100160', 80)
         pet.talents = ['400144']
         copied = generate_pet(self.data.tables, random.Random(52), '100160', 80)
-        copied.talents = ['400146']
+        copied.talents = ['400146', '400207']
         battle = make_wild_battle(self.data.tables, [pet, copied],
                                   next(iter(self.data.tables['VillageEnemy'])),
                                   random.Random(53))
@@ -136,6 +136,11 @@ class XFullChecks(unittest.TestCase):
         battle._switch(old, 1)
         self.assertFalse(old.has('poison'))
         self.assertTrue(any(buff.key == '11' for buff in battle.player[1].buffs))
+        self.assertTrue(battle.player[1].off_field_exp)
+        bench_name = battle.player[1].name
+        old.participated = True
+        battle._award()
+        self.assertTrue(any(name == bench_name for name, _, _ in battle.exp_gained))
 
     def test_complete_data_counts(self):
         tables = self.data.tables

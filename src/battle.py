@@ -152,6 +152,7 @@ class BattlePet:
         self.last_stand = False
         self.last_stand_used = False
         self.exp_multiplier = 1.0
+        self.off_field_exp = False
         for key in self.pet.talents:
             talent = self.tables['Talent'].get(str(key))
             if not talent:
@@ -179,6 +180,8 @@ class BattlePet:
                         self.crit_bonus += value
                     elif state == 29:
                         self.exp_multiplier = max(self.exp_multiplier, value/100)
+                    elif state == 44:
+                        self.off_field_exp = True
                     elif state == 47:
                         self.reflect_damage['power'] = max(
                             self.reflect_damage.get('power', 0), value)
@@ -1187,10 +1190,15 @@ class Battle:
     def _award(self):
         level = max((unit.pet.level for unit in self.enemy), default=1)
         alive = [unit for unit in self.player if unit.alive and unit.participated]
-        if not alive:
+        recipients = list(alive)
+        for unit in self.player:
+            if (unit not in recipients and getattr(unit, 'off_field_exp', False)
+                    and unit.hp > 0):
+                recipients.append(unit)
+        if not recipients:
             return
-        total = shared_exp(level, 1.0, 0, len(alive))
-        for unit in alive:
+        total = shared_exp(level, 1.0, 0, len(recipients))
+        for unit in recipients:
             before = unit.pet.level
             gained = int(total*getattr(unit, 'exp_multiplier', 1.0))
             levels = unit.pet.add_exp(gained, self.tables)
