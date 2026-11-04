@@ -35,7 +35,8 @@ class XFullChecks(unittest.TestCase):
         pet = generate_pet(self.data.tables, random.Random(41), '100160', 80)
         pet.talents = ['400121', '400214', '400215', '400216', '400217',
                        '400117', '400122', '400136', '400137', '400138',
-                       '400140', '400141']
+                       '400140', '400141', '400206', '400208', '400134', '400135',
+                       '400144', '400146', '400145']
         battle = make_wild_battle(self.data.tables, [pet],
                                   next(iter(self.data.tables['VillageEnemy'])),
                                   random.Random(42))
@@ -56,6 +57,24 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual('hp', unit.convert_damage['defence'])
         self.assertEqual('energy', unit.convert_damage['energy'])
         self.assertEqual(25, unit.reflect_damage['energy'])
+        self.assertEqual(20, unit.capture_bonus)
+        self.assertEqual(25, unit.escape_bonus)
+        self.assertEqual(5, unit.dodge_chance)
+        self.assertTrue(unit.never_miss)
+        self.assertTrue(unit.cleanse_on_switch)
+        self.assertTrue(unit.copy_status_on_switch)
+        self.assertEqual(200, unit.opponent_energy_penalty)
+        chance_with = battle.capture_chance('220004')
+        unit.capture_bonus = 0
+        self.assertEqual(chance_with-20, battle.capture_chance('220004'))
+        skill = next(row for row in self.data.tables['Skill'].values()
+                     if int(row.get('energyCost', 0) or 0) > 0)
+        enemy = battle.enemy[0]
+        base_cost = enemy.cost(skill)
+        enemy.energy = enemy.max_energy
+        before_energy = enemy.energy
+        battle._use_skill(enemy, unit, skill)
+        self.assertEqual(base_cost*3, before_energy-enemy.energy)
         unit.energy = 1
         energy_before = unit.energy
         battle._deal(battle.enemy[0], unit, 20, 'energy')
@@ -85,6 +104,22 @@ class XFullChecks(unittest.TestCase):
             if buff_type == 2 and int(key) in SELF_STATES:
                 wrong.append((key, 'debuff-self'))
         self.assertFalse(wrong, wrong)
+
+    def test_x_switch_talent_cleanse_and_copy(self):
+        """Natural Recovery cleanses on switch-out; Mirror Effect copies buffs."""
+        pet = generate_pet(self.data.tables, random.Random(51), '100160', 80)
+        pet.talents = ['400144']
+        copied = generate_pet(self.data.tables, random.Random(52), '100160', 80)
+        copied.talents = ['400146']
+        battle = make_wild_battle(self.data.tables, [pet, copied],
+                                  next(iter(self.data.tables['VillageEnemy'])),
+                                  random.Random(53))
+        old = battle.player[0]
+        old.add_buff('2', Buff('2', 3, '9,15', 2, '', '中毒'))
+        battle.enemy[0].add_buff('11', Buff('11', 3, '27,25', 1, '', '力量增强'))
+        battle._switch(old, 1)
+        self.assertFalse(old.has('poison'))
+        self.assertTrue(any(buff.key == '11' for buff in battle.player[1].buffs))
 
     def test_complete_data_counts(self):
         tables = self.data.tables

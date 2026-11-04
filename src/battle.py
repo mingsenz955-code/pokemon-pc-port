@@ -140,6 +140,13 @@ class BattlePet:
         self.ignore_invincible = False
         self.convert_damage = {}
         self.reflect_damage = {}
+        self.capture_bonus = 0.0
+        self.escape_bonus = 0.0
+        self.dodge_chance = 0.0
+        self.never_miss = False
+        self.cleanse_on_switch = False
+        self.copy_status_on_switch = False
+        self.opponent_energy_penalty = 0.0
         for key in self.pet.talents:
             talent = self.tables['Talent'].get(str(key))
             if not talent:
@@ -172,6 +179,20 @@ class BattlePet:
                         self.immune_all_debuffs = True
                     elif state == 66:
                         self.prevent_drain = True
+                    elif state == 34:
+                        self.capture_bonus += value
+                    elif state == 35:
+                        self.escape_bonus += value
+                    elif state == 59:
+                        self.dodge_chance += value
+                    elif state == 61:
+                        self.never_miss = True
+                    elif state == 79:
+                        self.cleanse_on_switch = True
+                    elif state == 80:
+                        self.opponent_energy_penalty = 200.0
+                    elif state == 81:
+                        self.copy_status_on_switch = True
                     elif state in (67, 68, 69):
                         self.convert_damage[{67: 'defence', 68: 'speed',
                                              69: 'energy'}[state]] = 'hp' if state != 69 else 'energy'
@@ -497,6 +518,7 @@ class Battle:
             return []
         enemy = self.enemy_active
         rate = escape_rate(unit.effective(4), enemy.effective(4))
+        rate = max(0, min(100, rate + int(getattr(unit, 'escape_bonus', 0))))
         if self.rng.randrange(100) < rate:
             self.messages.append('成功逃走了！')
             self.result = 'escape'
@@ -656,22 +678,43 @@ class Battle:
     def _switch(self, unit, index):
         team = self.player if unit.side == 'player' else self.enemy
         new = team[index]
+        if getattr(unit, 'cleanse_on_switch', False):
+            removed = unit.remove_buffs(debuff=True)
+            if removed:
+                self.messages.append(f'{unit.name} 换场时恢复了所有异常状态！')
         if unit.side == 'player':
             self.player_index = index
         else:
             self.enemy_index = index
+        if getattr(new, 'copy_status_on_switch', False):
+            opponent = self.enemy_active if new.side == 'player' else self.player_active
+            if opponent is not None and opponent is not new:
+                new.buffs = copy.deepcopy(opponent.buffs)
+                self.messages.append(f'{new.name} 复制了对手的所有状态！')
+                self.events.append({'type': 'copy_status', 'side': new.side,
+                                    'name': new.name, 'count': len(new.buffs)})
         self.messages.append(f'换上 {new.name}！')
         self.events.append({'type': 'switch', 'side': unit.side, 'name': new.name})
 
     def _attack(self, unit, target):
         self.messages.append(f'{unit.name} 的普通攻击！')
         self.events.append({'type': 'attack', 'side': unit.side, 'name': unit.name, 'uid': unit.pet.uid})
+        if (target.dodge_chance and not unit.never_miss
+                and self.rng.randrange(100) < target.dodge_chance):
+            self.messages.append(f'{target.name} 闪避了攻击！')
+            self.events.append({'type': 'miss', 'side': target.side, 'name': target.name,
+                                'hit_index': 0})
+            return
         row = self.tables.get('Skill', {}).get('300056', {'attack': 0, 'attackCoe': 1})
         self._deal(unit, target, self._base_damage(unit, target, 'power'), 'power',
                    crit_chance=self._crit_chance(unit, target, row), skill=row)
 
     def _use_skill(self, unit, target, skill):
         cost = unit.cost(skill)
+        opponent = self.enemy_active if unit.side == 'player' else self.player_active
+        penalty = getattr(opponent, 'opponent_energy_penalty', 0)
+        if penalty:
+            cost = int(cost*(1+penalty/100))
         if unit.energy < cost:
             self._attack(unit, target)
             return
@@ -693,6 +736,13 @@ class Battle:
                 if rate < 100 and self.rng.randrange(100) >= rate:
                     continue
             if coe > 0:
+                if (target.dodge_chance
+                        and not unit.never_miss
+                        and self.rng.randrange(100) < target.dodge_chance):
+                    self.messages.append(f'{target.name} 闪避了攻击！')
+                    self.events.append({'type': 'miss', 'side': target.side,
+                                        'name': target.name, 'hit_index': hit_index})
+                    continue
                 attr = ATTRIBUTE_INDEX.get(str(skill.get('mainAttribute', '0')), 2)
                 attribute = {'2': 'power', '3': 'defence', '4': 'speed', '1': 'energy'}[str(attr)]
                 damage = self._base_damage(unit, target, attribute)
@@ -705,7 +755,8 @@ class Battle:
                            crit_chance=self._crit_chance(unit, target, skill), skill=skill,
                            hit_index=hit_index)
                 hit = True
-        self._apply_states(unit, target, skill)
+        if hit or coe <= 0:
+            self._apply_states(unit, target, skill)
         if not hit and coe <= 0:
             self.events.append({'type': 'status', 'skill': skill['name']})
 
@@ -1056,6 +1107,7 @@ class Battle:
         base = numbers(function['parameters'])[0] if function else 0
         hp_pct = enemy.hp/enemy.max_hp if enemy.max_hp else 0
         chance = base + 67 - int(65*hp_pct*hp_pct)
+        chance += int(getattr(self.player_active, 'capture_bonus', 0))
         if enemy.has_state('1'):
             chance += 20
         return max(1, min(100, chance))
