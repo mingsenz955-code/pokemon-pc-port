@@ -967,6 +967,21 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_enemy_item_ai_uses_hp_bands(self):
+        """NpcFight.targetHp/useItemRate select enemy heal and cleanse bands."""
+        pet = generate_pet(self.data.tables, random.Random(71), '100160', 50)
+        battle = make_npc_battle(self.data.tables, [pet], '6208041', random.Random(72))
+        enemy = battle.enemy_active
+        self.assertIsNone(battle._enemy_item_action())  # never waste at full HP
+        enemy.hp = max(1, int(enemy.max_hp*.15))
+        battle.rng = SimpleNamespace(randrange=lambda n: 0)
+        self.assertEqual('230007', battle._enemy_item_action())
+        enemy.hp = max(1, int(enemy.max_hp*.40))
+        enemy.buffs = [Buff('2', 3, '0', 0)]
+        rolls = iter([80, 0])
+        battle.rng = SimpleNamespace(randrange=lambda n: next(rolls))
+        self.assertEqual('230009', battle._enemy_item_action())
+
     def test_x_wild_escape_uses_enemy_life_thresholds(self):
         """VillageEnemy.escapeLife/escapePro are the wild enemy's flee odds."""
         key = next(k for k, r in self.data.tables['VillageEnemy'].items()

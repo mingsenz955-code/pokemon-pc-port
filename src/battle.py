@@ -684,10 +684,9 @@ class Battle:
             unit.fled = True
             self._finish()
             return {'type': 'skip'}
-        if unit.hp/unit.max_hp*100 <= self._enemy_heal_threshold():
-            item = self._enemy_heal_item()
-            if item and self.rng.randrange(100) < self._enemy_heal_rate():
-                return {'type': 'item', 'id': item}
+        item = self._enemy_item_action()
+        if item:
+            return {'type': 'item', 'id': item}
         # PetController::newAi 0x2d4b34 cycles getSkillList with an index,
         # then falls back to 300056 if that slot cannot run. Randomly picking
         # an entry made low-level opponents repeatedly choose 发呆 first.
@@ -714,6 +713,58 @@ class Battle:
             if count > 0 and item in self.tables['Item']:
                 return item
         return None
+
+    def _enemy_item_action(self):
+        """Choose an enemy item from the original NpcFight AI matrix.
+
+        `targetHp` is the ascending HP band and `useItemRate` is laid out as
+        one band row per `itemIds` entry.  The rows authored for the standard
+        fight are 80/50/30/0 for the full heal and 80/10/50/30 for the
+        cleanse, so a full-HP enemy must not waste an item.
+        """
+        if not self.enemy_items:
+            return None
+        unit = self.enemy_active
+        if not unit or unit.max_hp <= 0:
+            return None
+        thresholds = numbers(self.fight_row.get('targetHp', '0'))
+        rates = numbers(self.fight_row.get('useItemRate', '0'))
+        item_ids = [str(value) for value in numbers(self.fight_row.get('itemIds', '0'))]
+        if not thresholds or not rates or not item_ids:
+            return None
+        pct = unit.hp/unit.max_hp*100
+        width = len(thresholds)
+        for index, item_id in enumerate(item_ids):
+            if self.enemy_items.get(item_id, 0) <= 0:
+                continue
+            row = rates[index*width:(index+1)*width]
+            if not row:
+                continue
+            chance = 0
+            for threshold, value in zip(thresholds, row):
+                if pct <= threshold:
+                    chance = int(value)
+                    break
+            if chance <= 0 or not self._enemy_item_helps(unit, item_id):
+                continue
+            if self.rng.randrange(100) < chance:
+                return item_id
+        return None
+
+    def _enemy_item_helps(self, unit, item_id):
+        from item_effects import recovery
+        effect = self.tables.get('PetItem', {}).get(str(item_id))
+        if not effect:
+            return False
+        try:
+            kind = int(effect.get('type', 0))
+            if kind == 4:
+                return any(buff.kind in DEBUFF_KINDS for buff in unit.buffs)
+            result = recovery(effect, unit.hp, unit.energy,
+                              unit.max_hp, unit.max_energy)
+        except (TypeError, ValueError):
+            return False
+        return (result.hp, result.energy) != (unit.hp, unit.energy)
 
     def _use_item(self, unit, target, item_id):
         from item_effects import recovery
