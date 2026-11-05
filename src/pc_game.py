@@ -1932,6 +1932,17 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             if self.runtime.pending and self.runtime.pending.kind == 'screenmove':
                 self.runtime.resume()
 
+    def air_talk_line(self, request):
+        """Text.json keys ambient lines as talk<map actor id>."""
+        parameters = request.data.get('parameters', {})
+        rows = parameters if isinstance(parameters, list) else [parameters]
+        texts = self.data.localized_text()
+        for row in rows:
+            line = texts.get('talk'+str(row.get('spriteid')))
+            if line:
+                return line
+        return None
+
     def drive(self):
         face_until = getattr(self, 'story_face_until', 0)
         if face_until:
@@ -1991,10 +2002,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     if request.kind == 'talk':
                         DailyTasks(self.state).record('talk')
                     self.display_request = request
-                    self.dialogue = request.data.get('text') or '\n'.join(request.data.get('texts', []))
                     if request.kind == 'airtalk':
+                        # Original ambient talk reads Text."talk"+spriteId (e.g.
+                        # gym knight 650104 -> "忠诚……").  Party-only airtalk
+                        # rows have no such Text entry and stay silent.
+                        self.dialogue = self.air_talk_line(request)
                         # showAirTalk @ 0x39f39c schedules a two-second DelayTime.
                         self.air_talk_until = time.monotonic()+2
+                    else:
+                        self.dialogue = request.data.get('text') or '\n'.join(
+                            request.data.get('texts', []))
                     return
                 if request.kind == 'reward':
                     if request.data['items']:

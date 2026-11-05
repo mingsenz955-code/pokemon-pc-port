@@ -1370,6 +1370,61 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_olympia_council_reaches_task_117(self):
+        """Task 116's gym council is an arrival cutscene, not a talk prompt."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 116, 3
+                app.state.events['5205001'] = 1
+                app.load_map(6501)
+                app.request_map('650101')
+                self.assertEqual('pEvent6501007.json', app.runtime.file)
+                seen = set()
+                for _ in range(12000):
+                    root.update()
+                    time.sleep(.001)
+                    if app.dialogue:
+                        seen.add(app.dialogue)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                     'tapscreen', 'button'):
+                        app.interact()
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.ui_open:
+                        app.close_ui('yes')
+                    elif (app.runtime.running and not request and not app.pending_wait
+                          and not app.battle):
+                        app.drive()
+                    elif not app.runtime.running and not request:
+                        break
+                self.assertFalse(app.runtime.running)
+                self.assertEqual(305, app.map_id)
+                self.assertEqual(117, app.state.main_task)
+                self.assertEqual(1, app.state.events.get('6501007', 0))
+                self.assertIn('忠诚……', seen)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_missed_map_arrival_survives_restore(self):
         """The same recovery must run when the stuck save is loaded again."""
         with tempfile.TemporaryDirectory() as save:
