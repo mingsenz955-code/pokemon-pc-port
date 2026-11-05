@@ -100,7 +100,7 @@ class BattleUI:
             # Enemy and player cries are separate MCI aliases so the second
             # pet does not cut the first one.  Most rows have no Sound entry;
             # those stay silent instead of borrowing an unrelated asset.
-            if not self._enemy_entry_voice_played and self.opening_frame >= self.opening_transition:
+            if not self._enemy_entry_voice_played and self.opening_frame >= self.opening_transition+20:
                 self._enemy_entry_voice_played = True
                 unit = getattr(self.battle, 'enemy_active', None)
                 if unit is not None:
@@ -109,7 +109,7 @@ class BattleUI:
                     if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
                         second = getattr(self.effect_audio, 'effect2', None)
                         (second or self.effect_audio.play)(sound)
-            if not self._entry_voice_played and self.opening_frame >= self.opening_transition+16:
+            if not self._entry_voice_played and self.opening_frame >= self.opening_transition+32:
                 self._entry_voice_played = True
                 unit = getattr(self.battle, 'player_active', None)
                 if unit is not None:
@@ -117,7 +117,7 @@ class BattleUI:
                     sound = str(row.get('wowSound', '0'))
                     if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
                         self.effect_audio.play(sound)
-            if self.opening_frame >= self.opening_transition+49:
+            if self.opening_frame >= self.opening_transition+50:
                 self.opening_frame = None
             self.frame = None
         self.anim_idle += steps
@@ -513,17 +513,23 @@ class BattleUI:
         self.effects.draw(frame, self, rear=True)
         frame.alpha_composite(pets_layer)
         if self.opening_frame is not None:
+            age = self.opening_frame-self.opening_transition
+            # The original PetController opens a Skill/kaichong ball before
+            # the appearance flash.  Animation4 is the authored ball drop,
+            # bounce and open; Animation1/7 remain the capture result clips.
+            self._draw_entry_ball(frame, age)
             # PetController's appearance effect is Skill/chuchongguang, not
             # the skill-armature vfx_appear.  It is a 13-frame flash.
-            index = int(self.opening_frame-self.opening_transition)
-            art = self.app.data.armature('chuchongguang', 'Animation1', index)
-            if art is not None:
-                origin = art.info.get('origin', (art.width/2, art.height/2))
-                ratio = W/800
-                art = art.resize((round(art.width*ratio), round(art.height*ratio)), Image.Resampling.LANCZOS)
-                for side in ('player', 'enemy') if self.battle.kind != 'wild' else ('player',):
-                    x, y = self.pet_positions[side]
-                    frame.alpha_composite(art, (round(x-origin[0]*ratio), round(y-origin[1]*ratio)))
+            if age >= 20:
+                art = self.app.data.armature('chuchongguang', 'Animation1',
+                                             int(age-20))
+                if art is not None:
+                    origin = art.info.get('origin', (art.width/2, art.height/2))
+                    ratio = W/800
+                    art = art.resize((round(art.width*ratio), round(art.height*ratio)), Image.Resampling.LANCZOS)
+                    for side in self._entry_ball_sides():
+                        x, y = self.pet_positions[side]
+                        frame.alpha_composite(art, (round(x-origin[0]*ratio), round(y-origin[1]*ratio)))
         if self.anim and self.anim.get('kind') == 'switch':
             art = self.app.data.armature('chuchongguang', 'Animation1',
                                          int(self.anim['age']))
@@ -591,7 +597,8 @@ class BattleUI:
         height = max(1, round(height*pet_scale))
         if self.opening_frame is not None:
             age = self.opening_frame-self.opening_transition
-            reveal = 0 if enemy and self.battle.kind == 'wild' else 16
+            # The ball opens on frame 20; the pet emerges from that frame.
+            reveal = 20
             if age < reveal:
                 return
             t = min(1, (age-reveal)/30)
@@ -693,6 +700,32 @@ class BattleUI:
         # The native emitter is attached to the fleeing pet, not its old
         # anchor, so the dust has to travel with the spline.
         draw_emitter(frame, path, (x+dx, y+dy-12), (1.0, 1.0), elapsed)
+
+    def _entry_ball_sides(self):
+        """Wild pets are already present in X; trainers send out both pets."""
+        return ('player',) if self.battle.kind == 'wild' else ('player', 'enemy')
+
+    def _draw_entry_ball(self, frame, age):
+        """Draw the authored 45-frame kaichong ball that opens at battle start."""
+        if not 0 <= age <= 45:
+            return
+        art = self.app.data.armature('kaichong', 'Animation4', int(age))
+        if art is None:
+            return
+        ratio = W/800
+        origin = art.info.get('origin', (art.width/2, art.height/2))
+        art = art.resize((max(1, round(art.width*ratio)),
+                          max(1, round(art.height*ratio))),
+                         Image.Resampling.LANCZOS)
+        point = (origin[0]*ratio, origin[1]*ratio)
+        for side in self._entry_ball_sides():
+            image, anchor = art, point
+            if side == 'enemy':
+                image = art.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                anchor = (art.width-point[0], point[1])
+            x, y = self.pet_positions[side]
+            frame.alpha_composite(image, (round(x-anchor[0]),
+                                           round(y-anchor[1])))
 
     def _draw_capture(self, frame):
         art = self.app.data.armature('kaichong', self.anim['capture_clip'],

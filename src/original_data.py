@@ -302,7 +302,9 @@ class OriginalData:
                 continue
             disp = display[di]
             sprite = frames.get(disp.get('name'))
-            if sprite is None:
+            if sprite is None or sprite.width <= 0 or sprite.height <= 0:
+                # A few trimmed atlas entries export a zero-sized frame.
+                # They cannot be scaled or composited; skip just that skin.
                 continue
             color = f.get('color', {})
             if color.get('a', 255) <= 0:

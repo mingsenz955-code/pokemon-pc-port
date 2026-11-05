@@ -565,6 +565,64 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_battle_start_uses_original_ball(self):
+        """PetController's kaichong Animation4 ball must open at battle start."""
+        from types import SimpleNamespace
+        from battle_ui import BattleUI
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                from battle import make_wild_battle
+                import random
+                app = NativeGame(root, self.data)
+                battle = make_wild_battle(
+                    self.data.tables, app.state.pets,
+                    next(iter(self.data.tables['VillageEnemy'])), random.Random(1))
+                battle.kind = 'wild'
+                ui = BattleUI(app, battle, opening=True)
+                transition = ui.opening_transition
+                self.assertIsNotNone(
+                    self.data.armature('kaichong', 'Animation4', 0))
+                self.assertEqual(('player',), ui._entry_ball_sides())
+                ui.opening_frame = transition+10
+                ui.frame, ui._signature = None, None
+                self.assertIsNotNone(ui.render())
+                ui.opening_frame = transition+30
+                ui.frame, ui._signature = None, None
+                self.assertIsNotNone(ui.render())
+                self.assertIsNotNone(ui.opening_frame)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
+    def test_x_zero_sized_effect_frames_are_skipped(self):
+        """An empty atlas crop must not divide by a zero sprite dimension."""
+        checked = 0
+        seen = set()
+        for row in self.data.tables['SkillEffect'].values():
+            for path in (row.get('path1'), row.get('path2')):
+                if not path or path in seen:
+                    continue
+                seen.add(path)
+                frames = self.data.armature_frames(path)
+                if not any(im.width <= 0 or im.height <= 0
+                           for im in frames.values()):
+                    continue
+                checked += 1
+                for frame in range(120):
+                    self.data.armature(path, 'Animation1', frame)
+        self.assertGreaterEqual(checked, 2)
+
     def test_x_battle_status_uses_original_buff_icon(self):
         """SkillState.stateId must select the authored buff_<id>.png badge."""
         with tempfile.TemporaryDirectory() as save:
