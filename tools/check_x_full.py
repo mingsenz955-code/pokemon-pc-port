@@ -1974,6 +1974,57 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual([], [p.uid for p in state.pets if p.species == '100093'])
         self.assertEqual(1, len(state.pets))
 
+    def test_x_cloth_errand_starts_task_134(self):
+        """203006 takes the cloth blueprint and asks for 500k medals."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 133, 4
+        state.inventory['270085'] = 1
+        trigger = {'id': 203006, 'type': 'talk',
+                   'conditions_add': {'npcid': 20315},
+                   'conditions_mtask': [133, 4]}
+        runtime = EventRuntime(self.data, state)
+        runtime.start('pEvent203006.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume(True if request.kind == 'accepttask' else
+                           ([] if request.kind == 'costtaskitem' else None))
+        self.assertEqual(134, state.main_task)
+        self.assertEqual(3, state.main_state)
+        self.assertEqual(1, state.events.get('203006', 0))
+        self.assertEqual(0, state.inventory.get('270085', 0))
+
+    def test_x_cloth_errand_finishes_with_medals(self):
+        """203007 consumes 500000 race medals and hands over 100 cloth."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 134, 4
+        state.inventory['700008'] = 500000
+        trigger = {'id': 203007, 'type': 'talk',
+                   'conditions_add': {'npcid': 20315},
+                   'conditions_mtask': [134, 3, 134, 4]}
+        runtime = EventRuntime(self.data, state)
+        runtime.start('pEvent203007.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume(True if request.kind == 'accepttask' else
+                           ([] if request.kind == 'costtaskitem' else None))
+        self.assertEqual(135, state.main_task)
+        self.assertEqual(4, state.main_state)
+        self.assertEqual(1, state.events.get('203007', 0))
+        self.assertEqual(0, state.inventory.get('700008', 0))
+        self.assertEqual(100, state.inventory.get('270088', 0))
+
     def test_x_metal_collection_finishes_task_132(self):
         """100 type-2 rocks -> 503006 hands over 100 metal and starts 133."""
         from event_runtime import EventRuntime
