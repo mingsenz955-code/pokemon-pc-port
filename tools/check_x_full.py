@@ -702,11 +702,12 @@ class XFullChecks(unittest.TestCase):
         from types import SimpleNamespace
         from battle_ui import BattleUI
         ui = BattleUI.__new__(BattleUI)
-        ui.anim = {'kind': 'escape', 'side': 'player', 'age': 30,
+        ui.anim = {'kind': 'escape', 'side': 'player', 'age': 20,
                    'duration': 40}
-        _, player_offset, _ = ui._animation_offsets()
+        player_offset, target_offset, _ = ui._animation_offsets()
         self.assertLess(player_offset[0], -100)
-        self.assertGreater(player_offset[1], 0)
+        self.assertLess(player_offset[1], 0)
+        self.assertEqual((0, 0), target_offset)
         ui.anim['side'] = 'enemy'
         enemy_offset, player_offset, _ = ui._animation_offsets()
         self.assertGreater(enemy_offset[0], 100)
@@ -2489,6 +2490,13 @@ class XFullChecks(unittest.TestCase):
             try:
                 from pc_game import NativeGame
                 app = NativeGame(root, self.data, show_opening=True)
+                self.assertIsNotNone(app.loading)
+                loading = app.make_frame()
+                self.assertEqual((960, 576), loading.size)
+                self.assertGreater(loading.convert('RGB').getextrema()[0][1], 0)
+                app.loading = (app.loading[0], 0, app.loading[2])
+                app.opening_input()
+                self.assertIsNone(app.loading)
                 self.assertIsNotNone(app.splash)
                 stages = app.splash[0]
                 self.assertEqual(

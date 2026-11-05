@@ -286,15 +286,36 @@ class BattleUI:
         # controller action rather than a skill armature: the fleeing pet runs
         # out of the authored pet anchor before the result layer appears.
         if self.anim and self.anim.get('kind') == 'escape':
+            # PetController::escape @ 0x2cff64 creates a 7-point
+            # CardinalSplineBy (0,0), (-215,80), (-250,205), (-100,265),
+            # (75,250), (235,150), (400,0), duration 0.4s, tension 0.
+            # Cocos y points up, so the screen offset is negated; the
+            # player's node is mirrored to run out of the left edge.
             age = max(0.0, self.anim['age'])
-            length = max(1.0, self.anim['duration'])
-            t = min(1.0, age/(length*.75))
+            t = min(1.0, age/(60*.4))
+            points = ((0, 0), (-215, 80), (-250, 205), (-100, 265),
+                      (75, 250), (235, 150), (400, 0))
+            segments = len(points)-1
+            scaled = min(segments-1e-9, t*segments)
+            index = int(scaled)
+            local = scaled-index
+            p0 = points[max(0, index-1)]
+            p1 = points[index]
+            p2 = points[index+1]
+            p3 = points[min(segments, index+2)]
+            # cocos2d::ccCardinalSplineAt with tension 0.
+            x = .5*((2*p1[0])+(-p0[0]+p2[0])*local
+                    +(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*local*local
+                    +(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*local**3)
+            y = .5*((2*p1[1])+(-p0[1]+p2[1])*local
+                    +(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*local*local
+                    +(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*local**3)
+            ratio = W/800
             side = self.anim.get('side')
-            distance = W*.55*t
-            dy = H*.035*t
-            offset = (round(-distance if side == 'player' else distance), round(dy))
-            if side == 'player':
-                return (0, 0), offset, 0.0
+            offset = (round((-x if side == 'player' else x)*ratio),
+                      round(-y*ratio))
+            # The first slot is always the animated side's node; render()
+            # maps it to the fleeing player or enemy respectively.
             return offset, (0, 0), 0.0
         return (0, 0), (0, 0), 0.0
 
@@ -653,7 +674,13 @@ class BattleUI:
         elapsed = max(0.0, self.anim['age']/60)
         side = self.anim.get('side', 'player')
         x, y = self.pet_positions[side]
-        draw_emitter(frame, path, (x, y-12), (1.0, 1.0), elapsed)
+        source, target, _ = self._animation_offsets()
+        enemy_offset = source if self.anim['side'] == 'enemy' else target
+        player_offset = source if self.anim['side'] == 'player' else target
+        dx, dy = enemy_offset if side == 'enemy' else player_offset
+        # The native emitter is attached to the fleeing pet, not its old
+        # anchor, so the dust has to travel with the spline.
+        draw_emitter(frame, path, (x+dx, y+dy-12), (1.0, 1.0), elapsed)
 
     def _draw_capture(self, frame):
         art = self.app.data.armature('kaichong', self.anim['capture_clip'],

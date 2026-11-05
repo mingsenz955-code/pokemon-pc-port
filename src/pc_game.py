@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
 import re
 import os
 import time
@@ -46,8 +47,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     DYNAMIC_SCENERY = True
     def __init__(self, root, data, *, show_opening=False):
         self.opening = None
-        # LogoLayer::init -> showLogo -> showSPLogo -> SP/CP/CR logo actions
-        # all run before OpeningScene.  Keep the original three PNGs.
+        # LoadingScene shows LoadingGameUI before LogoLayer; then
+        # LogoLayer::init -> showLogo -> showSPLogo -> SP/CP/CR actions,
+        # and finally OpeningScene.  Keep every original stage.
+        self.loading = None
         self.splash = None
         self._splash_cache = {}
         self.state = GameState(data.tables)
@@ -141,6 +144,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 (('Logo/splogo.png', 90),
                  ('Logo/logo.png', 90),
                  ('Logo/copyrightLogo.png', 120)), 0, time.monotonic())
+            tips = [value for key, value in self.data.localized_text().items()
+                    if key.startswith('loadingTips')]
+            self.loading = (time.monotonic(), 60,
+                            random.choice(tips) if tips else '')
             return
         self.enter_game()
 
@@ -157,6 +164,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     def enter_game(self):
         self.opening = None
         self.splash = None
+        self.loading = None
         self.audio.music(None)
         if self.save_path.exists() and self.restore():
             return
@@ -167,6 +175,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def opening_input(self, *, skip=False):
         now = time.monotonic()
+        if self.loading is not None:
+            started, duration, _tip = self.loading
+            if skip:
+                self.enter_game()
+                return
+            if (now-started)*60 < duration:
+                return
+            self.loading = None
+            self.splash = (self.splash[0], 0, now)
+            return
         if self.splash is not None:
             stages, index, started = self.splash
             if skip:
@@ -1256,7 +1274,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.drive()
 
     def key_down(self, event):
-        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
+        if (getattr(self, 'opening', None) or getattr(self, 'splash', None)
+                or getattr(self, 'loading', None)):
             key = event.keysym.lower()
             if key in ('escape', 'return', 'space'):
                 self.opening_input(skip=key == 'escape')
@@ -1626,7 +1645,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             raise PendingMechanic(f'原画面指令 {kind} 未实现')
 
     def on_click(self, event):
-        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
+        if (getattr(self, 'opening', None) or getattr(self, 'splash', None)
+                or getattr(self, 'loading', None)):
             bounds = getattr(self, '_opening_skip', None)
             skip = bool(bounds and bounds[0] <= event.x < bounds[2] and bounds[1] <= event.y < bounds[3])
             self.opening_input(skip=skip)
@@ -2215,11 +2235,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     def tick(self):
         self._frame_started = time.perf_counter()
         now = time.monotonic()
-        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
+        if (getattr(self, 'opening', None) or getattr(self, 'splash', None)
+                or getattr(self, 'loading', None)):
             # OpeningScene::actionOver advances the authored timeline by
             # itself; do not wait for the player to click every animation.
             self.opening_input()
-        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
+        if (getattr(self, 'opening', None) or getattr(self, 'splash', None)
+                or getattr(self, 'loading', None)):
             self._play_clock = now
             self.last_time = now
             self.frame = self.make_frame()
@@ -2443,6 +2465,18 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             art = Image.blend(art, Image.new('RGBA', art.size), max(0, (age-2)*2))
         frame.alpha_composite(art, ((self.WIDTH-art.width)//2, round(24*self.HEIGHT/480-art.height/2)))
 
+    def _loading_frame(self):
+        """The authored LoadingGameUI: animated dots plus a random loading tip."""
+        started, _duration, tip = self.loading
+        frame_index = int(max(0.0, (time.monotonic()-started)*60)) % 50
+        layer = self.cocos_ui.render(
+            'LoadingGameUI', (self.WIDTH, self.HEIGHT),
+            text={'Layer/bg_Panel/tips_Text': tip},
+            timeline_frame=frame_index)
+        frame = Image.new('RGBA', layer.size, 'black')
+        frame.alpha_composite(layer)
+        return frame
+
     def _splash_frame(self):
         """LogoLayer's SP/CP/CR images on the same black stage."""
         stages, index, started = self.splash
@@ -2476,6 +2510,8 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         return frame
 
     def make_frame(self):
+        if getattr(self, 'loading', None):
+            return self._loading_frame()
         if getattr(self, 'splash', None):
             return self._splash_frame()
         if getattr(self, 'opening', None):
