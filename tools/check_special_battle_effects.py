@@ -131,9 +131,9 @@ class SpecialEffects(unittest.TestCase):
         battle._use_skill(battle.player_active, battle.enemy_active, DATA.tables['Skill']['300030'])
         ui._capture_events()
         ui.advance(4*25/60)
-        self.assertEqual(['kuangfeng.mp3'], played)
+        self.assertEqual(['4030', 'kuangfeng.mp3'], played)
         ui.advance(10)
-        self.assertEqual(['kuangfeng.mp3'], played)
+        self.assertEqual(['4030', 'kuangfeng.mp3'], played)
 
     def test_six_classes_render_original_art_without_consuming_random_state(self):
         sheet = Image.new('RGB', (960, 864))

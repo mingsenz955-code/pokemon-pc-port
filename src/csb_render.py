@@ -93,7 +93,7 @@ class CocosUI:
     def render(self, name, size=(800, 480), text=None, visible=None, resources=None,
                offset=(0, 0), pressed=None, positions=None, rich_text=(), alphas=None,
                native_resources=(), percentages=None, sizes=None, canvas_size=None,
-               auto_text=(), timeline_frame=None, bright=None, z_orders=None):
+               auto_text=(), timeline_frame=None, bright=None, z_orders=None, colors=None):
         layout = self.layout(name)
         root = layout['tree']
         design = canvas_size or root.get('size', [800, 480])
@@ -106,6 +106,7 @@ class CocosUI:
         pressed = pressed or {}
         positions = positions or {}
         bright = bright or {}
+        colors = colors or {}
         alphas = alphas or {}
         percentages = percentages or {}
         sizes = sizes or {}
@@ -269,6 +270,7 @@ class CocosUI:
                         glyphs = Image.new('RGBA', area)
                         draw = ImageDraw.Draw(glyphs)
                     a, r, g, b = node.get('color', [255, 94, 61, 32])
+                    r, g, b = resolve(colors, (r, g, b))
                     line_height = font.size+3
                     ink_height = (len(lines)-1)*line_height+font.size
                     valign = node.get('vertical_alignment', 0)

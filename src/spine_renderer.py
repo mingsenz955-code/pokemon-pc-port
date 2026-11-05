@@ -46,17 +46,21 @@ def atlas_regions(path):
             key, value = [s.strip() for s in line.split(':', 1)]
             regions[name][key] = value
     result = {}
+    pages = {}
     for key, region in regions.items():
         if not region['page'] or 'xy' not in region or 'size' not in region:
             continue
-        with Image.open(region['page']) as image:
-            x, y = map(int, region['xy'].split(','))
-            w, h = map(int, region['size'].split(','))
-            rotated = region.get('rotate') == 'true'
-            tile = image.convert('RGBA').crop((x, y, x+(h if rotated else w), y+(w if rotated else h)))
-            if rotated:
-                tile = tile.transpose(Image.Transpose.ROTATE_270)
-            result[key] = tile
+        page = region['page']
+        if page not in pages:
+            with Image.open(page) as image:
+                pages[page] = image.convert('RGBA')
+        x, y = map(int, region['xy'].split(','))
+        w, h = map(int, region['size'].split(','))
+        rotated = region.get('rotate') == 'true'
+        tile = pages[page].crop((x, y, x+(h if rotated else w), y+(w if rotated else h)))
+        if rotated:
+            tile = tile.transpose(Image.Transpose.ROTATE_270)
+        result[key] = tile
     return result
 
 

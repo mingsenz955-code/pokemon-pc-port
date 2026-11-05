@@ -1,4 +1,5 @@
 """Original MergePetUI cards and bank selection, backed by PetMerge rules."""
+from pet_appearance import quality_color
 
 
 class MergePages:
@@ -34,6 +35,7 @@ class MergePages:
                     resources = {'kindIcon_Image': 'UI/'+kind['iconTexture'], 'kind_Image': 'UI/'+kind['texture']}
                     visible.update({f'star_Sprite_{i}': pet.quality >= i for i in range(1, 6)})
                 page.add('MergePetItemUI', (rect[0], rect[1]), prefix=prefix,
+                         colors={'name_Text': quality_color(pet)} if pet else {},
                          visible=visible, text=text, resources=resources, actions={'add_Button': callback})
                 page.hit(prefix.rstrip('/'), rect, callback)
                 if pet:

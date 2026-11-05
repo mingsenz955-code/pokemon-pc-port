@@ -20,6 +20,7 @@ from hatch_pages import HatchPages
 from service_pages import ServicePages
 from task_handover import TaskHandover
 from merge_pages import MergePages
+from pet_appearance import quality_color, pet_flash
 
 
 def intersect(a, b):
@@ -144,6 +145,7 @@ class Page:
             else:
                 self._pet_pose_cache.move_to_end(key)
             art, origin = cached
+            art = pet_flash(self.app.data, species, art, elapsed)
             x, y = round(point[0]-origin[0]), round(point[1]-origin[1])
             box = intersect((x, y, x+art.width, y+art.height), area)
             box = intersect(box, (0, 0, frame.width, frame.height)) if box else None
@@ -947,6 +949,7 @@ class OriginalPages(PetPages, HatchPages, ServicePages, MergePages, TaskHandover
                     continue
                 stats = pet.stats(self.data.tables)
                 page.add('PetSelectItemUI', (x, y), prefix=f'pet_select_{i}/', clip=area,
+                         colors={'name_Text': quality_color(pet)},
                          text={'name_Text': row['name'], 'lv_BitmapFontLabel': str(pet.level),
                                'hpHave_BitmapFontLabel': str(pet.hp), 'hpMax_BitmapFontLabel': str(stats[0]),
                                'enHave_BitmapFontLabel': str(pet.energy), 'enMax_BitmapFontLabel': str(stats[1]),

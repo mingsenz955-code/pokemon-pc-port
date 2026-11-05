@@ -7,6 +7,7 @@ Special controllers: 1=front/back, 2=directional, 3=world-position,
 """
 from functools import lru_cache
 from PIL import Image
+from armature_composite import composite, transform_art
 
 
 class BattleEffects:
@@ -49,7 +50,7 @@ class BattleEffects:
     def plan_effect(self, effect_id, self_target=True):
         """Build a plan for a PetItem SkillEffect row (outside the Skill table)."""
         row = self.data.tables.get('SkillEffect', {}).get(str(effect_id), {})
-        effect_type = int(row.get('effectType', -1) or -1)
+        effect_type = int(row.get('effectType', -1))
         if not row or effect_type not in range(6):
             return None
         path = row.get('path1')
@@ -82,7 +83,7 @@ class BattleEffects:
         path = plan.get('rear_path') if rear else plan['path']
         if not path:
             return
-        art = self.data.armature(path, 'Animation1', index)
+        art = self._scaled_art(path, index, frame.width/800)
         if art is None:
             return
         side = action['side'] if plan['self_target'] else ('enemy' if action['side'] == 'player' else 'player')
@@ -99,14 +100,31 @@ class BattleEffects:
             point = (point[0]+distance*frame.width/800*(1 if side == 'player' else -1), point[1])
         unit = ui.presentation_unit(side == 'enemy')
         pet_scale = float(self.data.tables['Pet'][unit.pet.species].get('effectScale', 1)) if unit and plan['scale_with_pet'] else 1
-        scale = frame.width/800*pet_scale
+        scale = pet_scale
         origin = art.info.get('origin', (art.width/2, art.height/2))
         ox, oy = origin[0]*scale, origin[1]*scale
-        art = art.resize((max(1, round(art.width*scale)), max(1, round(art.height*scale))), Image.Resampling.LANCZOS)
+        if scale != 1:
+            art = transform_art(art, scale)
         if plan['type'] == 2 and side == 'player':
-            art = art.transpose(Image.Transpose.ROTATE_180)
+            art = transform_art(art, rotate=True)
             ox, oy = art.width-ox, art.height-oy
-        frame.alpha_composite(art, (round(point[0]-ox), round(point[1]-oy)))
+        composite(frame, art, (round(point[0]-ox), round(point[1]-oy)))
+
+    @lru_cache(maxsize=96)
+    def _scaled_art(self, path, index, scale):
+        from battle_animation_cache import cached_frame
+        cached = cached_frame(self.data, path, index, scale)
+        if cached is not None:
+            return cached
+        _, source = self.data.armature_source(path)
+        moves = (source.get('animation_data') or [{}])[0].get('mov_data', []) if source else []
+        move = next((m for m in moves if m.get('name') == 'Animation1'), {})
+        if index < 0 or index >= int(move.get('dr', 0)):
+            return None
+        art = self.data.armature(path, 'Animation1', index, layered=True)
+        if art is None or scale == 1:
+            return art
+        return transform_art(art, scale)
 
 
 class EffectAudio:

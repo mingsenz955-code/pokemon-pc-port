@@ -2,6 +2,7 @@
 from PIL import Image, ImageDraw
 from event_runtime import Request
 from economy import EVOLUTION_GOLD_COST
+from pet_appearance import quality_color
 
 
 def text_box(page, rect, value, font, offset=0):
@@ -42,7 +43,7 @@ class PetPages:
             text.update({'costTip_Text': '已获得' if owned else store['des2'],
                          'cost_BitmapFontLabel': store['costCount']})
             visible.update({'buy_Button': not owned, 'number_BitmapFontLabel': False})
-            page = Page(self, 'BuyPetUI', text=text, visible=visible, resources=resources)
+            page = Page(self, 'BuyPetUI', text=text, visible=visible, resources=resources, colors={'name_Text': quality_color(pet)})
             self._pet_base_art(page, pet)
             page.actions.update({'buy_Button': buy, 'close_Button': self.close_ui})
             page.publish()
@@ -80,7 +81,7 @@ class PetPages:
             visible.update({'buy_Button': not purchased, 'trial_Button': not purchased and (can_trial or bool(current)), 'cost_BitmapFontLabel': False,
                             'number_BitmapFontLabel': False, 'evolutionTimes_BitmapFontLabel': pet.species in self.data.tables['Evolution'],
                             'trial_Image': not bool(current)})
-            page = Page(self, 'TrialPetUI', timeline_frame=60, text=text, visible=visible, resources=resources)
+            page = Page(self, 'TrialPetUI', timeline_frame=60, text=text, visible=visible, resources=resources, colors={'name_Text': quality_color(pet)})
             self._pet_base_art(page, pet)
             if current:
                 rect = next(r for k, r in page.rects.items() if k.endswith('/trial_Button'))
@@ -172,6 +173,7 @@ class PetPages:
                 fields['arrt'+label+'To_BitmapFontLabel'] = str(new)
             stars = int(self.data.tables['Pet'][pet.species]['starLevel'])
             page = Page(self, 'PetEvolutionEffectUI', timeline_frame=180, text=fields,
+                        colors={'name_Text': quality_color(pet)},
                         visible={'weixin_Button': False, **{f'star_Sprite_{i}': i <= stars for i in range(1, 6)}})
             page.animated_pets.append((pet.species, (400, 300), (230, 60, 580, 310), 175))
             page.actions.update({'confirm_Button': back, 'close_Button': back})
@@ -247,6 +249,7 @@ class PetPages:
             text['skillInfo_Text'] = ''
             from game_formulas import level_exp
             page = Page(self, 'PetPropertyUI', text=text, visible=visible, resources=resources,
+                        colors={'name_Text': quality_color(pet)},
                         percentages={'exp_LoadingBar': min(1, pet.exp/max(1, level_exp(pet.level)))})
             self._pet_base_art(page, pet)
             rows = [self.data.tables['Skill' if tab[0] == 'skill' else 'Talent'][str(k)]
@@ -311,7 +314,8 @@ class PetPages:
                     text[f'{name}Train_BitmapFontLabel'] = f'{value}/1000'
                     text[f'addTrain_{name}_BitmapFontLabel'] = f'+{(train_hp if i == 0 else train_mp if i == 1 else train_attribute)(value)}'
                     percentages[f'{name}_LoadingBar'] = value/1000
-            page = Page(self, 'PetListUI', text=text, visible=visible, resources=resources, percentages=percentages, timeline_frame=60)
+            page = Page(self, 'PetListUI', text=text, visible=visible, resources=resources, percentages=percentages, timeline_frame=60,
+                        colors={'name_Text': quality_color(pet)} if pet else {})
             area = next(r for k, r in page.rects.items() if k.endswith('/item_ListView'))
             for i, member in enumerate(pets):
                 x, y = round(area[0]+20), round(area[1]+i*110-offset[0])
@@ -319,6 +323,7 @@ class PetPages:
                     continue
                 row, stats = self.data.tables['Pet'][member.species], member.stats(self.data.tables)
                 page.add('PetListItemUI', (x, y), prefix=f'pet_list_{i}/', clip=area,
+                         colors={'name_Text': quality_color(member)},
                          text={'name_Text': row['name']+(f'·试用{member.trial_remaining}' if member.trial_id else ''), 'lv_BitmapFontLabel': str(member.level),
                                'hpHave_BitmapFontLabel': str(member.hp), 'hpMax_BitmapFontLabel': str(stats[0]),
                                'enHave_BitmapFontLabel': str(member.energy), 'enMax_BitmapFontLabel': str(stats[1]),

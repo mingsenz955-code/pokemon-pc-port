@@ -108,7 +108,8 @@ class LotteryAnimation:
                 self._pet_frames.popitem(last=False)
         else:
             self._pet_frames.move_to_end(key)
-        return self._pet_frames[key]
+        from pet_appearance import pet_flash
+        return pet_flash(self.app.data, pet.species, self._pet_frames[key], age)
 
     def show_attributes(self):
         from original_pages import Page
@@ -117,7 +118,9 @@ class LotteryAnimation:
         visible['weixin_Button'] = False
         for label, value in zip(('Life', 'Energy', 'Strength', 'Defense', 'Speed'), pet.stats(self.app.data.tables)):
             text['arrt'+label+'_BitmapFontLabel'] = str(value)
-        self.info_page = Page(self.app, 'LuckyDrawPetInfoUI', text=text, visible=visible, resources=resources)
+        from pet_appearance import quality_color
+        self.info_page = Page(self.app, 'LuckyDrawPetInfoUI', text=text, visible=visible, resources=resources,
+                              colors={'name_Text': quality_color(pet)})
         self.info_page.actions.update({'confirm_Button': self.confirm, 'close_Button': self.confirm})
         self.info_page.publish()
         self.page = self.info_page

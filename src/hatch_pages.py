@@ -1,6 +1,7 @@
 """Original HatchRoomUI cards, HatchCheckUI conditions and PetHatchEffectUI."""
 from activities import Activities
 from game_state import numbers, Pet
+from pet_appearance import quality_color
 import time
 
 
@@ -197,7 +198,7 @@ class HatchPages:
         for label, value in zip(('Life', 'Energy', 'Strength', 'Defense', 'Speed'), pet.stats(self.data.tables)):
             fields['arrt'+label+'_BitmapFontLabel'] = str(value)
         stars = int(self.data.tables['Pet'][pet.species]['starLevel'])
-        args = dict(text=fields, visible={'weixin_Button': False,
+        args = dict(text=fields, colors={'name_Text': quality_color(pet)}, visible={'weixin_Button': False,
                     **{f'star_Sprite_{i}': i <= stars for i in range(1, 6)}})
         page = Page(self, 'PetHatchEffectUI', timeline_frame=200, **args)
         events = {f['value']: f['frame'] for track in self.cocos_ui.layout('PetHatchEffectUI')['action']['tracks']

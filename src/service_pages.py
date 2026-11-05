@@ -1,5 +1,6 @@
 """Populate original bank and skill prefabs before publishing a single frame."""
 from game_state import numbers
+from pet_appearance import quality_color
 
 
 class ServicePages:
@@ -7,6 +8,7 @@ class ServicePages:
         row = self.data.tables['Pet'][pet.species]
         stats = pet.stats(self.data.tables)
         page.add('PetSelectItemUI', at, prefix=prefix, clip=area,
+                 colors={'name_Text': quality_color(pet)},
                  text={'name_Text': row['name'], 'lv_BitmapFontLabel': str(pet.level),
                        'hpHave_BitmapFontLabel': str(pet.hp), 'hpMax_BitmapFontLabel': str(stats[0]),
                        'enHave_BitmapFontLabel': str(pet.energy), 'enMax_BitmapFontLabel': str(stats[1]),
@@ -58,6 +60,7 @@ class ServicePages:
                 row = self.data.tables['Pet'][pet.species]
                 kind = self.data.tables['PetKindEnum'][row['kind']]
                 page.add('PetBankItemUI', (x, y), prefix=f'bank_{i}/', clip=area,
+                         colors={'name_Text': quality_color(pet)},
                          text={'name_Text': row['name'], 'lv_BitmapFontLabel': str(pet.level)},
                          resources={'kindIcon_Image': 'UI/'+kind['iconTexture'], 'kind_Image': 'UI/'+kind['texture']},
                          visible={'selected_Image': pet.uid == selected[0], 'petPos_Image': False},
@@ -125,6 +128,7 @@ class ServicePages:
                 row = self.data.tables['Pet'][pet.species]
                 stats = pet.stats(self.data.tables)
                 page.add('PetListItemUI', (x, y), prefix=f'skill_pet_{i}/', clip=left,
+                         colors={'name_Text': quality_color(pet)},
                          text={'name_Text': row['name'], 'lv_BitmapFontLabel': str(pet.level),
                                'hpHave_BitmapFontLabel': str(pet.hp), 'hpMax_BitmapFontLabel': str(stats[0]),
                                'enHave_BitmapFontLabel': str(pet.energy), 'enMax_BitmapFontLabel': str(stats[1]),

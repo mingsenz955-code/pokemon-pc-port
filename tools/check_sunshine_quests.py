@@ -1,6 +1,7 @@
 """Real branch acceptance/hand-in and original sunshine rescue story chain."""
 import copy
 import json
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,6 +25,13 @@ class SunshineQuestChecks(unittest.TestCase):
         a = self.app
         talks = []
         for _ in range(limit):
+            # Scene fades/faces use monotonic deadlines. Pump the actual Tk
+            # timers rather than exhausting 3000 CPU-only iterations before
+            # a normal 0.4-second transition can finish.
+            self.root.update()
+            if max(getattr(a,'screen_fade_until',0), getattr(a,'story_face_until',0),
+                   getattr(a,'wait_until',0)) > time.monotonic():
+                time.sleep(.003)
             self.assertFalse(a.runtime_error, a.runtime_error)
             if a.battle:
                 battle = a.battle

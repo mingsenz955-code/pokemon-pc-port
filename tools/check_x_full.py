@@ -566,7 +566,7 @@ class XFullChecks(unittest.TestCase):
                     pass
 
     def test_x_battle_start_uses_original_ball(self):
-        """PetController's kaichong Animation4 ball must open at battle start."""
+        """PetController's native kaichong appearance sequence must play."""
         from types import SimpleNamespace
         from battle_ui import BattleUI
         with tempfile.TemporaryDirectory() as save:
@@ -755,11 +755,11 @@ class XFullChecks(unittest.TestCase):
                 ui._event_batch = None
                 ui._capture_events()
                 self.assertEqual('escape_failed', ui.anim['kind'])
-                ui.anim['age'] = 12
+                ui.anim['age'] = 5
                 offset, target, _ = ui._animation_offsets()
                 self.assertLess(offset[1], 0)
                 self.assertEqual((0, 0), target)
-                ui.anim['age'] = 24
+                ui.anim['age'] = 10
                 self.assertEqual((0, 0), ui._animation_offsets()[0])
             finally:
                 for job in root.tk.call('after', 'info'):
@@ -788,7 +788,7 @@ class XFullChecks(unittest.TestCase):
                 unit = app.battle.player_active
                 ui.anim = {'kind': 'escape', 'side': 'player',
                            'target': 'player', 'source_uid': unit.pet.uid,
-                           'age': 10, 'duration': 40, 'amount': 0,
+                           'age': 5, 'duration': 10, 'amount': 0,
                            'crit': False, 'damages': []}
                 layer = Image.new('RGBA', (960, 576))
                 ui._draw_escape_dust(layer)
@@ -809,8 +809,8 @@ class XFullChecks(unittest.TestCase):
         from types import SimpleNamespace
         from battle_ui import BattleUI
         ui = BattleUI.__new__(BattleUI)
-        ui.anim = {'kind': 'escape', 'side': 'player', 'age': 20,
-                   'duration': 40}
+        ui.anim = {'kind': 'escape', 'side': 'player', 'age': 8,
+                   'duration': 10}
         player_offset, target_offset, _ = ui._animation_offsets()
         self.assertLess(player_offset[0], -100)
         self.assertLess(player_offset[1], 0)
@@ -1034,7 +1034,8 @@ class XFullChecks(unittest.TestCase):
                 app.start_battle(key)
                 root.update()
                 ui = app.battle_ui
-                ui.advance(seconds=3)
+                ui.advance(seconds=10)
+                ui.advance(seconds=10)
                 self.assertIsNone(ui.opening_frame)
                 played = []
                 ui.effect_audio = SimpleNamespace(play=lambda value: played.append(str(value)))
@@ -1043,8 +1044,8 @@ class XFullChecks(unittest.TestCase):
                 ui._after_action()
                 self.assertIsNotNone(ui.anim)
                 self.assertEqual(ui.anim['kind'], 'capture')
-                self.assertEqual(ui.anim['capture_clip'], 'Animation1')
-                for _ in range(80):
+                self.assertEqual(ui.anim['capture_clip'], 'Animation7')
+                for _ in range(190):
                     ui.advance(seconds=.05)
                     ui.render()
                     root.update()
@@ -1383,6 +1384,7 @@ class XFullChecks(unittest.TestCase):
                 ui._event_batch = None
                 ui._event_cursor = 0
                 ui._capture_events()
+                ui.advance(.01)
                 self.assertIn('4117', played)
                 self.assertEqual(1, ui.anim['shake'])
             finally:
@@ -1443,6 +1445,7 @@ class XFullChecks(unittest.TestCase):
                 unit.hp = max(1, unit.max_hp-10)
                 app.battle.choose_item('230007')
                 ui._after_action()
+                ui.advance(.01)
                 self.assertIn('4057', played)
             finally:
                 for job in root.tk.call('after', 'info'):
@@ -2587,6 +2590,138 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(182, state.main_task)
         self.assertEqual(3, state.main_state)
 
+    def test_x_holland_arc_reaches_task_201(self):
+        """183 -> 200 must play the Holland gyms and the two-pet handover."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        from task_progress import TaskProgress
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 183, 4
+        state.events['1604002'] = 1
+        runtime = EventRuntime(self.data, state)
+        handover = []
+
+        def play(event_id, trigger, updates=()):
+            runtime.start(f'pEvent{event_id}.json', trigger)
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                if request.kind == 'costtaskitem':
+                    runtime.resume(handover)
+                elif request.kind == 'fight':
+                    runtime.resume('win')
+                else:
+                    runtime.resume()
+            for kind, *values in updates:
+                TaskProgress(state).update(kind, *values)
+
+        play(1604003, {'id': 1604003, 'type': 'talk',
+                       'conditions_add': {'npcid': 160401},
+                       'conditions_mtask': [183, 4],
+                       'conditions_event': [1604002, 1]})
+        self.assertEqual(184, state.main_task)
+        play(1604004, {'id': 1604004, 'type': 'tomap',
+                       'conditions_add': {'map': 1602},
+                       'conditions_mtask': [184, 3]}, [('map', 1602)])
+        self.assertEqual(185, state.main_task)
+        play(1604005, {'id': 1604005, 'type': 'tomap',
+                       'conditions_add': {'map': 9106},
+                       'conditions_mtask': [185, 3]}, [('map', 9106)])
+        self.assertEqual(186, state.main_task)
+        play(1604006, {'id': 1604006, 'type': 'toarea',
+                       'conditions_add': {'area': 160401},
+                       'conditions_mtask': [186, 3]}, [('area', 160401)])
+        self.assertEqual(187, state.main_task)
+        play(1604007, {'id': 1604007, 'type': 'tomap',
+                       'conditions_add': {'map': 1602},
+                       'conditions_mtask': [187, 3]}, [('map', 1602)])
+        self.assertEqual(188, state.main_task)
+        self.assertEqual(4, state.main_state)
+        play(1602001, {'id': 1602001, 'type': 'talk',
+                       'conditions_add': {'npcid': 160201},
+                       'conditions_mtask': [188, 4]})
+        play(9105002, {'id': 9105002, 'type': 'tomap',
+                       'conditions_add': {'map': 9105},
+                       'conditions_mtask': [188, 4]}, [('map', 9105)])
+        play(1602002, {'id': 1602002, 'type': 'tomap',
+                       'conditions_add': {'map': 1602},
+                       'conditions_mtask': [188, 4]}, [('map', 1602)])
+        self.assertEqual(189, state.main_task)
+        play(9109001, {'id': 9109001, 'type': 'tomap',
+                       'conditions_add': {'map': 9109},
+                       'conditions_mtask': [189, 3]}, [('map', 9109)])
+        self.assertEqual(4, state.main_state)
+        play(9111001, {'id': 9111001, 'type': 'tomap',
+                       'conditions_add': {'map': 9111},
+                       'conditions_mtask': [189, 4]}, [('map', 9111)])
+        self.assertEqual(190, state.main_task)
+        play(9111002, {'id': 9111002, 'type': 'talk',
+                       'conditions_add': {'npcid': 911101},
+                       'conditions_mtask': [190, 3]},
+             [('fight', 2, 1, 9111011, -1)])
+        self.assertEqual(4, state.main_state)
+        play(9116001, {'id': 9116001, 'type': 'tomap',
+                       'conditions_add': {'map': 9116},
+                       'conditions_mtask': [190, 4]}, [('map', 9116)])
+        self.assertEqual(191, state.main_task)
+        play(1605001, {'id': 1605001, 'type': 'toarea',
+                       'conditions_add': {'area': 160501},
+                       'conditions_mtask': [191, 3]}, [('area', 160501)])
+        self.assertEqual(192, state.main_task)
+        play(1605002, {'id': 1605002, 'type': 'toarea',
+                       'conditions_add': {'area': 160502},
+                       'conditions_mtask': [192, 3]}, [('area', 160502)])
+        self.assertEqual(4, state.main_state)
+        play(1602004, {'id': 1602004, 'type': 'tomap',
+                       'conditions_add': {'map': 1602},
+                       'conditions_mtask': [192, 4]}, [('map', 1602)])
+        self.assertEqual(193, state.main_task)
+        play(1606001, {'id': 1606001, 'type': 'toarea',
+                       'conditions_add': {'area': 160601},
+                       'conditions_mtask': [193, 3]}, [('area', 160601)])
+        self.assertEqual(194, state.main_task)
+        play(1602005, {'id': 1602005, 'type': 'tomap',
+                       'conditions_add': {'map': 1602},
+                       'conditions_mtask': [194, 3]}, [('map', 1602)])
+        self.assertEqual(195, state.main_task)
+        play(9112001, {'id': 9112001, 'type': 'talk',
+                       'conditions_add': {'npcid': 911202},
+                       'conditions_mtask': [195, 4]})
+        self.assertEqual(196, state.main_task)
+        play(1607001, {'id': 1607001, 'type': 'talk',
+                       'conditions_add': {'npcid': 160701},
+                       'conditions_mtask': [196, 3]})
+        self.assertEqual(197, state.main_task)
+        first = state.add_generated_pet('100171', 20)
+        second = state.add_generated_pet('100172', 20)
+        handover[:] = [first.uid, second.uid]
+        TaskProgress(state).update()
+        self.assertEqual(4, state.main_state)
+        play(1607002, {'id': 1607002, 'type': 'talk',
+                       'conditions_add': {'npcid': 160701},
+                       'conditions_mtask': [197, 4]})
+        self.assertEqual(198, state.main_task)
+        play(1607003, {'id': 1607003, 'type': 'toarea',
+                       'conditions_add': {'area': 160701},
+                       'conditions_mtask': [198, 3]}, [('area', 160701)])
+        self.assertEqual(199, state.main_task)
+        play(1602006, {'id': 1602006, 'type': 'tomap',
+                       'conditions_add': {'map': 1602},
+                       'conditions_mtask': [199, 3]}, [('map', 1602)])
+        self.assertEqual(200, state.main_task)
+        play(1608001, {'id': 1608001, 'type': 'toarea',
+                       'conditions_add': {'area': 160801},
+                       'conditions_mtask': [200, 3]}, [('area', 160801)])
+        self.assertEqual(4, state.main_state)
+        play(1602007, {'id': 1602007, 'type': 'tomap',
+                       'conditions_add': {'map': 1602},
+                       'conditions_mtask': [200, 4]}, [('map', 1602)])
+        self.assertEqual(201, state.main_task)
+        self.assertEqual(3, state.main_state)
+
     def test_x_ship_launch_reaches_task_136(self):
         """119014 builds the ship and hands task 135 to the license test."""
         from event_runtime import EventRuntime
@@ -2992,7 +3127,7 @@ class XFullChecks(unittest.TestCase):
                     pass
 
     def test_x_opening_shows_the_original_logo_layers(self):
-        """LogoLayer's SP/CP/CR images must precede OpeningUI."""
+        """LogoLayer's custom publisher/title cards must precede OpeningUI."""
         import time as clock
         with tempfile.TemporaryDirectory() as save:
             os.environ['POCKET_NATIVE_SAVE_DIR'] = save
@@ -3011,7 +3146,7 @@ class XFullChecks(unittest.TestCase):
                 self.assertIsNotNone(app.splash)
                 stages = app.splash[0]
                 self.assertEqual(
-                    ['Logo/splogo.png', 'Logo/logo.png', 'Logo/copyrightLogo.png'],
+                    ['Logo/splogo.png', 'Logo/logo.png'],
                     [path for path, _ in stages])
                 frame = app.make_frame()
                 self.assertEqual((960, 576), frame.size)

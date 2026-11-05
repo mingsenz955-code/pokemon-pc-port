@@ -9,13 +9,17 @@ from __future__ import annotations
 
 import math
 from collections import OrderedDict
+from functools import lru_cache
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
+from armature_composite import composite
+from pet_appearance import quality_color, pet_flash
 
 W, H = 960, 576
 FONT = 'C:/Windows/Fonts/msyh.ttc'
 
 
+@lru_cache(maxsize=64)
 def font(size):
     try:
         return ImageFont.truetype(FONT, size)
@@ -100,7 +104,7 @@ class BattleUI:
             # Enemy and player cries are separate MCI aliases so the second
             # pet does not cut the first one.  Most rows have no Sound entry;
             # those stay silent instead of borrowing an unrelated asset.
-            if not self._enemy_entry_voice_played and self.opening_frame >= self.opening_transition+20:
+            if not self._enemy_entry_voice_played and self.opening_frame >= self.opening_transition+self._entry_plan('enemy')['reveal']:
                 self._enemy_entry_voice_played = True
                 unit = getattr(self.battle, 'enemy_active', None)
                 if unit is not None:
@@ -109,7 +113,7 @@ class BattleUI:
                     if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
                         second = getattr(self.effect_audio, 'effect2', None)
                         (second or self.effect_audio.play)(sound)
-            if not self._entry_voice_played and self.opening_frame >= self.opening_transition+32:
+            if not self._entry_voice_played and self.opening_frame >= self.opening_transition+self._entry_plan('player')['reveal']:
                 self._entry_voice_played = True
                 unit = getattr(self.battle, 'player_active', None)
                 if unit is not None:
@@ -117,11 +121,11 @@ class BattleUI:
                     sound = str(row.get('wowSound', '0'))
                     if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
                         self.effect_audio.play(sound)
-            if self.opening_frame >= self.opening_transition+50:
+            if self.opening_frame >= self.opening_transition+max(self._entry_plan(s)['duration'] for s in self._entry_ball_sides()):
                 self.opening_frame = None
             self.frame = None
         self.anim_idle += steps
-        if self.battle.result and self.result_page == 'outcome':
+        if self.battle.result and not self.anim and self.opening_frame is None and self.result_page == 'outcome':
             if self._levelup_active():
                 # PetLevelUpUILayer is shown before BattleCalculationUILayer;
                 # confirm advances through every leveled pet.
@@ -135,6 +139,10 @@ class BattleUI:
             self._signature = None
         remaining = steps
         while self.anim and remaining > 0:
+            if not self.anim.get('started'):
+                self.anim['started'] = True
+                if self.anim.get('cast_sound') and hasattr(self.app, 'root'):
+                    self.effect_audio.play(self.anim['cast_sound'])
             amount = min(remaining, self.anim['duration']-self.anim['age'])
             self.anim['age'] += amount
             remaining -= amount
@@ -152,6 +160,13 @@ class BattleUI:
                     if 'start_sound' not in played:
                         self.effect_audio.play(plan['sound'])
                         played.add('start_sound')
+            if self.anim.get('kind') == 'capture':
+                played = self.anim.setdefault('capture_sounds',set())
+                for index,(when,name) in enumerate(self.anim['capture_plan']['events']):
+                    sound = {'cici':'6029','cici2':'6030','failedsound':'6030'}.get(name)
+                    if sound and self.anim['age']*60/25 >= when and index not in played:
+                        self.effect_audio.play(sound)
+                        played.add(index)
             for event in self.anim.get('damages', []):
                 if not event.get('presented') and self.anim['age'] >= event['when']:
                     event['presented'] = True
@@ -159,6 +174,8 @@ class BattleUI:
                     if event.get('uid') and 'hp' in event:
                         self.visual_hp[(event['side'], event['uid'])] = event['hp']
             if self.anim['age'] >= self.anim['duration']:
+                if self.anim.get('response_sound'):
+                    self.effect_audio.play(self.anim['response_sound'])
                 self.anim = self.anim_queue.pop(0) if self.anim_queue else None
             self.frame = None
             self._signature = None
@@ -194,15 +211,16 @@ class BattleUI:
             kind = event.get('type')
             if kind == 'catch_attempt':
                 success = any(e.get('type') == 'caught' for e in fresh)
-                # PetController::executeAction 0x2d32c6/0x2d330c maps
-                # catchsuccess -> Animation1, catchfailed -> Animation7.
-                name = 'Animation1' if success else 'Animation7'
-                frames = 20 if success else 210
+                # Both native outcomes begin at Animation7 and follow
+                # their distinct ELF catch_*_seq completion chains.
+                plan = self._capture_plan(success)
+                name = plan['segments'][0][0]
+                frames = plan['response']
                 current = {'side': 'enemy', 'target': 'enemy', 'kind': 'capture',
                            'source_uid': self.battle.enemy_active.pet.uid,
                            'amount': 0, 'crit': False, 'age': 0,
                            'duration': frames*25/60, 'damages': [],
-                           'capture_clip': name, 'capture_success': success}
+                           'capture_clip': name, 'capture_success': success, 'capture_plan': plan}
                 self.anim_queue.append(current)
                 if success:
                     species = next((str(e.get('name')) for e in fresh
@@ -211,7 +229,7 @@ class BattleUI:
                         row = self.app.data.tables['Pet'].get(species, {})
                         sound = str(row.get('wowSound', '0'))
                         if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
-                            self.effect_audio.play(sound)
+                            current['response_sound'] = sound
             elif kind in ('attack', 'skill'):
                 current = {'side': event.get('side', 'player'), 'target': '', 'kind': kind,
                            'source_uid': event.get('uid'), 'amount': 0, 'crit': False,
@@ -229,13 +247,11 @@ class BattleUI:
                 # the armature's own filename callback.  Both are original data.
                 sound = str(skill_row.get('sound', '0'))
                 if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
-                    self.effect_audio.play(sound)
+                    current['cast_sound'] = sound
                 self.anim_queue.append(current)
             elif kind == 'item_used':
                 effect = self.app.data.tables.get('PetItem', {}).get(str(event.get('id')), {})
                 sound = str(effect.get('soundId', '0'))
-                if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
-                    self.effect_audio.play(sound)
                 plan = self.effects.plan_effect(str(effect.get('effectId', '0')))
                 if plan:
                     current = {'side': event.get('side', 'player'),
@@ -244,8 +260,17 @@ class BattleUI:
                                'amount': 0, 'crit': False, 'age': 0,
                                'duration': plan['duration'],
                                'hit_at': plan['hit'] if plan['hit'] is not None else plan['duration'],
-                               'damages': [], 'effect': plan, 'shake': 0}
+                               'damages': [], 'effect': plan, 'shake': 0,
+                               'cast_sound': sound if sound not in ('', '0') else None}
                     self.anim_queue.append(current)
+            elif kind in ('escape', 'enemy_escape'):
+                side = 'player' if kind == 'escape' else 'enemy'
+                unit = self.battle.player_active if side == 'player' else self.battle.enemy_active
+                if unit is not None:
+                    self.anim_queue.append({
+                        'side': side, 'target': side, 'source_uid': unit.pet.uid,
+                        'kind': 'escape', 'amount': 0, 'crit': False,
+                        'age': 0, 'duration': 10, 'damages': []})
             elif kind == 'escape_failed':
                 unit = self.battle.player_active
                 if unit is not None:
@@ -253,7 +278,7 @@ class BattleUI:
                         'side': 'player', 'target': 'player',
                         'source_uid': unit.pet.uid, 'kind': 'escape_failed',
                         'amount': 0, 'crit': False, 'age': 0,
-                        'duration': 30, 'damages': []})
+                        'duration': 10, 'damages': []})
             elif kind == 'switch':
                 unit = next((u for u in self.battle.player+self.battle.enemy
                              if u.pet.uid == event.get('uid')), None)
@@ -262,7 +287,7 @@ class BattleUI:
                         'side': event.get('side', unit.side), 'target': '',
                         'source_uid': unit.pet.uid, 'kind': 'switch',
                         'amount': 0, 'crit': False, 'age': 0,
-                        'duration': 34, 'damages': []})
+                        'duration': self._entry_plan(event.get('side', unit.side))['duration']*25/60, 'damages': []})
             elif kind == 'faint':
                 unit = next((u for u in self.battle.player+self.battle.enemy
                              if u.pet.uid == event.get('uid')), None)
@@ -299,7 +324,7 @@ class BattleUI:
             # failed attempt hops through 5 points and returns to its anchor.
             # Both use 0.4s and tension 0.
             age = max(0.0, self.anim['age'])
-            t = min(1.0, age/(60*.4))
+            t = min(1.0, age/(25*.4))
             if self.anim['kind'] == 'escape_failed':
                 points = ((0, 0), (-150, 85), (-70, 195),
                           (70, 135), (0, 0))
@@ -351,7 +376,7 @@ class BattleUI:
         petrow = self.app.data.tables['Pet'][active.pet.species]
         shown_hp = self.display_hp.get(('enemy' if enemy else 'player', active.pet.uid), active.hp)
         cache_key = (enemy, active.pet.uid, active.pet.level, active.name, active.max_hp,
-                     active.max_energy, shown_hp, active.energy)
+                     active.max_energy, shown_hp, active.energy, getattr(active.pet, 'quality', 1))
         cached = self._hud_cache.get(cache_key)
         if cached is not None:
             layer, targets, rects, shop = cached
@@ -376,7 +401,8 @@ class BattleUI:
         kind = {1: 'life', 2: 'energy', 3: 'power', 4: 'defence',
                 5: 'speed', 6: 'all'}.get(relation, 'power')
         resources = {'kindIcon_Sprite': f'UI/pet_kind_{kind}.png'}
-        layer = self.app.cocos_ui.render('BattleMainUI', (W, H), text, visible, resources)
+        layer = self.app.cocos_ui.render('BattleMainUI', (W, H), text, visible, resources,
+                                       colors={f'{side}_name_Text': quality_color(active.pet)})
         if 'battleShop_Button' in self.app.cocos_ui.buttons:
             self.shop_hit = self.app.cocos_ui.buttons['battleShop_Button']
         for name in ('mineMenuPos_Panel', 'enemyMenuPos_Panel'):
@@ -487,7 +513,7 @@ class BattleUI:
             self.hits = {}
             self.frame = frame
             return frame
-        if self.battle.result and self.result_page == 'outcome' and self._levelup_active():
+        if self.battle.result and not self.anim and self.opening_frame is None and self.result_page == 'outcome' and self._levelup_active():
             # PetLevelUpUI is a full-screen settlement layer: do not leave
             # the battle pets/HUD visible behind its own pet portrait.
             self._draw_levelup(frame)
@@ -515,32 +541,15 @@ class BattleUI:
         if self.opening_frame is not None:
             age = self.opening_frame-self.opening_transition
             # The original PetController opens a Skill/kaichong ball before
-            # the appearance flash.  Animation4 is the authored ball drop,
-            # bounce and open; Animation1/7 remain the capture result clips.
+            # the appearance flash. Replay the native five-clip sequence;
+            # its Animation3 'out' event releases the pet.
             self._draw_entry_ball(frame, age)
-            # PetController's appearance effect is Skill/chuchongguang, not
-            # the skill-armature vfx_appear.  It is a 13-frame flash.
-            if age >= 20:
-                art = self.app.data.armature('chuchongguang', 'Animation1',
-                                             int(age-20))
-                if art is not None:
-                    origin = art.info.get('origin', (art.width/2, art.height/2))
-                    ratio = W/800
-                    art = art.resize((round(art.width*ratio), round(art.height*ratio)), Image.Resampling.LANCZOS)
-                    for side in self._entry_ball_sides():
-                        x, y = self.pet_positions[side]
-                        frame.alpha_composite(art, (round(x-origin[0]*ratio), round(y-origin[1]*ratio)))
+            for side in self._entry_ball_sides():
+                self._draw_appearance_flash(frame, side, age)
         if self.anim and self.anim.get('kind') == 'switch':
-            art = self.app.data.armature('chuchongguang', 'Animation1',
-                                         int(self.anim['age']))
-            if art is not None:
-                origin = art.info.get('origin', (art.width/2, art.height/2))
-                ratio = W/800
-                art = art.resize((round(art.width*ratio), round(art.height*ratio)),
-                                 Image.Resampling.LANCZOS)
-                x, y = self.pet_positions[self.anim['side']]
-                frame.alpha_composite(art, (round(x-origin[0]*ratio),
-                                            round(y-origin[1]*ratio)))
+            age = self.anim['age']*60/25
+            self._draw_entry_ball(frame, age, (self.anim['side'],))
+            self._draw_appearance_flash(frame, self.anim['side'], age)
         self.effects.draw(frame, self)
         self._draw_escape_dust(frame)
         if self.anim and self.anim['kind'] == 'capture':
@@ -588,29 +597,34 @@ class BattleUI:
         return frame
 
     def _draw_pet(self, frame, unit, center, height, enemy=False, flash=0.0):
-        if not unit or getattr(unit, 'fled', False):
+        fleeing = bool(unit and self.anim and self.anim.get('kind') == 'escape'
+                       and self.anim.get('source_uid') == unit.pet.uid)
+        pending_flee = bool(unit and any(action.get('kind') == 'escape'
+                                        and action.get('source_uid') == unit.pet.uid
+                                        for action in self.anim_queue))
+        if not unit or (getattr(unit, 'fled', False) and not fleeing and not pending_flee):
             return
         # Pet.scale is applied to both the setup pose and every spine frame in
         # OriginalData; the battle target height must carry it as well or the
         # two scalings cancel and every pet draws at the same size.
         pet_scale = float(self.app.data.tables['Pet'][unit.pet.species].get('scale', 1) or 1)
         height = max(1, round(height*pet_scale))
-        if self.opening_frame is not None:
+        appearance_alpha = 1.0
+        if self.opening_frame is not None and ('enemy' if enemy else 'player') in self._entry_ball_sides():
             age = self.opening_frame-self.opening_transition
-            # The ball opens on frame 20; the pet emerges from that frame.
-            reveal = 20
-            if age < reveal:
+            scale, dy, appearance_alpha = self._appearance_pose(age-self._entry_plan('enemy' if enemy else 'player')['reveal'])
+            if scale <= 0:
                 return
-            t = min(1, (age-reveal)/30)
-            # PetActionController::appearAction uses a half-second EaseBackOut.
-            scale = 1+2.70158*(t-1)**3+1.70158*(t-1)**2
-            height = max(1, round(height*(.1+.9*scale)))
+            height = max(1, round(height*scale))
+            center = (center[0], center[1]-round(dy*W/800))
         if self.battle.result and not self.anim and not unit.alive:
             return
         if enemy and self.anim and self.anim['kind'] == 'capture':
             fi = self.anim['age']*60/25
-            if self.anim['capture_success'] or 75 <= fi < 190:
+            scale, center, appearance_alpha = self._capture_pose(fi, center)
+            if scale <= 0:
                 return
+            height = max(1, round(height*scale))
         setup = self.app.data.pet_image(unit.pet.species)
         if setup is None:
             return
@@ -625,9 +639,13 @@ class BattleUI:
             if self.app.data.pet_clip_duration(unit.pet.species, 'dead') > 0:
                 clip, age, loop = 'dead', self.anim['age'], False
         elif self.anim and self.anim['kind'] == 'switch' and self.anim['side'] == side:
-            switch_t = min(1.0, self.anim['age']/20)
-            scale = 1+2.70158*(switch_t-1)**3+1.70158*(switch_t-1)**2
-            height = max(1, round(height*(.1+.9*scale)))
+            scale, dy, appearance_alpha = self._appearance_pose(self.anim['age']*60/25-self._entry_plan(side)['reveal'])
+            if scale <= 0:
+                return
+            height = max(1, round(height*scale))
+            center = (center[0], center[1]-round(dy*W/800))
+        elif fleeing:
+            height = max(1, round(height*(1-.6*min(1, self.anim['age']/10))))
         if self.anim and self.anim['kind'] in ('attack', 'skill') and self.anim['side'] == side and not self.anim.get('idle'):
             clip, age, loop = 'attack', self.anim['age'], False
         elif self.anim and self.anim.get('impact', {}).get('side') == side and self.anim['impact']['type'] == 'damage':
@@ -643,6 +661,8 @@ class BattleUI:
             image, origin, points = cached
             if faint_t is not None:
                 image = self._faint_image(image, faint_t)
+            image = self._opacity(image, appearance_alpha)
+            image = pet_flash(self.app.data, unit.pet.species, image, self.anim_idle/25)
             self.pet_bones[side] = {key: (center[0]+p[0], center[1]+p[1]) for key, p in points.items()}
             frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
             self._pose_cache.move_to_end(pose_key)
@@ -667,10 +687,20 @@ class BattleUI:
             self._pose_cache.popitem(last=False)
         if faint_t is not None:
             image = self._faint_image(image, faint_t)
+        image = self._opacity(image, appearance_alpha)
+        image = pet_flash(self.app.data, unit.pet.species, image, self.anim_idle/25)
         if flash:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
             image = Image.blend(image, overlay, min(.55, .55*flash))
         frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
+
+    @staticmethod
+    def _opacity(image, alpha):
+        if alpha >= .999:
+            return image
+        image = image.copy()
+        image.putalpha(image.getchannel('A').point(lambda v: round(v*alpha)))
+        return image
 
     @staticmethod
     def _faint_image(image, progress):
@@ -690,7 +720,7 @@ class BattleUI:
         path = self.app.data.assets/'particle/escape.plist'
         if not path.is_file():
             return
-        elapsed = max(0.0, self.anim['age']/60)
+        elapsed = max(0.0, self.anim['age']/25)
         side = self.anim.get('side', 'player')
         x, y = self.pet_positions[side]
         source, target, _ = self._animation_offsets()
@@ -705,53 +735,156 @@ class BattleUI:
         """Wild pets are already present in X; trainers send out both pets."""
         return ('player',) if self.battle.kind == 'wild' else ('player', 'enemy')
 
-    def _draw_entry_ball(self, frame, age):
-        """Draw the authored 45-frame kaichong ball that opens at battle start."""
-        if not 0 <= age <= 45:
-            return
-        art = self.app.data.armature('kaichong', 'Animation4', int(age))
-        if art is None:
-            return
-        ratio = W/800
-        origin = art.info.get('origin', (art.width/2, art.height/2))
-        art = art.resize((max(1, round(art.width*ratio)),
-                          max(1, round(art.height*ratio))),
-                         Image.Resampling.LANCZOS)
-        point = (origin[0]*ratio, origin[1]*ratio)
-        for side in self._entry_ball_sides():
-            image, anchor = art, point
-            if side == 'enemy':
-                image = art.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-                anchor = (art.width-point[0], point[1])
+    @lru_cache(maxsize=2)
+    def _entry_plan(self, side):
+        # Native executeAction + completion callback @ 2d2cf8 / 2d2980:
+        # appearance arrays at 7cf078: [6,2,1,3,5], [8,2,1,3,5].
+        _, source = self.app.data.armature_source('kaichong')
+        moves = {m['name']: m for m in source['animation_data'][0]['mov_data']}
+        suffix = '' if side == 'player' else '_0.8'
+        segments, start, reveal = [], 0, None
+        for index in ((6, 2, 1, 3, 5) if side == 'player' else (8, 2, 1, 3, 5)):
+            name = f'Animation{index}{suffix}'
+            move = moves[name]
+            segments.append((name, start, int(move['dr'])))
+            for bone in move.get('mov_bone_data', []):
+                for event in bone.get('frame_data', []):
+                    if event.get('evt') == 'out':
+                        reveal = start+int(event['fi'])
+            start += int(move['dr'])
+        return {'segments': tuple(segments), 'reveal': reveal, 'duration': start}
+
+    @staticmethod
+    def _appearance_pose(age):
+        # Native out callback @ 2d1738: .6s rise/shrink/fade, then .7s
+        # EaseBackInOut scale to 1 and fade to 255; tension=1 spline.
+        if age < 0:
+            return 0, 0, 0
+        if age < 36:
+            t = age/36
+            phase = min(3.999999, t*4)
+            i, f = int(phase), phase-int(phase)
+            heights = (0, 125, 160, 125, 0)
+            dy = heights[i]+(heights[i+1]-heights[i])*(3*f*f-2*f*f*f)
+            return .1+.3*t, dy, 1-(155/255)*t
+        t = min(1, (age-36)/42)
+        s = 1.70158*1.525
+        q = t*2
+        back = q*q*((s+1)*q-s)/2 if q < 1 else ((q-2)**2*((s+1)*(q-2)+s)+2)/2
+        return .4+.6*back, 0, (100+155*t)/255
+
+    @lru_cache(maxsize=128)
+    def _entry_art(self, name, age, side):
+        from armature_composite import transform_art
+        art = self.app.data.armature('kaichong', name, age, layered=True)
+        return transform_art(art, W/800, mirror=side == 'player') if art is not None else None
+
+    def _draw_entry_ball(self, frame, age, sides=None):
+        for side in sides or self._entry_ball_sides():
+            segment = next(((name, start) for name, start, duration in self._entry_plan(side)['segments']
+                            if start <= age < start+duration), None)
+            if segment is None:
+                continue
+            name, start = segment
+            art = self._entry_art(name, int(age-start), side)
+            if art is None:
+                continue
+            origin = art.info.get('origin', (art.width/2, art.height/2))
             x, y = self.pet_positions[side]
-            frame.alpha_composite(image, (round(x-anchor[0]),
-                                           round(y-anchor[1])))
+            composite(frame, art, (round(x-origin[0]), round(y+75*W/800-origin[1])))
+
+    def _draw_appearance_flash(self, frame, side, age):
+        elapsed = age-self._entry_plan(side)['reveal']
+        if elapsed < 0:
+            return
+        art = self.effects._scaled_art('chuchongguang', int(elapsed), W/800)
+        if art is not None:
+            origin = art.info['origin']
+            x, y = self.pet_positions[side]
+            composite(frame, art, (round(x-origin[0]), round(y-origin[1])))
+
+    @lru_cache(maxsize=2)
+    def _capture_plan(self, success):
+        # X ELF catch_success_seq / catch_failed_seq, PetController's
+        # completion callback 2d2b2a and executeAction 2d2de6: both start at 7.
+        _, source = self.app.data.armature_source('kaichong')
+        moves = {m['name']: m for m in source['animation_data'][0]['mov_data']}
+        sequence = (7,13,4,11,9) if success else (7,13,4,12,3,14)
+        segments, events, start = [], [], 0
+        for number in sequence:
+            name = f'Animation{number}'
+            move = moves[name]
+            segments.append((name,start,int(move['dr'])))
+            events.extend((start+int(f['fi']),f['evt'])
+                          for bone in move.get('mov_bone_data', [])
+                          for f in bone.get('frame_data', []) if f.get('evt'))
+            start += int(move['dr'])
+        closing = next(t for t,name in events if name == 'close')
+        # close responds immediately on success (2d2112), after a 1.5s
+        # delay on failure (2d2132), rather than at the end of the last clip.
+        return {'segments':tuple(segments), 'events':tuple(events),
+                'in':next(t for t,name in events if name == 'in'),
+                'out':next((t for t,name in events if name == 'out'),None),
+                'response':closing+(0 if success else 90)}
+
+    @staticmethod
+    def _capture_segment(plan, frame):
+        for name,start,duration in plan['segments']:
+            if frame < start+duration:
+                return name,max(0,int(frame-start))
+        name,start,duration = plan['segments'][-1]
+        return name,duration-1
+
+    def _capture_pose(self, frame, anchor):
+        plan = self.anim['capture_plan']
+        # Original in callback (2d1b58): 1.5s Shake, then .6s tension-1
+        # spline to scene centre, ScaleTo(.1), FadeTo(20), then hide.
+        incoming = frame-plan['in']-90
+        outgoing = frame-plan['out'] if plan['out'] is not None else -1
+        if incoming < 0:
+            shake = frame-plan['in']
+            if shake >= 0:
+                # Shake::update (2bb7fe): horizontal uniform noise times t,
+                # amplitude 20; stop restores the original position. Visual
+                # sampling has its own seed and never consumes battle RNG.
+                import random
+                dx = random.Random(int(frame)).uniform(-20,20)*(shake/90)*W/800
+                return 1,(anchor[0]+dx,anchor[1]),1
+            return 1,anchor,1
+        if outgoing < 0 and incoming >= 36:
+            return 0,anchor,0
+        centre = (W/2,H/2)
+        if outgoing >= 0:
+            if outgoing >= 36:
+                return 1,anchor,1
+            start,end,t = centre,anchor,outgoing/36
+            scale,alpha = .1+.9*t,(20+235*t)/255
+        else:
+            start,end,t = anchor,centre,incoming/36
+            scale,alpha = 1-.9*t,(255-235*t)/255
+        # CardinalSplineBy tension=1 reduces to smoothstep per segment.
+        dx,dy = end[0]-start[0],end[1]-start[1]
+        points = ((0,0),(.25*dx,.25*dy-75*W/800),
+                  (.5*dx,.5*dy-125*W/800),(.75*dx,.75*dy-75*W/800),(dx,dy))
+        phase = min(3.999999,max(0,t)*4)
+        index = int(phase)
+        local = phase-index
+        eased = local*local*(3-2*local)
+        offset = tuple(points[index][i]+(points[index+1][i]-points[index][i])*eased for i in (0,1))
+        return scale,(start[0]+offset[0],start[1]+offset[1]),alpha
 
     def _draw_capture(self, frame):
-        art = self.app.data.armature('kaichong', self.anim['capture_clip'],
-                                     int(self.anim['age']*60/25))
+        name,local = self._capture_segment(self.anim['capture_plan'],self.anim['age']*60/25)
+        art = self._entry_art(name,local,'player')
         if art is None:
             return
-        origin = art.info.get('origin', (art.width/2, art.height))
-        # The enemy controller mirrors the authored armature; its flight
-        # begins on our side. Preserve the authored moving origin.
+        origin = art.info['origin']
         scale = W/800
-        art = art.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-        origin = (art.width-origin[0], origin[1])
-        art = art.resize((max(1, round(art.width*scale)), max(1, round(art.height*scale))), Image.Resampling.LANCZOS)
+        # Controller 1 mirrors the armature at the enemy shadow minus 240.
+        # Animation7 already contains the throw; don't move it a second time.
         point = self.pet_positions['enemy']
-        # Thrown balls travel from our pet's side before the authored
-        # kaichong ball opens/shakes at the target.  This is still the same
-        # original armature; only its first few frames are positioned on the
-        # flight path instead of appearing directly on the enemy.
-        frames = int(self.anim['age']*60/25)
-        flight = min(12, max(1, int(self.anim['duration']*60/25)//3))
-        if frames < flight:
-            t = frames/flight
-            start = self.pet_positions['player']
-            point = (start[0]+(point[0]-start[0])*t,
-                     start[1]-90+(point[1]-start[1]+90)*t)
-        frame.alpha_composite(art, (round(point[0]-origin[0]*scale), round(point[1]-origin[1]*scale)))
+        point = (point[0]-240*scale,point[1])
+        composite(frame,art,(round(point[0]-origin[0]),round(point[1]-origin[1])))
 
     def _draw_damage(self, draw):
         impact = self.anim.get('impact') if self.anim else None
@@ -957,7 +1090,7 @@ class BattleUI:
                  'enHave_BitmapFontLabel': str(unit.energy), 'enMax_BitmapFontLabel': str(unit.max_energy),
                  'friendly_BitmapFontLabel': str(unit.pet.friendly)},
                 {'selected_Image': index == self.battle.player_index},
-                {'kind_Image': 'UI/'+kind})
+                {'kind_Image': 'UI/'+kind}, colors={'name_Text': quality_color(unit.pet)})
             if not unit.alive:
                 alpha = art.getchannel('A')
                 art = art.convert('LA').convert('RGBA')
@@ -1027,12 +1160,13 @@ class BattleUI:
         # LoadingBar leaves only its clipped "0" visible behind the pet.
         hidden.update({'exp_Sprite': False, 'expBg_Sprite': False,
                        'exp_LoadingBar': False})
+        unit = next((u for u in self.battle.player if u.name == name), None)
         layer = self.app.cocos_ui.render('PetLevelUpUI', (W, H),
             text={'name_Text': name, 'petName_Text': name,
                   'info_Text': '获得经验', 'exp_BitmapFontLabel': str(entry['gained']),
                   'levelFrom_BitmapFontLabel': str(entry['from_level']),
                   'levelTo_BitmapFontLabel': str(entry['to_level'])},
-            visible=hidden,
+            visible=hidden, colors={'name_Text': quality_color(unit.pet), 'petName_Text': quality_color(unit.pet)} if unit else {},
             timeline_frame=int(min(489, self.levelup_age)))
         # The stat rows below are separate CocosUI renders and reset the shared
         # controls map, so capture the level-up panel's confirm button first.
@@ -1044,6 +1178,7 @@ class BattleUI:
             if art is not None:
                 art = art.copy()
                 art.thumbnail((210, 210), Image.Resampling.LANCZOS)
+                art = pet_flash(self.app.data, unit.pet.species, art, self.levelup_age/60)
                 frame.alpha_composite(art, (round(W*.25-art.width/2),
                                             round(H*.52-art.height)))
             list_rect = self.app.cocos_ui.rects.get(
@@ -1106,12 +1241,14 @@ class BattleUI:
                     text['arrt'+name+'_BitmapFontLabel'] = str(value)
                 rarity = int(self.app.data.tables['Pet'][pet.species]['starLevel'])
                 layer = self.app.cocos_ui.render('PetCatchedEffectUI', (W, H), text,
+                    colors={'name_Text': quality_color(pet)},
                     visible={f'star_Sprite_{i}': i <= rarity for i in range(1, 6)},
                     timeline_frame=int(min(199, self.result_age)))
                 art = self.app.data.pet_image(pet.species)
                 if art is not None:
                     art = art.copy()
                     art.thumbnail((250, 250), Image.Resampling.LANCZOS)
+                    art = pet_flash(self.app.data, pet.species, art, self.result_age/60)
                     layer.alpha_composite(art, (round(W/2-art.width/2), round(H*.53-art.height)))
             else:
                 layer = self.app.cocos_ui.render('ChallengeResultUI', (W, H),
@@ -1297,7 +1434,7 @@ class BattleUI:
                                  'target': 'player' if b.result == 'escape' else 'enemy',
                                  'kind': 'escape', 'source_uid': unit.pet.uid,
                                  'amount': 0, 'crit': False, 'age': 0,
-                                 'duration': 40, 'damages': []}
+                                 'duration': 10, 'damages': []}
                     self.frame = None
                     self._signature = None
             if b.result in ('win', 'caught'):

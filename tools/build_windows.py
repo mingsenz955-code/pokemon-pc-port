@@ -9,7 +9,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
-parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.96')
+parser.add_argument('--name', default='口袋妖怪-PC移植开发版0.2.99')
 parser.add_argument('--dist-dir', type=Path, default=root/'outputs')
 parser.add_argument('--baseline', action='store_true',
                     help='Build the 1.20.4 fallback instead of the X 2.10.9 stage.')
@@ -19,6 +19,8 @@ name = args.name
 if Path(name).name != name or '/' in name or '\\' in name:
     raise ValueError('Build name must be a single directory name')
 subprocess.run([sys.executable, str(root/'tools/bake_lottery_animation.py')], cwd=root, check=True)
+if not args.baseline:
+    subprocess.run([sys.executable, str(root/'tools/bake_battle_animation.py')], cwd=root, check=True)
 command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--windowed', '--onedir',
            '--name', name, '--distpath', str(args.dist_dir),
            '--workpath', str(root/'build'),
@@ -41,7 +43,15 @@ if args.baseline:
     shutil.copytree(root/'original-1.20.4', data, dirs_exist_ok=True)
 else:
     stage_full(args.x_source, root/'original-1.20.4', data)
+    overlay = root/'customization'/'Logo'
+    if overlay.is_dir():
+        shutil.copytree(overlay, data/'assets'/'Logo', dirs_exist_ok=True)
 shutil.copytree(root/'generated-assets/lottery', data/'cache/lottery', dirs_exist_ok=True)
+if not args.baseline:
+    shutil.copytree(root/'generated-assets/battle', data/'cache/battle', dirs_exist_ok=True)
+shutil.copy2(root/'docs/VERIFICATION_0.2.97.md', output/'VERIFICATION_0.2.97.md')
+shutil.copy2(root/'docs/VERIFICATION_0.2.98.md', output/'VERIFICATION_0.2.98.md')
+shutil.copy2(root/'docs/VERIFICATION_0.2.99.md', output/'VERIFICATION_0.2.99.md')
 for filename in ['README.md', 'docs/DEEPSEEK_HANDOVER.md', 'docs/MECHANICS_EVIDENCE.md',
                  'docs/RESTORATION_REMAINING.md', 'docs/RELEASE_WORKFLOW.md', 'docs/VERIFICATION_0.2.61.md', 'docs/VERIFICATION_0.2.62.md', 'docs/VERIFICATION_0.2.63.md', 'docs/VERIFICATION_0.2.66.md', 'docs/VERIFICATION_0.2.67.md', 'docs/VERIFICATION_0.2.68.md', 'docs/VERIFICATION_0.2.69.md', 'docs/VERIFICATION_0.2.70.md', 'docs/VERIFICATION_0.2.71.md', 'docs/VERIFICATION_0.2.72.md', 'docs/VERIFICATION_0.2.73.md', 'docs/VERIFICATION_0.2.74.md', 'docs/VERIFICATION_0.2.75.md', 'docs/VERIFICATION_0.2.76.md', 'docs/VERIFICATION_0.2.77.md', 'docs/VERIFICATION_0.2.78.md', 'docs/VERIFICATION_0.2.79.md', 'docs/VERIFICATION_0.2.80.md', 'docs/VERIFICATION_0.2.96.md']:
     source = root/filename

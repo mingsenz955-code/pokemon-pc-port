@@ -122,7 +122,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.viewport.bind('<MouseWheel>', self.on_canvas_wheel)
         self.root.bind('<Destroy>', lambda e: self.audio.close() if e.widget is self.root else None, add='+')
         self.runtime.play_sound = self.audio.effect
-        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.96（全系统还原进行中）')
+        root.title('口袋妖怪 · 原生 PC 移植开发版 0.2.100（全系统还原进行中）')
         top = root.winfo_children()[0]
         top.destroy()
         for child in root.winfo_children():
@@ -141,10 +141,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.audio.music('BGM_101.mp3')
             clips = self.cocos_ui.layout('OpeningUI')['action']['clips']
             self.opening = (tuple(clips[f'animation{i}'] for i in range(7)), 0, time.monotonic())
+            # Keep the two publisher/title cards; the approval and
+            # copyright notice card is intentionally omitted.
             self.splash = (
                 (('Logo/splogo.png', 90),
-                 ('Logo/logo.png', 90),
-                 ('Logo/copyrightLogo.png', 120)), 0, time.monotonic())
+                 ('Logo/logo.png', 90)), 0, time.monotonic())
             tips = [value for key, value in self.data.localized_text().items()
                     if key.startswith('loadingTips')]
             self.loading = (time.monotonic(), 60,
@@ -260,6 +261,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         with self.state.transaction():
             self.state.consume([kid], [1])
             self.state.activities['perfume'] = {'item': str(kid), 'steps': steps, 'until': time.time()+seconds}
+        self.encounter_distance = 0.0
         self.save()
 
     def apply_scenery_visibility(self):
@@ -376,6 +378,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             return False
         perfume = self.state.activities.get('perfume', {})
         steps = int(perfume.get('steps', 0)) if float(perfume.get('until', 0)) > time.time() else 0
+        # Offline rule requested by the player: repel blocks all random
+        # encounters during its original duration, including old saved buffs.
+        if steps > 0:
+            self.encounter_distance = 0.0
+            return False
         if self.encounter_threshold <= 0 or self.encounter_distance < max(1, self.encounter_threshold+steps)*64:
             return False
         row = self.data.tables['VillageMap'][str(self.map_id)]
@@ -1397,7 +1404,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.event_issue = '战斗中不能自动前往，请先结束战斗。'
             return
         win = GameOverlay(self)
-        win.title('任务指引 · 原生 0.2.96')
+        win.title('任务指引 · 原生 0.2.100')
         win.transient(self.root)
         targets = self.guide.resolver.targets()
         text = tk.StringVar()
@@ -2242,6 +2249,25 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             return
 
     def tick(self):
+        # A single bad authored frame must not stop Tk's callback chain.
+        # Record the traceback, show it in the status line, and keep the
+        # window alive so the player can save, flee or restart.
+        try:
+            self._tick_once()
+        except Exception as error:  # noqa: BLE001 - last-resort UI recovery
+            recorder = getattr(self, 'record_callback_error', None)
+            if recorder:
+                try:
+                    recorder(type(error), error, error.__traceback__)
+                except Exception:
+                    pass
+            self.event_issue = f'运行异常，已恢复：{error}'
+            try:
+                self.root.after(100, self.tick)
+            except Exception:
+                pass
+
+    def _tick_once(self):
         self._frame_started = time.perf_counter()
         now = time.monotonic()
         if (getattr(self, 'opening', None) or getattr(self, 'splash', None)
@@ -2497,7 +2523,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         return frame
 
     def _splash_frame(self):
-        """LogoLayer's SP/CP/CR images on the same black stage."""
+        """The custom mingsen publisher/title cards on the black stage."""
         stages, index, started = self.splash
         path, duration = stages[index]
         t = max(0.0, min(1.0, (time.monotonic()-started)*60/duration))
@@ -2698,8 +2724,23 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     and str(state.main_task) in self.data.tables.get('StoryContinuation', {})
                     and not state.pending_runtime):
                 state.main_state = 3
+            from story_handover_recovery import recover_legacy_handover
+            handover_recovery = recover_legacy_handover(self.data, state)
+            if handover_recovery:
+                import shutil
+                backup = self.save_path.with_name(self.save_path.stem+'.before-story-0.2.99'+self.save_path.suffix)
+                if not backup.exists():
+                    shutil.copy2(self.save_path, backup)
             TaskProgress(state).update()
             runtime.restore(state.pending_runtime)
+            if handover_recovery:
+                if state.map_id == handover_recovery['arrival_map']:
+                    runtime.notify('tomap', map=state.map_id)
+                else:
+                    trigger = next(t for t in runtime.triggers if str(t['id']) == '503005')
+                    runtime.start(handover_recovery['event'], trigger)
+                    runtime.index = handover_recovery['index']
+                    runtime.persist()
             self.close_transient_ui()
             self.state, self.runtime = state, runtime
             self.runtime.play_sound = self.audio.effect
@@ -3275,7 +3316,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def _about_body(self, body, info):
         text = self.ui_parameters.get('text') or (
-            '口袋妖怪 · 原生 PC 移植开发版 0.2.96\n\n'
+            '口袋妖怪 · 原生 PC 移植开发版 0.2.100\n\n'
             '使用原版 X 2.10.9 数据和 Cocos 布局，不是安卓模拟器封装。\n'
             '剧情、战斗、捕捉、养成、道具、任务和界面仍在持续还原；'
             '缺失机制会停在原位置，不伪造结果。')

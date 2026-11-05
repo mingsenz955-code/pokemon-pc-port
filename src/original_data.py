@@ -42,6 +42,10 @@ class OriginalData:
         self._repair_recovered_maps()
         from economy import adapt_tables
         adapt_tables(self.tables)
+        # User's offline rule; leave the APK data itself intact.
+        for kid in ('220002', '220010'):
+            if kid in self.tables.get('Item', {}):
+                self.tables['Item'][kid]['des'] = '使用后15分钟内不会遇到野生宠物；再次使用刷新时间，与吸引香水互相替换。'
         self.image_paths = {p.name: p for p in self.assets.rglob('*.png')}
 
     def _repair_recovered_maps(self):
@@ -234,7 +238,7 @@ class OriginalData:
                     frames[k] = im
         return frames
 
-    def armature(self, name, animation='standdown', frame=0, *, viewport=None):
+    def armature(self, name, animation='standdown', frame=0, *, viewport=None, layered=False):
         if name in ('niudanji', 'ndchongwubeijingguang') and getattr(self, 'enable_baked', True):
             from animation_cache import load_manifest, read_frame
             if not hasattr(self, '_lottery_cache_manifest'):
@@ -251,10 +255,10 @@ class OriginalData:
                         return read_frame(str(root), name, animation, index, tuple(origin))
                     except OSError:
                         pass
-        return self._render_armature(name, animation, frame)
+        return self._render_armature(name, animation, frame, layered)
 
     @lru_cache(maxsize=1024)
-    def _render_armature(self, name, animation='standdown', frame=0):
+    def _render_armature(self, name, animation='standdown', frame=0, layered=False):
         """Software preview of Cocos Studio bones, including original texture pivots."""
         _, data = self.armature_source(name)
         frames = self.armature_frames(name)
@@ -324,13 +328,14 @@ class OriginalData:
             th = float(tex.get('height', sprite.height/texture_scale))
             px, py = float(tex.get('pX', .5)), float(tex.get('pY', .5))
             m = multiply(m, (tw/sprite.width, 0, 0, -th/sprite.height, -tw*px, th*(1-py)))
-            parts.append((bone.get('z', 0)+f.get('z', 0), sprite, m))
+            parts.append((bone.get('z', 0)+f.get('z', 0), sprite, m,
+                          int(f.get('bd_dst', 771)) == 1))
         if not parts:
             return None
         # Bound the transformed skins before rasterizing. Keeping the authored
         # origin separately prevents animation bounds from moving the feet.
         points = []
-        for _, sprite, m in parts:
+        for _, sprite, m, _ in parts:
             a, b, c, d, tx, ty = m
             for x, y in ((0, 0), (sprite.width, 0), (0, sprite.height), (sprite.width, sprite.height)):
                 points.append(((a*x+c*y+tx)*.5, -(b*x+d*y+ty)*.5))
@@ -340,7 +345,8 @@ class OriginalData:
         bottom = math.ceil(max(p[1] for p in points))+2
         out = Image.new('RGBA', (max(1, right-left), max(1, bottom-top)))
         origin = (-left, -top)
-        for _, sprite, m in sorted(parts, key=lambda p: p[0]):
+        blend_layers = []
+        for _, sprite, m, additive in sorted(parts, key=lambda p: p[0]):
             a, b, c, d, tx, ty = m
             a, c, tx = a*.5, c*.5, tx*.5+origin[0]
             b, d, ty = -b*.5, -d*.5, -ty*.5+origin[1]
@@ -362,12 +368,21 @@ class OriginalData:
                      inv[3], inv[4], inv[5]+inv[3]*x0+inv[4]*y0)
             layer = sprite.transform((x1-x0, y1-y0), Image.Transform.AFFINE, local,
                                      resample=Image.Resampling.BICUBIC)
-            out.alpha_composite(layer, (x0, y0))
+            if layered:
+                blend_layers.append((layer, (x0, y0), additive))
+            if layered and additive:
+                from armature_composite import additive_composite
+                additive_composite(out, layer, (x0, y0))
+            else:
+                out.alpha_composite(layer, (x0, y0))
         box = out.getbbox()
         if not box:
             return None
         result = out.crop(box)
         result.info['origin'] = (origin[0]-box[0], origin[1]-box[1])
+        if layered:
+            result.info['blend_layers'] = tuple((layer, (x-box[0], y-box[1]), add)
+                                                for layer, (x, y), add in blend_layers)
         return result
 
     def load_map(self, map_id):

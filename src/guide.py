@@ -180,6 +180,18 @@ class GuideResolver:
                     return GuideTarget('npc', f'{name}：收集任务目标', point[0], point[1], point[2],
                                        category, key, name, description,
                                        f'前往任务配置的 NPC {npc_id}', radius=90, npc_id=npc_id)
+            from task_progress import TaskProgress, required_counts
+            required = required_counts(row)
+            for i in range(len(conditions)//4):
+                group = conditions[i*4:(i+1)*4]
+                if group[0] != 1 or TaskProgress(self.state).collection_count(group) >= required[i]:
+                    continue
+                point = self.catch_point(group[1], -1, -1)
+                if point:
+                    species = self.tables['Pet'].get(str(group[1]), {}).get('name', str(group[1]))
+                    return GuideTarget('catch', f'{name}：捕捉{species}', *point[:3],
+                                       category, key, name, description,
+                                       f'前往地图 {point[0]} 捕捉缺少的{species}，准备齐全后交付。', radius=90)
         if condition_type == 3 and len(conditions) >= 3:
             point = self.catch_point(conditions[0], conditions[1], conditions[2])
             if point:

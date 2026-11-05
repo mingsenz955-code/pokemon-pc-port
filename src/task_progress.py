@@ -9,6 +9,17 @@ def integers(value):
     return [int(v) for v in str(value).split(',') if v.strip()]
 
 
+def required_counts(row):
+    required = integers(row['counts'])
+    # X task 197 lists two collection groups and two one-pet hand-in costs,
+    # but exports one shared required count. Both species are required.
+    if int(row.get('conditionType', 0)) == 2 and len(required) == 1:
+        conditions = integers(row.get('conditions', ''))
+        if len(conditions) > 4 and len(conditions) % 4 == 0:
+            required *= len(conditions)//4
+    return required
+
+
 class TaskProgress:
     WIDTHS = {1: 1, 2: 4, 3: 3, 4: 1, 5: 4, 6: 1, 7: 1, 8: 1, 9: 1}
     EVENTS = {'area': 1, 'catch': 3, 'talk': 4, 'fight': 5, 'obstacle': 6, 'map': 7,
@@ -47,13 +58,26 @@ class TaskProgress:
             width = self.WIDTHS.get(condition_type)
             if width is None:
                 continue
-            conditions, required = integers(row['conditions']), integers(row['counts'])
+            conditions, required = integers(row['conditions']), required_counts(row)
             if len(conditions) != width*len(required):
                 raise ValueError(f'Malformed original {category} task {key} conditions')
             counter_key = f'{category}:{key}'
             counts = state.task_counts.setdefault(counter_key, [0]*len(required))
             if len(counts) != len(required):
-                raise ValueError('Saved task counter length does not match original data')
+                if condition_type == 2:
+                    counts = state.task_counts[counter_key] = [0]*len(required)
+                else:
+                    raise ValueError('Saved task counter length does not match original data')
+            if condition_type == 2:
+                from task_costs import TaskCosts
+                cost = TaskCosts(state, {'btask': key} if category == 'branch' else {'mtask': key})
+                if cost.committed():
+                    counts[:] = required
+                    if category == 'main':
+                        state.main_state = 4
+                    else:
+                        state.branch_states[key] = 4
+                    continue
             for index in range(len(required)):
                 condition = conditions[index*width:(index+1)*width]
                 if condition_type == 2:

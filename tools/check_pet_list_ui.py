@@ -44,7 +44,15 @@ try:
     app.ui_actions['free_Button']()
     assert len(state.pets) == before
     app.ui_actions['confirm_Button']()
-    assert '不能放生' in app.ui_info.get()
+    # The current native rule permits releasing the active pet if another
+    # living pet remains; only the last living battle pet is protected.
+    assert len(state.pets) == before-1
+    state.pets = [state.pets[0]]
+    state.active_pet = 0
+    app.open_free_pet(state.pets[0].uid)
+    app.ui_actions['confirm_Button']()
+    assert len(state.pets) == 1
+    assert app.ui_info.get() == data.localized_text()['cantFreeLastPet']
     app.ui_actions['close_Button']()
     app.ui_actions['close_Button']()
     assert not app.ui_open

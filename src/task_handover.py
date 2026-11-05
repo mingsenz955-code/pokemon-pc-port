@@ -6,7 +6,7 @@ from task_costs import TaskCosts
 class TaskHandover:
     def begin_task_handover(self, request):
         cost = TaskCosts(self.state, request.data['parameters'])
-        if not cost.pets:
+        if cost.committed() or not cost.pets:
             try:
                 self.runtime.resume([])
                 return True

@@ -7,7 +7,7 @@ from PIL import Image
 from csb_render import CocosUI
 from daily_tasks import DailyTasks
 from game_state import numbers
-from task_progress import TaskProgress
+from task_progress import TaskProgress, required_counts
 
 
 class TaskPage:
@@ -90,7 +90,7 @@ class TaskPage:
             return ''
         key, row, status, counts = self.rows[self.selected]
         progress = ' / '.join(f'{counts[i] if i < len(counts) else 0}/{n}'
-                              for i, n in enumerate(numbers(row['counts'])))
+                              for i, n in enumerate(required_counts(row)))
         text = f'{row["name"]}\n{row["des"]}\n{progress}'
         if not any(numbers(row.get('rewardIds', '0'))):
             # BranchTask 2801/6201 really have no reward rows.  Do not invent
@@ -112,7 +112,7 @@ class TaskPage:
         for i in range(1, 5):
             visible[f'progress_{i}_Text'] = False
         if self.page == 'main':
-            text['progress_BitmapFontLabel'] = f'{self.app.state.main_task}/{len(self.app.state.tables["MainTask"])}'
+            text['progress_BitmapFontLabel'] = f'{len(set(self.app.state.completed_main))}/{len(self.app.state.tables["MainTask"])}'
         elif self.page == 'branch':
             text['progress_BitmapFontLabel'] = f'{len(self.app.state.completed_branch)}/{len(self.app.state.tables["BranchTask"])}'
         else:
@@ -124,7 +124,7 @@ class TaskPage:
             self.rows and self.page == 'daily' and self.rows[self.selected][2] == 4)
         if self.rows:
             key, row, status, counts = self.rows[self.selected]
-            for i, required in enumerate(numbers(row['counts'])[:4], 1):
+            for i, required in enumerate(required_counts(row)[:4], 1):
                 visible[f'progress_{i}_Text'] = False
                 text[f'progress_{i}_Text'] = f'{counts[i-1] if i <= len(counts) else 0}/{required}'
         frame = self.ui.render('TaskUI', (800, 480), text, visible, resources,
@@ -140,7 +140,7 @@ class TaskPage:
                      self.rows[self.selected][1]['des'], self.ui.font('', 15), self.info_scroll)
             self.hits['description'] = description
             progress = '  '.join(f'{counts[i] if i < len(counts) else 0}/{required}'
-                                for i, required in enumerate(numbers(row['counts'])) if required > 0)
+                                for i, required in enumerate(required_counts(row)) if required > 0)
             text_box(SimpleNamespace(layer=frame),
                      (description[0], paper[1]+145, description[2], paper[1]+166),
                      progress, self.ui.font('', 16))
