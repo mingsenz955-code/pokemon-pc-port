@@ -33,8 +33,8 @@ def tint_lut(rgb):
     return tuple(round(value*color/255) for color in (*rgb, 255) for value in range(256))
 
 
-def pet_flash(data, species, image, seconds):
-    if str(data.tables['Pet'][str(species)].get('flash', '0')) != '1':
+def pet_flash(data, species, image, seconds, shiny=False):
+    if not shiny and str(data.tables['Pet'][str(species)].get('flash', '0')) != '1':
         return image
     rgb = flash_color(seconds)
     if rgb == WHITE:

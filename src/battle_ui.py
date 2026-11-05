@@ -662,7 +662,8 @@ class BattleUI:
             if faint_t is not None:
                 image = self._faint_image(image, faint_t)
             image = self._opacity(image, appearance_alpha)
-            image = pet_flash(self.app.data, unit.pet.species, image, self.anim_idle/25)
+            image = pet_flash(self.app.data, unit.pet.species, image,
+                              self.anim_idle/25, getattr(unit.pet, 'shiny', False))
             self.pet_bones[side] = {key: (center[0]+p[0], center[1]+p[1]) for key, p in points.items()}
             frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
             self._pose_cache.move_to_end(pose_key)
@@ -688,7 +689,8 @@ class BattleUI:
         if faint_t is not None:
             image = self._faint_image(image, faint_t)
         image = self._opacity(image, appearance_alpha)
-        image = pet_flash(self.app.data, unit.pet.species, image, self.anim_idle/25)
+        image = pet_flash(self.app.data, unit.pet.species, image,
+                          self.anim_idle/25, getattr(unit.pet, 'shiny', False))
         if flash:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
             image = Image.blend(image, overlay, min(.55, .55*flash))
@@ -1178,7 +1180,8 @@ class BattleUI:
             if art is not None:
                 art = art.copy()
                 art.thumbnail((210, 210), Image.Resampling.LANCZOS)
-                art = pet_flash(self.app.data, unit.pet.species, art, self.levelup_age/60)
+                art = pet_flash(self.app.data, unit.pet.species, art,
+                                self.levelup_age/60, getattr(unit.pet, 'shiny', False))
                 frame.alpha_composite(art, (round(W*.25-art.width/2),
                                             round(H*.52-art.height)))
             list_rect = self.app.cocos_ui.rects.get(
@@ -1248,7 +1251,8 @@ class BattleUI:
                 if art is not None:
                     art = art.copy()
                     art.thumbnail((250, 250), Image.Resampling.LANCZOS)
-                    art = pet_flash(self.app.data, pet.species, art, self.result_age/60)
+                    art = pet_flash(self.app.data, pet.species, art,
+                                    self.result_age/60, getattr(pet, 'shiny', False))
                     layer.alpha_composite(art, (round(W/2-art.width/2), round(H*.53-art.height)))
             else:
                 layer = self.app.cocos_ui.render('ChallengeResultUI', (W, H),

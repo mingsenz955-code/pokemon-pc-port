@@ -29,6 +29,9 @@ def package(release,version):
             relative=file.relative_to(release)
             # Ship runtime files only, not development handovers or local notes.
             if relative.parts[0] not in ('data','_internal',executable.name):continue
+            # Baked animation caches are rebuilt from the original assets and
+            # have a live-render fallback; do not inflate the downloader ZIP.
+            if relative.parts[0]=='data' and len(relative.parts)>1 and relative.parts[1]=='cache':continue
             if file.name.lower() in blocked or any(p.lower() in ('saves','存档','__pycache__') for p in relative.parts):
                 raise ValueError(f'Personal save/cache in release: {relative}')
             bundle.write(file,relative.as_posix());entries.append(relative.as_posix())

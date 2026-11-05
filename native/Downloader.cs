@@ -121,7 +121,9 @@ public sealed class PocketClient {
                     if(name.StartsWith("/") || name.Contains(":") || name.Split('/').Length>30)throw new IOException("安装包路径无效。");
                     foreach(string part in name.Split('/'))if(part=="..")throw new IOException("安装包路径无效。");
                     string destination=Within(staging,name);
-                    unpacked+=entry.Length;if(unpacked>1000000000)throw new IOException("安装包解压大小异常。");
+                    // The 2.10.9 build now ships its baked animation caches (about
+                // 1.1 GB compressed), so keep a generous but still bounded cap.
+                unpacked+=entry.Length;if(unpacked>4000000000L)throw new IOException("安装包解压大小异常。");
                     if(name.EndsWith("/")){Directory.CreateDirectory(destination);continue;}
                     string filename=Path.GetFileName(destination).ToLowerInvariant();
                     if(filename=="slot1.json" || filename=="preview-position.json" || filename=="save.json")throw new IOException("安装包包含个人存档，已拒绝安装。");

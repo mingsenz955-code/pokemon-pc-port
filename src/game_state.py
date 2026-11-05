@@ -51,6 +51,7 @@ class Pet:
     quality: int = 1
     trial_id: str = ''
     trial_remaining: int = -1
+    shiny: bool = False
 
     def update_quality(self, tables):
         total = 0.0

@@ -565,6 +565,40 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_multi_hit_stops_after_the_target_faints(self):
+        """A 14-hit skill must not emit 14 damage events after a lethal hit."""
+        pet = generate_pet(self.data.tables, random.Random(95), '100160', 200)
+        battle = make_npc_battle(self.data.tables, [pet], '6208041',
+                                 random.Random(96))
+        caster, target = battle.player_active, battle.enemy_active
+        caster.energy = caster.max_energy = 9999
+        target.hp = 1
+        target.talents = []
+        target.buffs = []
+        battle.events = []
+        battle._use_skill(caster, target,
+                          self.data.tables['Skill']['300113'])
+        hits = [event for event in battle.events
+                if event['type'] == 'damage'
+                and event.get('uid') == target.pet.uid]
+        self.assertFalse(target.alive)
+        self.assertEqual(1, len(hits), hits)
+        self.assertEqual(1, len([event for event in battle.events
+                                 if event['type'] == 'faint']))
+
+    def test_x_per_pet_shiny_flag_persists_and_flashes(self):
+        from PIL import Image
+        from game_state import Pet
+        from pet_appearance import pet_flash
+        pet = generate_pet(self.data.tables, random.Random(97), '100357', 200)
+        pet.shiny = True
+        self.assertTrue(Pet(**pet.__dict__).shiny)
+        image = Image.new('RGBA', (8, 8), (100, 120, 140, 255))
+        plain = pet_flash(self.data, '100357', image, .3)
+        flashed = pet_flash(self.data, '100357', image, .3, shiny=True)
+        self.assertEqual(image.tobytes(), plain.tobytes())
+        self.assertNotEqual(image.tobytes(), flashed.tobytes())
+
     def test_x_battle_start_uses_original_ball(self):
         """PetController's native kaichong appearance sequence must play."""
         from types import SimpleNamespace

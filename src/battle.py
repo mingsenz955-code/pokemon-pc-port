@@ -894,6 +894,11 @@ class Battle:
         coe = float(skill.get('attackCoe', 0) or 0)
         hit = False
         for hit_index in range(attack_count):
+            # Stop the authored multi-hit sequence as soon as the target
+            # faints; otherwise the remaining damage numbers keep animating
+            # on a dead pet.
+            if not target.alive:
+                break
             if attack_count > 1:
                 rate = int(skill.get('attackRate', 100) or 100)
                 if rate < 100 and self.rng.randrange(100) >= rate:
