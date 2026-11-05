@@ -565,6 +565,44 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_battle_faint_sinks_and_fades(self):
+        """A faint event selects the dead pose/fade instead of popping out."""
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
+                ui = app.battle_ui
+                ui.opening_frame = None
+                enemy = app.battle.enemy_active
+                enemy.hp = 0
+                ui.anim, ui.anim_queue = None, []
+                app.battle.events = [{'type': 'faint', 'side': 'enemy',
+                                      'uid': enemy.pet.uid,
+                                      'name': enemy.name}]
+                ui._event_batch, ui._event_cursor = None, 0
+                ui._capture_events()
+                self.assertEqual('faint', ui.anim['kind'])
+                ui.anim['age'] = 20
+                ui.frame, ui._signature = None, None
+                self.assertEqual((960, 576), ui.render().size)
+                solid = Image.new('RGBA', (2, 2), (255, 255, 255, 255))
+                self.assertEqual(0, ui._faint_image(solid, 1.0).getpixel((0, 0))[3])
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_battle_escape_uses_the_authored_dust(self):
         """particle/escape.plist must actually emit at the fleeing pet."""
         from PIL import Image

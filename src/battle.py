@@ -1049,7 +1049,8 @@ class Battle:
             self.messages.append(f'{unit.name} 受到 {recoil} 点反噬伤害。')
         if not target.alive:
             self.messages.append(f'{target.name} 倒下了！')
-            self.events.append({'type': 'faint', 'side': target.side, 'name': target.name})
+            self.events.append({'type': 'faint', 'side': target.side, 'name': target.name,
+                                'uid': target.pet.uid})
             if was_alive and unit.side == 'player':
                 self.events.append({'type': 'oneshot', 'side': 'player', 'name': target.name})
 
@@ -1316,7 +1317,8 @@ class Battle:
                     del unit.cooldowns[skill_id]
             if not unit.alive:
                 self.messages.append(f'{unit.name} 倒下了！')
-                self.events.append({'type': 'faint', 'side': unit.side, 'name': unit.name})
+                self.events.append({'type': 'faint', 'side': unit.side, 'name': unit.name,
+                                'uid': unit.pet.uid})
 
     def _check_end(self):
         if self.result:

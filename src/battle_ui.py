@@ -245,6 +245,15 @@ class BattleUI:
                                'hit_at': plan['hit'] if plan['hit'] is not None else plan['duration'],
                                'damages': [], 'effect': plan, 'shake': 0}
                     self.anim_queue.append(current)
+            elif kind == 'faint':
+                unit = next((u for u in self.battle.player+self.battle.enemy
+                             if u.pet.uid == event.get('uid')), None)
+                if unit is not None:
+                    self.anim_queue.append({
+                        'side': event.get('side', unit.side), 'target': '',
+                        'source_uid': unit.pet.uid, 'kind': 'faint',
+                        'amount': 0, 'crit': False, 'age': 0,
+                        'duration': 30, 'damages': []})
             elif kind in ('damage', 'heal'):
                 if current is None:
                     current = {'side': '', 'target': event['side'], 'kind': 'damage',
@@ -546,6 +555,14 @@ class BattleUI:
             return
         clip, age, loop = 'stand', self.anim_idle, True
         side = 'enemy' if enemy else 'player'
+        faint_t = None
+        if self.anim and self.anim['kind'] == 'faint' and self.anim['side'] == side:
+            faint_t = min(1.0, self.anim['age']/max(1.0, self.anim['duration']))
+            if faint_t >= 1:
+                return
+            center = (center[0], center[1]+round(28*faint_t))
+            if self.app.data.pet_clip_duration(unit.pet.species, 'dead') > 0:
+                clip, age, loop = 'dead', self.anim['age'], False
         if self.anim and self.anim['kind'] in ('attack', 'skill') and self.anim['side'] == side and not self.anim.get('idle'):
             clip, age, loop = 'attack', self.anim['age'], False
         elif self.anim and self.anim.get('impact', {}).get('side') == side and self.anim['impact']['type'] == 'damage':
@@ -559,6 +576,8 @@ class BattleUI:
         cached = self._pose_cache.get(pose_key) if not flash else None
         if cached is not None:
             image, origin, points = cached
+            if faint_t is not None:
+                image = self._faint_image(image, faint_t)
             self.pet_bones[side] = {key: (center[0]+p[0], center[1]+p[1]) for key, p in points.items()}
             frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
             self._pose_cache.move_to_end(pose_key)
@@ -581,10 +600,22 @@ class BattleUI:
         self._pose_cache[pose_key] = (image, origin, points)
         if len(self._pose_cache) > 128:
             self._pose_cache.popitem(last=False)
+        if faint_t is not None:
+            image = self._faint_image(image, faint_t)
         if flash:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
             image = Image.blend(image, overlay, min(.55, .55*flash))
         frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
+
+    @staticmethod
+    def _faint_image(image, progress):
+        opacity = max(0.0, 1.0-max(0.0, progress-.5)/.5)
+        if opacity >= .999:
+            return image
+        faded = image.copy()
+        faded.putalpha(faded.getchannel('A').point(
+            lambda value: round(value*opacity)))
+        return faded
 
     def _draw_escape_dust(self, frame):
         """Original particle/escape.plist dust behind a fleeing pet."""
