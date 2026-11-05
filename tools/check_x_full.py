@@ -1562,6 +1562,88 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_postgame_blueprint_reaches_task_124(self):
+        """Postgame 121 -> 122 -> 123 must hand over the boat blueprint."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 121, 3
+                app.state.events['7228005'] = 1
+
+                def play():
+                    for _ in range(12000):
+                        root.update()
+                        time.sleep(.001)
+                        request = app.display_request
+                        if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                         'tapscreen', 'button'):
+                            app.interact()
+                        elif app.pending_wait:
+                            app.pending_wait = None
+                            app.runtime.resume()
+                            app.drive()
+                        elif app.battle:
+                            app.battle.result = 'win'
+                            app.finish_battle()
+                        elif app.ui_open:
+                            app.close_ui('yes')
+                        elif (app.runtime.running and not request and not app.pending_wait
+                              and not app.battle):
+                            app.drive()
+                        elif not app.runtime.running and not request:
+                            return
+
+                app.load_map(602)
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '602012')
+                app.runtime.start('pEvent602012.json', trigger)
+                app.drive()
+                play()
+                self.assertEqual(122, app.state.main_task)
+
+                app.load_map(7202)
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '7202001')
+                app.runtime.start('pEvent7202001.json', trigger)
+                app.drive()
+                play()
+                self.assertEqual(123, app.state.main_task)
+
+                app.x, app.y = 800, 288
+                app.process_player_areas(force=True)
+                play()
+                self.assertEqual(4, app.state.main_state)
+                self.assertEqual([1], app.state.task_counts['main:123'])
+
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '7202003')
+                app.runtime.start('pEvent7202003.json', trigger)
+                app.drive()
+                play()
+                self.assertFalse(app.runtime.running)
+                self.assertEqual(602, app.map_id)
+                self.assertEqual(124, app.state.main_task)
+                self.assertEqual(1, app.state.events.get('7202003', 0))
+                self.assertEqual(1, app.state.events.get('602013', 0))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_final_boss_and_ending_reach_task_121(self):
         """5708001 win -> 7228 -> 7228005 ending must submit 120 and reach 602."""
         import time
