@@ -2355,6 +2355,36 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(155, state.main_task)
         self.assertEqual(3, state.main_state)
 
+    def test_x_missed_elens_exit_recovers_task_155(self):
+        """Sailing past area 130101 must not strand task 155 at state 3."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        from story_handover_recovery import recover_missed_island_departure
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 155, 3
+        state.events['1301002'] = 1
+        state.map_id = 1316
+        plan = recover_missed_island_departure(self.data, state)
+        self.assertIsNotNone(plan)
+        state.events['1501001'] = 1
+        runtime = EventRuntime(self.data, state)
+        runtime.start(plan['event'], next(
+            t for t in runtime.triggers if str(t['id']) == plan['trigger_id']))
+        runtime.index = plan['index']
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume(None)
+        self.assertEqual(156, state.main_task)
+        self.assertEqual(3, state.main_state)
+        self.assertEqual(1, state.events['1501002'])
+        state.main_task, state.main_state = 155, 3
+        state.map_id = 1301
+        self.assertIsNone(recover_missed_island_departure(self.data, state))
+
     def test_x_phantom_island_reaches_task_162(self):
         """155 -> 161 must play the phantom island, captain and forest chain."""
         from event_runtime import EventRuntime

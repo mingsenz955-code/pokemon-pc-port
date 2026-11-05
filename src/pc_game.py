@@ -2724,11 +2724,15 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     and str(state.main_task) in self.data.tables.get('StoryContinuation', {})
                     and not state.pending_runtime):
                 state.main_state = 3
-            from story_handover_recovery import recover_legacy_handover
+            from story_handover_recovery import (recover_legacy_handover,
+                                                   recover_missed_island_departure)
             handover_recovery = recover_legacy_handover(self.data, state)
-            if handover_recovery:
+            island_recovery = recover_missed_island_departure(self.data, state)
+            if handover_recovery or island_recovery:
                 import shutil
-                backup = self.save_path.with_name(self.save_path.stem+'.before-story-0.2.99'+self.save_path.suffix)
+                backup = self.save_path.with_name(
+                    self.save_path.stem + ('.before-story-0.2.99' if handover_recovery
+                                           else '.before-task-155') + self.save_path.suffix)
                 if not backup.exists():
                     shutil.copy2(self.save_path, backup)
             TaskProgress(state).update()
@@ -2741,6 +2745,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     runtime.start(handover_recovery['event'], trigger)
                     runtime.index = handover_recovery['index']
                     runtime.persist()
+            if island_recovery:
+                state.events['1501001'] = 1
+                trigger = next(t for t in runtime.triggers
+                               if str(t['id']) == island_recovery['trigger_id'])
+                runtime.start(island_recovery['event'], trigger)
+                runtime.index = island_recovery['index']
+                runtime.persist()
             self.close_transient_ui()
             self.state, self.runtime = state, runtime
             self.runtime.play_sound = self.audio.effect
