@@ -2184,6 +2184,67 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(146, state.main_task)
         self.assertEqual(3, state.main_state)
 
+    def test_x_island_relics_reach_task_155(self):
+        """The three island guardians and the center shrine must open 155."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        from task_progress import TaskProgress
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 146, 3
+        state.events['1202003'] = 1
+        runtime = EventRuntime(self.data, state)
+
+        def run(event_id, trigger):
+            runtime.start(f'pEvent{event_id}.json', trigger)
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                fight = None
+                if request.kind == 'fight':
+                    fight = int(request.data.get('parameters', {}).get('npcid', 0))
+                runtime.resume('win' if request.kind == 'fight' else None)
+                if fight:
+                    TaskProgress(state).update('fight', 2, 1, fight, -1)
+
+        run(1301001, {'id': 1301001, 'type': 'tomap',
+                      'conditions_add': {'map': 1301},
+                      'conditions_mtask': [146, 3],
+                      'conditions_event': [1202003, 1]})
+        self.assertEqual(147, state.main_task)
+        for event_id, previous, kind, value, task, npc, next_task in (
+                (1305001, 1301001, 'toarea', 130501, 147, 0, 148),
+                (1305002, 1305001, 'talk', 0, 148, 130501, 149),
+                (1306001, 1305002, 'toarea', 130601, 149, 0, 150),
+                (1306002, 1306001, 'talk', 0, 150, 130601, 151),
+                (1307001, 1306002, 'toarea', 130701, 151, 0, 152),
+                (1307002, 1307001, 'talk', 0, 152, 130701, 153),
+                (1308001, 1307002, 'toarea', 130801, 153, 0, 154),
+                (1308002, 1308001, 'talk', 0, 154, 130801, 155)):
+            trigger = {'id': event_id, 'type': kind,
+                       'conditions_mtask': [task, 3],
+                       'conditions_event': [previous, 1]}
+            if kind == 'toarea':
+                trigger['conditions_add'] = {'area': value}
+            else:
+                trigger['conditions_add'] = {'npcid': npc}
+            run(event_id, trigger)
+            if event_id == 1308002:
+                self.assertEqual(154, state.main_task)
+                self.assertEqual(4, state.main_state)
+            else:
+                self.assertEqual(next_task, state.main_task)
+                self.assertEqual(3, state.main_state)
+
+        run(1301002, {'id': 1301002, 'type': 'tomap',
+                      'conditions_add': {'map': 1301},
+                      'conditions_mtask': [154, 4],
+                      'conditions_event': [1308002, 1]})
+        self.assertEqual(155, state.main_task)
+        self.assertEqual(3, state.main_state)
+
     def test_x_ship_launch_reaches_task_136(self):
         """119014 builds the ship and hands task 135 to the license test."""
         from event_runtime import EventRuntime
