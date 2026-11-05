@@ -1251,6 +1251,53 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def advance_main_condition(self, kind, value):
         TaskProgress(self.state).update(kind, int(value))
+        self.repair_ready_map_story()
+
+    def repair_ready_map_story(self):
+        """Start a map-arrival plot missed when the task became ready inside it.
+
+        Native tomap triggers require MainTask state 3. A player can already be
+        standing on that map when the task condition turns ready (state 4), so
+        no second arrival notification exists. Recover the same original trigger
+        once, without inventing dialogue or rewards.
+        """
+        if (getattr(self, 'booting', False) or self.runtime.running or self.ui_open
+                or self.battle or self.display_request or self.pending_wait):
+            return False
+        if int(self.state.main_state) != 4:
+            return False
+        task = self.state.tables['MainTask'].get(str(self.state.main_task))
+        if not task or int(task.get('conditionType', 0)) != 7:
+            return False
+        if self.map_id not in numbers(task.get('conditions', '0')):
+            return False
+        for trigger in self.runtime.triggers:
+            if trigger.get('type') != 'tomap':
+                continue
+            if str(trigger.get('conditions_add', {}).get('map')) != str(self.map_id):
+                continue
+            if (not trigger.get('repeat', 0)
+                    and self.state.events.get(str(trigger['id']), 0)):
+                continue
+            event_pairs = self.runtime.pairs(trigger.get('conditions_event', []))
+            if any(int(self.state.events.get(str(k), 0)) != int(v)
+                   for k, v in event_pairs):
+                continue
+            task_pairs = self.runtime.pairs(trigger.get('conditions_mtask', []))
+            if not any(int(k) == int(self.state.main_task) and int(v) == 3
+                       for k, v in task_pairs):
+                continue
+            try:
+                self.runtime.start(f'pEvent{trigger["id"]}.json', trigger)
+            except (OSError, KeyError, ValueError) as error:
+                self.event_issue = str(error)
+                return False
+            self.state.audit.append({'repair': 'map-arrival-after-task-ready',
+                                     'map': self.map_id, 'task': self.state.main_task,
+                                     'event': trigger['id']})
+            self.drive()
+            return True
+        return False
 
     def guide_toggle(self):
         if (self.battle or self.runtime.running or self.ui_open or self.display_request
@@ -2543,6 +2590,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.npc_motion.restore(state.presentation.get('npc_motion'))
             self.repair_legacy_sprite_collision()
             self.repair_legacy_sunshine_arrival()
+            self.repair_ready_map_story()
             self.repair_legacy_cg_chase()
             self._play_clock = time.monotonic()
             self.drive()
