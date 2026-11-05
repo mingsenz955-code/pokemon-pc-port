@@ -17,7 +17,7 @@
 & .\.venv\Scripts\python.exe -u tools\check_x_full.py -v
 ```
 
-结果：**60 个测试全部通过**。
+结果：**61 个测试全部通过**。
 
 - 数据规模：575 张 `VillageMap`、606 种 `Pet`、296 个 `Item`、162 个 `Skill`、500 条 `NpcFight`、668 条 `VillageEnemy`、2,320 个事件文件。
 - 全部 575 张地图成功解析；29 张使用外置 TSX 图块的地图不再因路径或 gzip 数据失败。
@@ -156,13 +156,15 @@
 
 - 修正 `31 噩梦`：先让清醒目标进入睡眠，睡眠目标才附加噩梦；脱离睡眠后噩梦立即解除，不再对清醒目标每回合扣血扣能量。新增回归测试（57 项）。
 
-- 修复升级结算页“确认”按钮点不到：属性行单独渲染 `PetLevelUpItemUI` 会重置 `CocosUI.buttons`，导致命中框退回到右下角；现在先保存 `PetLevelUpUI` 的 `confirm_Button` 命中框，再绘制属性行。新增/加强回归检查（60 项）。
+- 修复升级结算页“确认”按钮点不到：属性行单独渲染 `PetLevelUpItemUI` 会重置 `CocosUI.buttons`，导致命中框退回到右下角；现在先保存 `PetLevelUpUI` 的 `confirm_Button` 命中框，再绘制属性行。新增/加强回归检查（61 项）。
 - 放生改按原版 `cantFreeLastPet` 规则：至少保留一只存活战斗宠物；试用宠物仍不可放生。新增回归测试。
 
 - 修复升级结算页“确认”按钮点不到：属性行单独渲染 `PetLevelUpItemUI` 会重置 `CocosUI.buttons`，导致命中框退回到右下角；现在先保存 `PetLevelUpUI` 的 `confirm_Button` 命中框，再绘制属性行。回归检查同时断言命中框不再落到右下角。
 
 - 放生按原生 `FreePetEvent` / `Formula_FreePetGoldCount` 发放金币：`300 × Pet.starLevel`，货币为原版 `700001`（金币）。`GameState.release_pet()` 原子移除宠物并按 `cantFreeLastPet` 检查，回归测试同时校验星级金币和最后存活宠物保护。
 
-- 修复地图到达剧情丢失：任务在目标地图内变为“可提交”（state 4）时，原生 `tomap` 触发要求 state 3，导致不再有第二次到达通知。新增 `repair_ready_map_story()`，在启动/条件推进时按原触发条件恢复该张地图的剧情；已用莫利亚山洞5 / 事件 5205001 做回归（60 项）。
+- 修复地图到达剧情丢失：任务在目标地图内变为“可提交”（state 4）时，原生 `tomap` 触发要求 state 3，导致不再有第二次到达通知。新增 `repair_ready_map_story()`，在启动/条件推进时按原触发条件恢复该张地图的剧情；已用莫利亚山洞5 / 事件 5205001 做回归（61 项）。
 
 - 增加“存档重载”回归：把任务 115 / 地图 5205 / 到达计数 1 的卡住状态写入临时存档，重新 `restore()` 后必须自动进入 `pEvent5205001`，而不是只测直接调用修复函数。
+
+- 增加莫利亚山洞5守护者全流程回归：实际走 `request_map('520501')` → `pEvent5205001` → 对话 → `NpcFight 5205011` → 胜利 → 奖励 → `submittask 115`，断言任务 116、事件 5205001 完成、月之水晶 `270080` 到账。

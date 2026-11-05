@@ -1299,6 +1299,77 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_moria_guardian_reaches_next_task(self):
+        """The missed-arrival fix must play the whole 5205001 scene and submit 115."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 115, 3
+                app.state.events['5202001'] = 1
+                app.load_map(5205)
+                app.request_map('520501')
+                battle = None
+                for _ in range(6000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                     'tapscreen', 'button'):
+                        app.interact()
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.battle:
+                        battle = app.battle
+                        break
+                    elif not app.runtime.running and not app.display_request:
+                        break
+                self.assertIsNotNone(battle, app.event_issue)
+                self.assertEqual(115, app.state.main_task)
+                battle.result = 'win'
+                app.finish_battle()
+                for _ in range(6000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                     'tapscreen', 'button'):
+                        app.interact()
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.ui_open:
+                        app.close_ui('yes')
+                    elif (app.runtime.running and not app.battle and not request
+                          and not app.pending_wait):
+                        app.drive()
+                    elif not app.runtime.running and not request:
+                        break
+                self.assertFalse(app.runtime.running)
+                self.assertEqual(116, app.state.main_task)
+                self.assertEqual(1, app.state.events.get('5205001', 0))
+                self.assertEqual(1, app.state.inventory.get('270080', 0))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_missed_map_arrival_survives_restore(self):
         """The same recovery must run when the stuck save is loaded again."""
         with tempfile.TemporaryDirectory() as save:
