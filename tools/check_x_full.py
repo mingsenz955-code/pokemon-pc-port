@@ -1477,6 +1477,22 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_task119_counts_each_kings_shield(self):
+        """Task 119 requires all three authored King's Shield victories."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            from game_state import GameState
+            from task_progress import TaskProgress
+            state = GameState(self.data.tables)
+            state.main_task, state.main_state = 119, 3
+            progress = TaskProgress(state)
+            for npc in (5705011, 5706011):
+                progress.update('fight', 2, 1, npc, -1)
+                self.assertEqual(3, state.main_state)
+            progress.update('fight', 2, 1, 5704011, -1)
+            self.assertEqual(4, state.main_state)
+            self.assertEqual([1, 1, 1], state.task_counts['main:119'])
+
     def test_x_missed_map_arrival_survives_restore(self):
         """The same recovery must run when the stuck save is loaded again."""
         with tempfile.TemporaryDirectory() as save:
