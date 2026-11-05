@@ -1477,6 +1477,76 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_final_kings_shield_reaches_task_120(self):
+        """The third shield's area scene must submit 119 and reach 5708."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 119, 4
+                for key in ('5703001', '5704902', '5705903', '5706903'):
+                    app.state.events[key] = 1
+                app.load_map(5707)
+                app.play_event('pEvent5707001.json')
+                battle = None
+                for _ in range(12000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                     'tapscreen', 'button'):
+                        app.interact()
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.battle:
+                        battle = app.battle
+                        break
+                    elif not app.runtime.running and not request:
+                        break
+                self.assertIsNotNone(battle, app.event_issue)
+                battle.result = 'win'
+                app.finish_battle()
+                for _ in range(15000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                     'tapscreen', 'button'):
+                        app.interact()
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.ui_open:
+                        app.close_ui('yes')
+                    elif (app.runtime.running and not request and not app.pending_wait
+                          and not app.battle):
+                        app.drive()
+                    elif not app.runtime.running and not request:
+                        break
+                self.assertFalse(app.runtime.running)
+                self.assertEqual(5708, app.map_id)
+                self.assertEqual(120, app.state.main_task)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_task119_counts_each_kings_shield(self):
         """Task 119 requires all three authored King's Shield victories."""
         with tempfile.TemporaryDirectory() as save:
