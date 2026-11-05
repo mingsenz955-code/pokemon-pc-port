@@ -884,6 +884,19 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(100, before-attacker.hp)
         self.assertTrue(attacker.has_state('7'))
 
+    def test_x_counter_petrify_respects_immunity(self):
+        """A petrify-immune attacker still takes counter damage but no state."""
+        pet = generate_pet(self.data.tables, random.Random(85), '100160', 60)
+        battle = make_npc_battle(self.data.tables, [pet], '6208041', random.Random(86))
+        attacker, defender = battle.player_active, battle.enemy_active
+        attacker.hp, defender.hp = attacker.max_hp, defender.max_hp
+        attacker.talent_immune.add('7')
+        defender.add_buff('29', Buff('29', 2, '28,1', 2, name='石化反击'))
+        before = attacker.hp
+        defender.take_damage(80, source=attacker)
+        self.assertEqual(80, before-attacker.hp)
+        self.assertFalse(attacker.has_state('7'))
+
     def test_x_mimic_copies_last_enemy_skill(self):
         """Skill 300053 (state 18) copies the opponent's last used skill."""
         pet = generate_pet(self.data.tables, random.Random(81), '100160', 60)

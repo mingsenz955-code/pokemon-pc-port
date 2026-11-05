@@ -360,7 +360,9 @@ class BattlePet:
             self._countering = True
             try:
                 source.take_damage(amount, source=None)
-                if source.alive:
+                if (source.alive and '7' not in source.talent_immune
+                        and not source.immune_all_debuffs
+                        and source.all_debuff_resist < 100):
                     source.add_buff('7', Buff('7', 2, '0', 2, name='石化'))
             finally:
                 self._countering = False
