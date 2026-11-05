@@ -2432,6 +2432,103 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(171, state.main_task)
         self.assertEqual(3, state.main_state)
 
+    def test_x_morphis_island_reaches_task_182(self):
+        """171 -> 181 must play Morphis, the highland gate and the license."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        from task_progress import TaskProgress
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 171, 3
+        state.events['1404002'] = 1
+        runtime = EventRuntime(self.data, state)
+
+        def play(event_id, trigger, update=None):
+            runtime.start(f'pEvent{event_id}.json', trigger)
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                runtime.resume('win' if request.kind == 'fight' else None)
+            if update:
+                TaskProgress(state).update(*update)
+
+        play(1501006, {'id': 1501006, 'type': 'toarea',
+                       'conditions_add': {'area': 150101},
+                       'conditions_mtask': [171, 3],
+                       'conditions_event': [1404002, 1]},
+             ('area', 150101))
+        self.assertEqual(172, state.main_task)
+        play(1501007, {'id': 1501007, 'type': 'toarea',
+                       'conditions_add': {'area': 685501},
+                       'conditions_mtask': [172, 3],
+                       'conditions_event': [1501006, 1]},
+             ('area', 685501))
+        self.assertEqual(173, state.main_task)
+        play(1501008, {'id': 1501008, 'type': 'tomap',
+                       'conditions_add': {'map': 1501},
+                       'conditions_mtask': [173, 3],
+                       'conditions_event': [1501007, 1]},
+             ('map', 1501))
+        self.assertEqual(174, state.main_task)
+        play(1501009, {'id': 1501009, 'type': 'talk',
+                       'conditions_add': {'npcid': 150134},
+                       'conditions_mtask': [174, 4],
+                       'conditions_event': [1501008, 1]})
+        self.assertEqual(175, state.main_task)
+        play(1502001, {'id': 1502001, 'type': 'toarea',
+                       'conditions_add': {'area': 150201},
+                       'conditions_mtask': [175, 3],
+                       'conditions_event': [1501009, 1]},
+             ('area', 150201))
+        self.assertEqual(176, state.main_task)
+        play(1502002, {'id': 1502002, 'type': 'talk',
+                       'conditions_add': {'npcid': 150201},
+                       'conditions_mtask': [176, 4],
+                       'conditions_event': [1502001, 1]})
+        self.assertEqual(177, state.main_task)
+        play(9012001, {'id': 9012001, 'type': 'toarea',
+                       'conditions_add': {'area': 901201},
+                       'conditions_mtask': [177, 3],
+                       'conditions_event': [1502002, 1]},
+             ('area', 901201))
+        self.assertEqual(178, state.main_task)
+        play(1501010, {'id': 1501010, 'type': 'toarea',
+                       'conditions_add': {'area': 150102},
+                       'conditions_mtask': [178, 3],
+                       'conditions_event': [9012001, 1]},
+             ('area', 150102))
+        self.assertEqual(179, state.main_task)
+        play(1501011, {'id': 1501011, 'type': 'toarea',
+                       'conditions_add': {'area': 150103},
+                       'conditions_mtask': [179, 3],
+                       'conditions_event': [1501010, 1]},
+             ('area', 150103))
+        play(2201001, {'id': 2201001, 'type': 'tomap',
+                       'conditions_add': {'map': 1601},
+                       'conditions_mtask': [179, 4],
+                       'conditions_event': [1501011, 1]},
+             ('map', 1601))
+        self.assertEqual(180, state.main_task)
+        play(9105001, {'id': 9105001, 'type': 'toarea',
+                       'conditions_add': {'area': 910501},
+                       'conditions_mtask': [180, 3],
+                       'conditions_event': [2201001, 1]},
+             ('area', 910501))
+        play(9107001, {'id': 9107001, 'type': 'tomap',
+                       'conditions_add': {'map': 9107},
+                       'conditions_mtask': [180, 4],
+                       'conditions_event': [9105001, 1]},
+             ('map', 9107))
+        self.assertEqual(181, state.main_task)
+        play(9107006, {'id': 9107006, 'type': 'talk',
+                       'conditions_add': {'npcid': 910702},
+                       'conditions_mtask': [181, 4],
+                       'conditions_event': [9107001, 1]})
+        self.assertEqual(182, state.main_task)
+        self.assertEqual(3, state.main_state)
+
     def test_x_ship_launch_reaches_task_136(self):
         """119014 builds the ship and hands task 135 to the license test."""
         from event_runtime import EventRuntime
