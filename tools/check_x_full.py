@@ -1841,6 +1841,96 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_metal_errand_starts_task_131(self):
+        """503004 hands the blueprint to Paul and starts the metal errand."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 130, 3
+        state.inventory['270084'] = 1
+        trigger = {'id': 503004, 'type': 'talk',
+                   'conditions_add': {'npcid': 50314},
+                   'conditions_mtask': [130, 4],
+                   'conditions_event': [305006, 1]}
+        runtime = EventRuntime(self.data, state)
+        runtime.start('pEvent503004.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume(True if request.kind == 'accepttask' else
+                           ([] if request.kind == 'costtaskitem' else None))
+        self.assertEqual(131, state.main_task)
+        self.assertEqual(3, state.main_state)
+        self.assertEqual(1, state.events.get('503004', 0))
+        self.assertEqual(0, state.inventory.get('270084', 0))
+
+    def test_x_metal_capture_consumes_five_guardians(self):
+        """Five 100093 are consumed by 503005 before the cave trip."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        from pet_factory import generate_pet
+        from task_progress import TaskProgress
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 131, 3
+        state.events['503004'] = 1
+        uids = []
+        for _ in range(5):
+            pet = generate_pet(self.data.tables, state.rng, '100093', 20)
+            state.receive_pet(pet)
+            uids.append(pet.uid)
+        TaskProgress(state).update('catch', '100093')
+        self.assertEqual(4, state.main_state)
+        trigger = {'id': 503005, 'type': 'talk',
+                   'conditions_add': {'npcid': 50314},
+                   'conditions_mtask': [131, 3, 131, 4],
+                   'conditions_event': [503004, 1]}
+        runtime = EventRuntime(self.data, state)
+        runtime.start('pEvent503005.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume(True if request.kind == 'accepttask' else
+                           (uids if request.kind == 'costtaskitem' else None))
+        self.assertEqual(131, state.main_task)
+        self.assertEqual(4, state.main_state)
+        self.assertEqual(1, state.events.get('503005', 0))
+        self.assertEqual([], [p.uid for p in state.pets if p.species == '100093'])
+        self.assertEqual(1, len(state.pets))
+
+    def test_x_metal_collection_finishes_task_132(self):
+        """100 type-2 rocks -> 503006 hands over 100 metal and starts 133."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 132, 4
+        state.task_counts['main:132'] = [100]
+        state.events['5301002'] = 1
+        trigger = {'id': 503006, 'type': 'tomap',
+                   'conditions_add': {'map': 503},
+                   'conditions_mtask': [132, 4],
+                   'conditions_event': [5301002, 1]}
+        runtime = EventRuntime(self.data, state)
+        runtime.start('pEvent503006.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume(True if request.kind == 'accepttask' else
+                           ([] if request.kind == 'costtaskitem' else None))
+        self.assertEqual(133, state.main_task)
+        # 133 is a talk-to-Mary condition; TaskProgress enters 4 immediately.
+        self.assertEqual(4, state.main_state)
+        self.assertEqual(1, state.events.get('503006', 0))
+        self.assertEqual(100, state.inventory.get('270087', 0))
+
     def test_x_wood_collection_finishes_task_129(self):
         """300 cut trees -> 305006 hands over 300 wood and starts task 130."""
         import time
