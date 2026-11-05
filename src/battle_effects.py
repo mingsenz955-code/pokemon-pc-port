@@ -46,6 +46,33 @@ class BattleEffects:
                 'scale_with_pet': int(row.get('effectScale', 0)) != 0,
                 'hide_ui': int(row.get('hideUI', 0)) != 0, 'sound': row.get('sound', '')}
 
+    def plan_effect(self, effect_id, self_target=True):
+        """Build a plan for a PetItem SkillEffect row (outside the Skill table)."""
+        row = self.data.tables.get('SkillEffect', {}).get(str(effect_id), {})
+        effect_type = int(row.get('effectType', -1) or -1)
+        if not row or effect_type not in range(6):
+            return None
+        path = row.get('path1')
+        _, source = self.data.armature_source(path)
+        if not source:
+            return None
+        moves = (source.get('animation_data') or [{}])[0].get('mov_data', [])
+        move = next((m for m in moves if m.get('name') == 'Animation1'), None)
+        if not move:
+            return None
+        events = sorted({(int(f.get('fi', 0)), f['evt'])
+                         for b in move.get('mov_bone_data', []) for f in b.get('frame_data', [])
+                         if f.get('evt')})
+        duration = max(1, int(move.get('dr', 1)))*25/60
+        hits = tuple(frame*25/60 for frame, name in events if name in ('attack', 'add'))
+        return {'path': path, 'duration': duration, 'hit': hits[0] if hits else None,
+                'hits': hits, 'type': effect_type, 'skill_id': str(effect_id),
+                'rear_path': row.get('path2') if effect_type == 1 else None,
+                'events': tuple((frame*25/60, name) for frame, name in events),
+                'bone': 'p_center', 'self_target': bool(self_target),
+                'scale_with_pet': int(row.get('effectScale', 0)) != 0,
+                'hide_ui': int(row.get('hideUI', 0)) != 0, 'sound': row.get('sound', '')}
+
     def draw(self, frame, ui, rear=False):
         action = ui.anim
         if not action or not action.get('effect'):

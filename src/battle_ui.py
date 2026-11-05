@@ -224,6 +224,16 @@ class BattleUI:
                 sound = str(effect.get('soundId', '0'))
                 if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
                     self.effect_audio.play(sound)
+                plan = self.effects.plan_effect(str(effect.get('effectId', '0')))
+                if plan:
+                    current = {'side': event.get('side', 'player'),
+                               'target': event.get('side', 'player'), 'kind': 'item',
+                               'source_uid': self.battle.player_active.pet.uid,
+                               'amount': 0, 'crit': False, 'age': 0,
+                               'duration': plan['duration'],
+                               'hit_at': plan['hit'] if plan['hit'] is not None else plan['duration'],
+                               'damages': [], 'effect': plan, 'shake': 0}
+                    self.anim_queue.append(current)
             elif kind in ('damage', 'heal'):
                 if current is None:
                     current = {'side': '', 'target': event['side'], 'kind': 'damage',

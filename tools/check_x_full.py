@@ -870,6 +870,18 @@ class XFullChecks(unittest.TestCase):
 
 
 
+
+    def test_x_pet_item_effect_uses_original_armature(self):
+        """PetItem.effectId resolves to its original SkillEffect armature."""
+        from battle_effects import BattleEffects
+        effects = BattleEffects(self.data)
+        plan = effects.plan_effect('3051')
+        self.assertIsNotNone(plan)
+        self.assertEqual('zhiyushui', plan['path'])
+        self.assertTrue(plan['self_target'])
+        self.assertGreater(plan['duration'], 0)
+        self.assertEqual('3051', plan['skill_id'])
+
     def test_x_ground_wrath_shakes_battlefield(self):
         """Skill.shake=1 is the authored Ground Wrath battlefield shake."""
         from battle_ui import BattleUI
