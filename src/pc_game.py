@@ -1942,16 +1942,22 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             if self.runtime.pending and self.runtime.pending.kind == 'screenmove':
                 self.runtime.resume()
 
-    def air_talk_line(self, request):
-        """Text.json keys ambient lines as talk<map actor id>."""
+    def air_talk_lines(self, request):
+        """Text.json keys ambient lines as talk<map actor id>; index must line up."""
         parameters = request.data.get('parameters', {})
         rows = parameters if isinstance(parameters, list) else [parameters]
         texts = self.data.localized_text()
+        found = {}
         for row in rows:
             line = texts.get('talk'+str(row.get('spriteid')))
             if line:
-                return line
-        return None
+                found[int(row.get('index', 0))] = line
+        if not found:
+            return []
+        return [found.get(index, '') for index in range(max(found)+1)]
+
+    def air_talk_line(self, request):
+        return '\n'.join(line for line in self.air_talk_lines(request) if line)
 
     def drive(self):
         face_until = getattr(self, 'story_face_until', 0)
@@ -2016,6 +2022,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                         # Original ambient talk reads Text."talk"+spriteId (e.g.
                         # gym knight 650104 -> "忠诚……").  Party-only airtalk
                         # rows have no such Text entry and stay silent.
+                        request.data['texts'] = self.air_talk_lines(request)
                         self.dialogue = self.air_talk_line(request)
                         # showAirTalk @ 0x39f39c schedules a two-second DelayTime.
                         self.air_talk_until = time.monotonic()+2
@@ -2369,7 +2376,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             kind, identifier = int(row.get('spritetype', 2)), str(row.get('spriteid', 0))
             point = (self.x, self.y) if kind == 1 else actors.get(('temp:' if kind == 7 else '')+identifier)
             index = int(row.get('index', 0))
-            if point is None or not 0 <= index < len(texts):
+            if point is None or not 0 <= index < len(texts) or not texts[index].strip():
                 continue
             x, y = point[0]*self.SCALE-camera_x, point[1]*self.SCALE-camera_y
             if index not in bubbles:

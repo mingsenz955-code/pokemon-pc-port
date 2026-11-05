@@ -943,6 +943,35 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(enemy.hp, hp)
         self.assertEqual(enemy.energy, energy)
 
+    def test_x_ambient_air_talk_reaches_its_bubble(self):
+        """The authored talk<id> line must become bubble text, not stay unused."""
+        from event_runtime import Request
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                authored = Request('airtalk', 'x', 0,
+                                   {'parameters': [{'spriteid': 650104, 'index': 0}]})
+                self.assertEqual(['忠诚……'], app.air_talk_lines(authored))
+                silent = Request('airtalk', 'x', 0,
+                                 {'parameters': [{'spriteid': 590902, 'index': 0}]})
+                self.assertEqual([], app.air_talk_lines(silent))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_gathering_raises_battle_experience(self):
         """Skill 300010 state 8 doubles experience for the rest of the battle."""
         pet = generate_pet(self.data.tables, random.Random(89), '100160', 60)
