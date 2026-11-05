@@ -1547,6 +1547,68 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_final_boss_and_ending_reach_task_121(self):
+        """5708001 win -> 7228 -> 7228005 ending must submit 120 and reach 602."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 120, 3
+                app.state.events['5707001'] = 1
+                # The room flashback is an earlier visit on the normal route.
+                app.state.events['7228001'] = 1
+                app.load_map(5708)
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '5708001')
+                app.runtime.start('pEvent5708001.json', trigger)
+                app.drive()
+                battle = None
+                for _ in range(25000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                     'tapscreen', 'button'):
+                        app.interact()
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.battle and battle is None:
+                        battle = app.battle
+                        battle.result = 'win'
+                        app.finish_battle()
+                    elif app.ui_open:
+                        app.close_ui('yes')
+                    elif (app.runtime.running and not request and not app.pending_wait
+                          and not app.battle):
+                        app.drive()
+                    elif not app.runtime.running and not request:
+                        break
+                self.assertIsNotNone(battle, app.event_issue)
+                self.assertFalse(app.runtime.running)
+                self.assertEqual(602, app.map_id)
+                self.assertEqual(121, app.state.main_task)
+                self.assertEqual(1, app.state.events.get('5708001', 0))
+                self.assertEqual(1, app.state.events.get('7228005', 0))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_task119_counts_each_kings_shield(self):
         """Task 119 requires all three authored King's Shield victories."""
         with tempfile.TemporaryDirectory() as save:
