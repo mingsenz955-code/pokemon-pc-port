@@ -836,6 +836,9 @@ class BattleUI:
                   'levelTo_BitmapFontLabel': str(entry['to_level'])},
             visible=hidden,
             timeline_frame=int(min(489, self.levelup_age)))
+        # The stat rows below are separate CocosUI renders and reset the shared
+        # controls map, so capture the level-up panel's confirm button first.
+        controls = dict(self.app.cocos_ui.buttons)
         frame.alpha_composite(layer)
         unit = next((u for u in self.battle.player if u.name == name), None)
         if unit is not None:
@@ -860,7 +863,7 @@ class BattleUI:
                         item, (round(list_rect[0]),
                                round(list_rect[1]+index*34)))
         self.hits['result_continue'] = tuple(
-            self.app.cocos_ui.buttons.get('confirm_Button', (W-170, H-80, W, H)))
+            controls.get('confirm_Button', (W-170, H-80, W, H)))
 
     def _result_lines(self):
         lines = []

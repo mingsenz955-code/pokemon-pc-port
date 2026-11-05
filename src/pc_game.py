@@ -2957,8 +2957,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             else:
                 self.pets_ui()
         def confirm():
-            if pet is self.state.pets[self.state.active_pet]:
-                info.set('出战中宠物不能放生，请先更换出战宠物。')
+            allowed, reason = self.state.can_free_pet(pet.uid)
+            if not allowed:
+                info.set(self.data.localized_text().get(
+                    reason, '不能放生，至少携带一只存活的战斗宠物！'))
                 return
             index = self.state.pets.index(pet)
             self.state.pets.remove(pet)

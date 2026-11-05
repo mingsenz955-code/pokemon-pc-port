@@ -248,6 +248,17 @@ class GameState:
         if ride_id and str(ride_id) in self.tables.get('Ride', {}) and ride_id not in self.rides:
             self.rides.append(ride_id)
 
+    def can_free_pet(self, uid):
+        """Original FreePetEvent guard: leave at least one living battle pet."""
+        pet = next((p for p in self.pets if p.uid == str(uid)), None)
+        if pet is None:
+            return False, ''
+        if pet.trial_id:
+            return False, 'trialPetTips3'
+        if pet.hp > 0 and sum(1 for p in self.pets if p.hp > 0) <= 1:
+            return False, 'cantFreeLastPet'
+        return True, ''
+
     def main_matches(self, task_id, state):
         """TaskManager::compareMainTaskId: past=5, future=2; current exact."""
         task_id, state = int(task_id), int(state)

@@ -854,6 +854,10 @@ class XFullChecks(unittest.TestCase):
                 ui.advance(seconds=.1)
                 ui.render()
                 rect = ui.hits['result_continue']
+                # Must be the authored PetLevelUpUI confirm button, not the
+                # bottom-right fallback left behind by the stat-row renders.
+                self.assertLess(rect[2], 900)
+                self.assertLess(rect[3], 560)
                 ui.click((rect[0]+rect[2])//2, (rect[1]+rect[3])//2)
                 self.assertFalse(ui._levelup_active())
             finally:
@@ -883,6 +887,20 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(100, defender.take_damage(100, source=attacker))
         self.assertEqual(100, before-attacker.hp)
         self.assertTrue(attacker.has_state('7'))
+
+    def test_x_free_pet_keeps_one_living_pet(self):
+        """cantFreeLastPet guards the last living pet, not only the active one."""
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        first, second = state.pets[0], state.pets[1]
+        self.assertTrue(state.can_free_pet(first.uid)[0])
+        second.hp = 0
+        allowed, reason = state.can_free_pet(first.uid)
+        self.assertFalse(allowed)
+        self.assertEqual('cantFreeLastPet', reason)
+        self.assertTrue(state.can_free_pet(second.uid)[0])
 
     def test_x_variant_pet_unlocks_authored_ride(self):
         """Every Pet row with a rideId must unlock its authored mount."""
