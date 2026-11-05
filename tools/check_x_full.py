@@ -895,6 +895,31 @@ class XFullChecks(unittest.TestCase):
         self.assertIn(500001, self.state.rides)
         self.assertIn(500007, self.state.rides)
 
+    def test_x_nightmare_sleeps_awake_target_and_drains_sleeper(self):
+        """State 31 torments sleepers and puts awake targets to sleep."""
+        pet = generate_pet(self.data.tables, random.Random(61), '100160', 80)
+        battle = make_wild_battle(self.data.tables, [pet],
+                                  next(iter(self.data.tables['VillageEnemy'])),
+                                  random.Random(62))
+        player, enemy = battle.player[0], battle.enemy[0]
+        state = self.data.tables['SkillState']['31']
+        enemy.hp, enemy.energy = enemy.max_hp, enemy.max_energy
+        battle._apply_state(player, enemy, '31', state)
+        self.assertTrue(enemy.has('sleep'))
+        self.assertFalse(enemy.has('nightmare'))
+        battle._apply_state(player, enemy, '31', state)
+        self.assertTrue(enemy.has('nightmare'))
+        hp, energy = enemy.hp, enemy.energy
+        battle._end_round()
+        self.assertLess(enemy.hp, hp)
+        self.assertLess(enemy.energy, energy)
+        enemy.buffs = [buff for buff in enemy.buffs if buff.key != '5']
+        hp, energy = enemy.hp, enemy.energy
+        battle._end_round()
+        self.assertFalse(enemy.has('nightmare'))
+        self.assertEqual(enemy.hp, hp)
+        self.assertEqual(enemy.energy, energy)
+
     def test_x_fang_and_equalize_use_original_current_hp(self):
         """愤怒门牙 cuts 25% current HP; 平等 copies the caster's HP."""
         pet = generate_pet(self.data.tables, random.Random(87), '100160', 60)

@@ -1179,6 +1179,27 @@ class Battle:
         elif kind == 'dispel':
             receiver.remove_buffs(beneficial=True)
             self.messages.append(f'{receiver.name} 的有益状态被驱散了！')
+        elif kind == 'nightmare':
+            # 噩梦 only torments a sleeping target.  A target that is still
+            # awake is put to sleep instead, matching the authored description
+            # ("让睡眠的对手看到噩梦 ... 没有睡眠的对手一定几率睡眠").
+            if receiver.has('sleep'):
+                receiver.add_buff(key, Buff(key, rounds, state['parameter'],
+                                            int(state['buffType']), unit.pet.uid, name))
+                self.messages.append(f'{receiver.name} 陷入了噩梦！')
+                self.events.append({'type': 'buff', 'side': receiver.side, 'name': name,
+                                    'rounds': rounds, 'key': key})
+            else:
+                sleep_row = self.tables.get('SkillState', {}).get('5')
+                if sleep_row and not self._immune(receiver, '5'):
+                    sleep_rounds = max(1, int(sleep_row['round']))
+                    receiver.add_buff('5', Buff('5', sleep_rounds, sleep_row['parameter'],
+                                                int(sleep_row['buffType']), unit.pet.uid, '睡眠'))
+                    self.messages.append(f'{receiver.name} 陷入了睡眠！')
+                    self.events.append({'type': 'buff', 'side': receiver.side, 'name': '睡眠',
+                                        'rounds': sleep_rounds, 'key': '5'})
+                else:
+                    self.messages.append(f'{receiver.name} 没有陷入睡眠。')
         else:
             receiver.add_buff(key, Buff(key, rounds, state['parameter'],
                                         int(state['buffType']), unit.pet.uid, name))
@@ -1258,6 +1279,10 @@ class Battle:
                                         'uid': unit.pet.uid, 'amount': healed, 'hp': unit.hp,
                                         'max_hp': unit.max_hp})
                 elif kind == 'nightmare':
+                    if not unit.has('sleep'):
+                        unit.buffs.remove(buff)
+                        self.messages.append(f'{unit.name} 从噩梦中醒来了！')
+                        continue
                     amount = max(1, unit.max_hp*15//100)
                     taken = unit.take_damage(amount)
                     unit.energy = max(0, unit.energy-unit.max_energy*15//100)
