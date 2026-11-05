@@ -66,8 +66,25 @@ class Mailbox:
         if self.expired(mail):raise ValueError('邮件附件已过期。')
         gold=mail.get('set_gold')
         if not mail['rewards'] and gold is None:raise ValueError('这封邮件没有附件。')
+        configs=list(mail.get('pet_configs') or [])
+        pet_total=sum(r['count'] for r in mail['rewards'] if r['item'] in self.state.tables.get('Pet',{}))
+        if configs and len(configs)!=pet_total:raise ValueError('宠物附件配置数量不一致。')
         with self.state.transaction():
-            self.state.grant_many([r['item'] for r in mail['rewards']],[r['count'] for r in mail['rewards']])
+            if configs:
+                from game_state import Pet
+                index=0
+                for reward in mail['rewards']:
+                    if reward['item'] in self.state.tables.get('Pet',{}):
+                        for _ in range(reward['count']):
+                            config=dict(configs[index]);index+=1
+                            if str(config.get('species'))!=str(reward['item']):
+                                raise ValueError('宠物附件配置与种类不一致。')
+                            config['uid']=uuid.uuid4().hex
+                            self.state.receive_pet(Pet(**config))
+                    else:
+                        self.state.grant(reward['item'],reward['count'])
+            else:
+                self.state.grant_many([r['item'] for r in mail['rewards']],[r['count'] for r in mail['rewards']])
             if gold is not None:self.state.inventory[GOLD_ID]=gold
             self.read(kid);self.data['claimed'].append(kid)
         return [(r['item'],r['count']) for r in mail['rewards']]

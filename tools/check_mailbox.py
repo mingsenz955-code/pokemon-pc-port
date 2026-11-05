@@ -19,6 +19,20 @@ class MailChecks(unittest.TestCase):
   b.merge({'format':1,'messages':[]});self.assertEqual(len(b.messages()),1)
   a.save();loaded=GameState.load(a.data.tables,a.save_path)
   with self.assertRaises(ValueError):Mailbox(loaded).claim('test-1')
+ def test_exact_pet_config_mail_delivers_a_copy_once(self):
+  from dataclasses import asdict
+  a=self.app;b=Mailbox(a.state);source=a.state.pets[0]
+  config=asdict(source);config.pop('uid');config['level']=200;config['shiny']=True
+  mail={'id':'pet-copy','title':'宠物复制','body':'测试','to':'all',
+        'rewards':[{'item':source.species,'count':1}],'pet_configs':[config]}
+  b.data['messages'].insert(0,mail);before={p.uid for p in a.state.pets+a.state.bank}
+  b.claim('pet-copy');fresh=[p for p in a.state.pets+a.state.bank if p.uid not in before]
+  self.assertEqual(1,len(fresh));new=fresh[0]
+  self.assertNotEqual(source.uid,new.uid)
+  self.assertEqual((source.species,200,config['variation'],config['growth']),
+                   (new.species,new.level,new.variation,new.growth))
+  self.assertTrue(new.shiny)
+  with self.assertRaises(ValueError):b.claim('pet-copy')
  def test_expiry_invalid_feed_and_transaction_failure_do_not_grant(self):
   a=self.app;b=Mailbox(a.state);feed=self.feed();feed['messages'][0]['expires_at']='2000-01-01T00:00:00Z';b.merge(feed)
   before=a.state.payload()
