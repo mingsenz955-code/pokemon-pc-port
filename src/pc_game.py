@@ -51,6 +51,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         # LogoLayer::init -> showLogo -> showSPLogo -> SP/CP/CR actions,
         # and finally OpeningScene.  Keep every original stage.
         self.loading = None
+        self.loading_pet = None
         self.splash = None
         self._splash_cache = {}
         self.state = GameState(data.tables)
@@ -148,6 +149,13 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     if key.startswith('loadingTips')]
             self.loading = (time.monotonic(), 60,
                             random.choice(tips) if tips else '')
+            loaders = [value for key, value in self.data.localized_text().items()
+                       if key.startswith('loadingPet') and value in {
+                           row.get('filePath') for row in self.data.tables['Pet'].values()}]
+            loader = random.choice(loaders) if loaders else ''
+            self.loading_pet = next(
+                (key for key, row in self.data.tables['Pet'].items()
+                 if row.get('filePath') == loader), None)
             return
         self.enter_game()
 
@@ -165,6 +173,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.opening = None
         self.splash = None
         self.loading = None
+        self.loading_pet = None
         self.audio.music(None)
         if self.save_path.exists() and self.restore():
             return
@@ -2474,6 +2483,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             text={'Layer/bg_Panel/tips_Text': tip},
             timeline_frame=frame_index)
         frame = Image.new('RGBA', layer.size, 'black')
+        species = getattr(self, 'loading_pet', None)
+        if species:
+            # LoadingGameUI.csb has petPos_Node at (400,214) in the
+            # 800x480 design; LoadingScene loads loadingPet1..4 there.
+            art = self.data.pet_frame(species, 'stand', frame_index, True,
+                                      limit=150)
+            if art is not None:
+                x = round(self.WIDTH/2-art.width/2)
+                y = round(self.HEIGHT*214/480-art.height)
+                frame.alpha_composite(art, (x, y))
         frame.alpha_composite(layer)
         return frame
 
