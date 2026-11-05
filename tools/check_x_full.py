@@ -2407,6 +2407,41 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_opening_shows_the_original_logo_layers(self):
+        """LogoLayer's SP/CP/CR images must precede OpeningUI."""
+        import time as clock
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data, show_opening=True)
+                self.assertIsNotNone(app.splash)
+                stages = app.splash[0]
+                self.assertEqual(
+                    ['Logo/splogo.png', 'Logo/logo.png', 'Logo/copyrightLogo.png'],
+                    [path for path, _ in stages])
+                frame = app.make_frame()
+                self.assertEqual((960, 576), frame.size)
+                self.assertGreater(frame.getbbox()[2], 0)
+                for _ in stages:
+                    app.splash = (app.splash[0], app.splash[1],
+                                  clock.monotonic()-10)
+                    app.opening_input()
+                self.assertIsNone(app.splash)
+                self.assertIsNotNone(app.opening)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_opening_respects_saved_audio_switches(self):
         with tempfile.TemporaryDirectory() as save:
             os.environ['POCKET_NATIVE_SAVE_DIR'] = save

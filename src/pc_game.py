@@ -46,6 +46,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     DYNAMIC_SCENERY = True
     def __init__(self, root, data, *, show_opening=False):
         self.opening = None
+        # LogoLayer::init -> showLogo -> showSPLogo -> SP/CP/CR logo actions
+        # all run before OpeningScene.  Keep the original three PNGs.
+        self.splash = None
+        self._splash_cache = {}
         self.state = GameState(data.tables)
         self.cocos_ui = CocosUI(data)
         self.runtime = EventRuntime(data, self.state)
@@ -133,6 +137,10 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.audio.music('BGM_101.mp3')
             clips = self.cocos_ui.layout('OpeningUI')['action']['clips']
             self.opening = (tuple(clips[f'animation{i}'] for i in range(7)), 0, time.monotonic())
+            self.splash = (
+                (('Logo/splogo.png', 90),
+                 ('Logo/logo.png', 90),
+                 ('Logo/copyrightLogo.png', 120)), 0, time.monotonic())
             return
         self.enter_game()
 
@@ -148,6 +156,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
 
     def enter_game(self):
         self.opening = None
+        self.splash = None
         self.audio.music(None)
         if self.save_path.exists() and self.restore():
             return
@@ -157,8 +166,24 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.drive()
 
     def opening_input(self, *, skip=False):
-        clips, index, started = self.opening
         now = time.monotonic()
+        if self.splash is not None:
+            stages, index, started = self.splash
+            if skip:
+                self.enter_game()
+                return
+            duration = stages[index][1]
+            if (now-started)*60 < duration:
+                return
+            if index+1 < len(stages):
+                self.splash = (stages, index+1, now)
+            else:
+                self.splash = None
+                # Start OpeningUI from animation0, not from the wall clock
+                # time captured before the logo splash.
+                self.opening = (self.opening[0], 0, now)
+            return
+        clips, index, started = self.opening
         begin, end = clips[index]
         if skip or index >= len(clips)-2 and (now-started)*60 >= end-begin:
             self.enter_game()
@@ -1231,7 +1256,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         self.drive()
 
     def key_down(self, event):
-        if getattr(self, 'opening', None):
+        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
             key = event.keysym.lower()
             if key in ('escape', 'return', 'space'):
                 self.opening_input(skip=key == 'escape')
@@ -1601,7 +1626,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             raise PendingMechanic(f'原画面指令 {kind} 未实现')
 
     def on_click(self, event):
-        if getattr(self, 'opening', None):
+        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
             bounds = getattr(self, '_opening_skip', None)
             skip = bool(bounds and bounds[0] <= event.x < bounds[2] and bounds[1] <= event.y < bounds[3])
             self.opening_input(skip=skip)
@@ -2190,7 +2215,11 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
     def tick(self):
         self._frame_started = time.perf_counter()
         now = time.monotonic()
-        if getattr(self, 'opening', None):
+        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
+            # OpeningScene::actionOver advances the authored timeline by
+            # itself; do not wait for the player to click every animation.
+            self.opening_input()
+        if getattr(self, 'opening', None) or getattr(self, 'splash', None):
             self._play_clock = now
             self.last_time = now
             self.frame = self.make_frame()
@@ -2414,7 +2443,41 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             art = Image.blend(art, Image.new('RGBA', art.size), max(0, (age-2)*2))
         frame.alpha_composite(art, ((self.WIDTH-art.width)//2, round(24*self.HEIGHT/480-art.height/2)))
 
+    def _splash_frame(self):
+        """LogoLayer's SP/CP/CR images on the same black stage."""
+        stages, index, started = self.splash
+        path, duration = stages[index]
+        t = max(0.0, min(1.0, (time.monotonic()-started)*60/duration))
+        image = self._splash_cache.get(path)
+        if image is None:
+            image = self.data.image(path)
+            self._splash_cache[path] = image
+        image = image.copy()
+        limit = (round(self.WIDTH*.66), round(self.HEIGHT*.66))
+        image.thumbnail(limit, Image.Resampling.LANCZOS)
+        scale = .94+.06*min(1.0, t/.25)
+        image = image.resize((max(1, round(image.width*scale)),
+                              max(1, round(image.height*scale))),
+                             Image.Resampling.LANCZOS)
+        fade_in = min(1.0, t/.16)
+        fade_out = min(1.0, (1.0-t)/.16) if t > .84 else 1.0
+        opacity = max(0.0, min(fade_in, fade_out))
+        if opacity < .999:
+            faded = image.copy()
+            faded.putalpha(faded.getchannel('A').point(
+                lambda value: round(value*opacity)))
+            image = faded
+        # copyrightLogo.png is authored as black art, so its stage is white;
+        # the SP/CP publisher logos are light art on a black stage.
+        background = (255, 255, 255, 255) if 'copyrightLogo' in path else (0, 0, 0, 255)
+        frame = Image.new('RGBA', (self.WIDTH, self.HEIGHT), background)
+        frame.alpha_composite(image, (round((self.WIDTH-image.width)/2),
+                                      round((self.HEIGHT-image.height)/2)))
+        return frame
+
     def make_frame(self):
+        if getattr(self, 'splash', None):
+            return self._splash_frame()
         if getattr(self, 'opening', None):
             clips, index, started = self.opening
             begin, end = clips[index]
