@@ -1142,6 +1142,15 @@ class Battle:
                 self.messages.append(f'{receiver.name} 回复了全部生命！')
                 self.events.append({'type': 'heal', 'side': receiver.side, 'amount': healed,
                                     'uid': receiver.pet.uid, 'hp': receiver.hp, 'max_hp': receiver.max_hp})
+        elif kind == 'exp_up':
+            # 积蓄 (300010) raises battle experience by the authored percent.
+            pct = values[1] if len(values) > 1 else 100
+            receiver.exp_multiplier = max(receiver.exp_multiplier, 1.0+pct/100)
+            receiver.add_buff(key, Buff(key, rounds, state['parameter'],
+                                        int(state['buffType']), unit.pet.uid, name))
+            self.messages.append(f'{receiver.name} 的战斗经验获取提高了！')
+            self.events.append({'type': 'buff', 'side': receiver.side, 'name': name,
+                                'rounds': rounds, 'key': key})
         elif kind == 'energy_heal':
             pct = values[1] if len(values) > 1 else 30
             amount = receiver.restore_energy(receiver.max_energy*pct//100)
