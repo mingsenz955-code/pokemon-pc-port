@@ -1144,10 +1144,12 @@ class Battle:
             amount = receiver.restore_energy(receiver.max_energy*pct//100)
             self.messages.append(f'{receiver.name} 回复了 {amount} 点能量。')
         elif kind == 'hp_cut':
-            receiver.hp = max(1, receiver.hp-receiver.max_hp//4)
+            # 愤怒门牙 cuts one quarter of the target's CURRENT HP.
+            receiver.hp = max(1, receiver.hp-max(1, receiver.hp//4))
             self.messages.append(f'{receiver.name} 的生命被削减了四分之一！')
         elif kind == 'equalize':
-            receiver.hp = max(1, min(receiver.hp, unit.hp))
+            # 平等 makes the target's HP equal to the caster's, capped by max.
+            receiver.hp = max(1, min(receiver.max_hp, unit.hp))
             self.messages.append(f'{receiver.name} 的生命值与对手相同了！')
         elif kind == 'hp_one':
             receiver.hp = 1

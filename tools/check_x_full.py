@@ -884,6 +884,21 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(100, before-attacker.hp)
         self.assertTrue(attacker.has_state('7'))
 
+    def test_x_fang_and_equalize_use_original_current_hp(self):
+        """愤怒门牙 cuts 25% current HP; 平等 copies the caster's HP."""
+        pet = generate_pet(self.data.tables, random.Random(87), '100160', 60)
+        battle = make_npc_battle(self.data.tables, [pet], '6208041', random.Random(88))
+        battle.rng = SimpleNamespace(randrange=lambda n: 0, random=lambda: .5,
+                                     randint=lambda a, b: a, choice=lambda seq: seq[0])
+        caster, target = battle.player_active, battle.enemy_active
+        target.hp = 400
+        battle._apply_states(caster, target, self.data.tables['Skill']['300044'])
+        self.assertEqual(300, target.hp)
+        caster.hp = 500
+        target.hp = 100
+        battle._apply_states(caster, target, self.data.tables['Skill']['300055'])
+        self.assertEqual(500, target.hp)
+
     def test_x_counter_petrify_respects_immunity(self):
         """A petrify-immune attacker still takes counter damage but no state."""
         pet = generate_pet(self.data.tables, random.Random(85), '100160', 60)
