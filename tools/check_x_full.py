@@ -885,10 +885,14 @@ class XFullChecks(unittest.TestCase):
         self.assertTrue(attacker.has_state('7'))
 
     def test_x_variant_pet_unlocks_authored_ride(self):
-        """Shiny/variant rows keep Pet.rideId and must unlock that mount."""
-        self.state.record_pet('101003')
+        """Every Pet row with a rideId must unlock its authored mount."""
+        variants = [(key, int(row['rideId'])) for key, row in self.data.tables['Pet'].items()
+                    if int(row.get('rideId', 0) or 0)]
+        self.assertTrue(variants)
+        for species, ride_id in variants:
+            self.state.record_pet(species)
+            self.assertIn(ride_id, self.state.rides, species)
         self.assertIn(500001, self.state.rides)
-        self.state.record_pet('101133')
         self.assertIn(500007, self.state.rides)
 
     def test_x_fang_and_equalize_use_original_current_hp(self):
@@ -929,10 +933,12 @@ class XFullChecks(unittest.TestCase):
         enemy.last_skill = '300232'
         battle._apply_states(player, enemy, self.data.tables['Skill']['300053'])
         self.assertEqual('300232', player.mimicked_skill)
+        self.assertTrue(player.has('mimic'))
         self.assertEqual('300232', battle.available_skills(player)[0]['id'])
         player.energy = player.max_energy
         battle._use_skill(player, enemy, self.data.tables['Skill']['300232'])
         self.assertEqual('', player.mimicked_skill)
+        self.assertFalse(player.has('mimic'))
 
     def test_x_skill_event_plays_skill_sound(self):
         """Skill.sound is played alongside the SkillEffect armature sound."""

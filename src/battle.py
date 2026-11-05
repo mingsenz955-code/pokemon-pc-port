@@ -884,6 +884,7 @@ class Battle:
         unit.last_skill = str(skill['keyId'])
         if str(skill['keyId']) == getattr(unit, 'mimicked_skill', ''):
             unit.mimicked_skill = ''
+            unit.buffs = [buff for buff in unit.buffs if buff.key != '18']
         self.messages.append(f'{unit.name} 使用了 {skill["name"]}！')
         self.events.append({'type': 'skill', 'side': unit.side, 'name': unit.name,
                             'uid': unit.pet.uid,
@@ -1085,6 +1086,8 @@ class Battle:
                         self.messages.append(f'{unit.name} 没有可以模仿的技能！')
                     else:
                         unit.mimicked_skill = copied
+                        unit.add_buff('18', Buff('18', 1, '23,0', 3,
+                                                 unit.pet.uid, '模仿'))
                         self.messages.append(f'{unit.name} 模仿了 {copied_row["name"]}！')
                         self.events.append({'type': 'mimic', 'side': unit.side,
                                             'name': unit.name, 'skill_id': copied,
