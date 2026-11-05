@@ -665,6 +665,40 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_failed_escape_hops_back_to_anchor(self):
+        """The failed-escape branch is a 5-point CardinalSplineBy hop."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
+                ui = app.battle_ui
+                ui.opening_frame = None
+                ui.anim, ui.anim_queue = None, []
+                ui.battle.events[:] = [{'type': 'escape_failed', 'rate': 0}]
+                ui._event_batch = None
+                ui._capture_events()
+                self.assertEqual('escape_failed', ui.anim['kind'])
+                ui.anim['age'] = 12
+                offset, target, _ = ui._animation_offsets()
+                self.assertLess(offset[1], 0)
+                self.assertEqual((0, 0), target)
+                ui.anim['age'] = 24
+                self.assertEqual((0, 0), ui._animation_offsets()[0])
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_battle_escape_uses_the_authored_dust(self):
         """particle/escape.plist must actually emit at the fleeing pet."""
         from PIL import Image

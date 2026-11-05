@@ -246,6 +246,14 @@ class BattleUI:
                                'hit_at': plan['hit'] if plan['hit'] is not None else plan['duration'],
                                'damages': [], 'effect': plan, 'shake': 0}
                     self.anim_queue.append(current)
+            elif kind == 'escape_failed':
+                unit = self.battle.player_active
+                if unit is not None:
+                    self.anim_queue.append({
+                        'side': 'player', 'target': 'player',
+                        'source_uid': unit.pet.uid, 'kind': 'escape_failed',
+                        'amount': 0, 'crit': False, 'age': 0,
+                        'duration': 30, 'damages': []})
             elif kind == 'switch':
                 unit = next((u for u in self.battle.player+self.battle.enemy
                              if u.pet.uid == event.get('uid')), None)
@@ -285,16 +293,19 @@ class BattleUI:
         # Pet motion comes from the authored Spine timelines.  Escape is a
         # controller action rather than a skill armature: the fleeing pet runs
         # out of the authored pet anchor before the result layer appears.
-        if self.anim and self.anim.get('kind') == 'escape':
-            # PetController::escape @ 0x2cff64 creates a 7-point
-            # CardinalSplineBy (0,0), (-215,80), (-250,205), (-100,265),
-            # (75,250), (235,150), (400,0), duration 0.4s, tension 0.
-            # Cocos y points up, so the screen offset is negated; the
-            # player's node is mirrored to run out of the left edge.
+        if self.anim and self.anim.get('kind') in ('escape', 'escape_failed'):
+            # PetController::escape @ 0x2cff64 has two CardinalSplineBy
+            # actions: the successful run is 7 points ending +400, while a
+            # failed attempt hops through 5 points and returns to its anchor.
+            # Both use 0.4s and tension 0.
             age = max(0.0, self.anim['age'])
             t = min(1.0, age/(60*.4))
-            points = ((0, 0), (-215, 80), (-250, 205), (-100, 265),
-                      (75, 250), (235, 150), (400, 0))
+            if self.anim['kind'] == 'escape_failed':
+                points = ((0, 0), (-150, 85), (-70, 195),
+                          (70, 135), (0, 0))
+            else:
+                points = ((0, 0), (-215, 80), (-250, 205), (-100, 265),
+                          (75, 250), (235, 150), (400, 0))
             segments = len(points)-1
             scaled = min(segments-1e-9, t*segments)
             index = int(scaled)
@@ -312,7 +323,8 @@ class BattleUI:
                     +(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*local**3)
             ratio = W/800
             side = self.anim.get('side')
-            offset = (round((-x if side == 'player' else x)*ratio),
+            mirror = self.anim['kind'] == 'escape' and side == 'player'
+            offset = (round((-x if mirror else x)*ratio),
                       round(-y*ratio))
             # The first slot is always the animated side's node; render()
             # maps it to the fleeing player or enemy respectively.
