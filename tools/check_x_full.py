@@ -2003,6 +2003,43 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual([], [p.uid for p in state.pets if p.species == '100093'])
         self.assertEqual(1, len(state.pets))
 
+    def test_x_voyage_arrival_reaches_task_138(self):
+        """119016 fires on the 11909 area and starts the unknown-land task."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        from task_progress import TaskProgress
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 137, 3
+        state.events['119015'] = 1
+        runtime = EventRuntime(self.data, state)
+        self.assertTrue(runtime.notify('toarea', area=11909))
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume('win' if request.kind == 'fight' else
+                           (True if request.kind == 'accepttask' else
+                            ([] if request.kind == 'costtaskitem' else None)))
+        self.assertEqual(1, state.events.get('119016', 0))
+        TaskProgress(state).update('area', 11909)
+        # 137 stays ready at state 4 until the 1206001 and 1202001 scenes.
+        self.assertEqual(137, state.main_task)
+        self.assertEqual(4, state.main_state)
+        for map_id, event_id in ((1206, 1206001), (1202, 1202001)):
+            self.assertTrue(runtime.notify('tomap', map=map_id))
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                runtime.resume('win' if request.kind == 'fight' else
+                               (True if request.kind == 'accepttask' else
+                                ([] if request.kind == 'costtaskitem' else None)))
+            self.assertEqual(1, state.events.get(str(event_id), 0))
+        self.assertEqual(138, state.main_task)
+        self.assertEqual(3, state.main_state)
+
     def test_x_ship_launch_reaches_task_136(self):
         """119014 builds the ship and hands task 135 to the license test."""
         from event_runtime import EventRuntime
