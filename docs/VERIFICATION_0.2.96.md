@@ -158,3 +158,5 @@
 
 - 修复升级结算页“确认”按钮点不到：属性行单独渲染 `PetLevelUpItemUI` 会重置 `CocosUI.buttons`，导致命中框退回到右下角；现在先保存 `PetLevelUpUI` 的 `confirm_Button` 命中框，再绘制属性行。新增/加强回归检查（58 项）。
 - 放生改按原版 `cantFreeLastPet` 规则：至少保留一只存活战斗宠物；试用宠物仍不可放生。新增回归测试。
+
+- 修复升级结算页“确认”按钮点不到：属性行单独渲染 `PetLevelUpItemUI` 会重置 `CocosUI.buttons`，导致命中框退回到右下角；现在先保存 `PetLevelUpUI` 的 `confirm_Button` 命中框，再绘制属性行。回归检查同时断言命中框不再落到右下角。
