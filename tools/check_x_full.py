@@ -2110,6 +2110,80 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(140, state.main_task)
         self.assertEqual(3, state.main_state)
 
+    def test_x_island_ritual_battles_reach_task_145(self):
+        """The ritual fights and shrine trial must submit 140 through 144."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 140, 3
+        state.events['1203001'] = 1
+        runtime = EventRuntime(self.data, state)
+        for event_id, npc, task, next_task in (
+                (1203002, 1203091, 140, 141),
+                (1203003, 1203092, 141, 142),
+                (1203004, 1203093, 142, 143)):
+            trigger = {'id': event_id, 'type': 'talk',
+                       'conditions_add': {'npcid': 120309},
+                       'conditions_mtask': [task, 3]}
+            runtime.start(f'pEvent{event_id}.json', trigger)
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                runtime.resume('win' if request.kind == 'fight' else None)
+            self.assertEqual(next_task, state.main_task)
+            self.assertEqual(3, state.main_state)
+
+        for area, event_id in ((120401, 1204001), (120501, 1205001)):
+            self.assertTrue(runtime.notify('toarea', area=area))
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                runtime.resume('win' if request.kind == 'fight' else None)
+            self.assertEqual(1, state.events.get(str(event_id), 0))
+        self.assertEqual(145, state.main_task)
+        self.assertEqual(3, state.main_state)
+
+        trigger = {'id': 1205002, 'type': 'talk',
+                   'conditions_add': {'npcid': 120501},
+                   'conditions_mtask': [145, 3],
+                   'conditions_event': [1205001, 1]}
+        runtime.start('pEvent1205002.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            fight = None
+            if request.kind == 'fight':
+                parameters = request.data.get('parameters', {})
+                fight = int(parameters.get('npcid', 0))
+            runtime.resume('win' if request.kind == 'fight' else None)
+            if fight:
+                from task_progress import TaskProgress
+                TaskProgress(state).update('fight', 2, 1, fight, -1)
+        self.assertEqual(145, state.main_task)
+        self.assertEqual(4, state.main_state)
+        self.assertEqual(1, state.events.get('1205002'))
+
+        for event_id, map_id, previous in ((1203005, 1203, 1205002),
+                                           (1202003, 1202, 1203005)):
+            trigger = {'id': event_id, 'type': 'tomap',
+                       'conditions_add': {'map': map_id},
+                       'conditions_mtask': [145, 4],
+                       'conditions_event': [previous, 1]}
+            runtime.start(f'pEvent{event_id}.json', trigger)
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                runtime.resume('win' if request.kind == 'fight' else None)
+            self.assertEqual(1, state.events.get(str(event_id)))
+        self.assertEqual(146, state.main_task)
+        self.assertEqual(3, state.main_state)
+
     def test_x_ship_launch_reaches_task_136(self):
         """119014 builds the ship and hands task 135 to the license test."""
         from event_runtime import EventRuntime
