@@ -109,6 +109,7 @@ class BattlePet:
         self.last_skill = ''
         self.participated = False
         self.transformed = None
+        self.mimicked_skill = ''
         self._apply_talent_stats()
 
     # -- original talent passives -------------------------------------------
@@ -496,6 +497,16 @@ class Battle:
             result.append({'id': str(skill_id), 'row': row,
                            'usable': unit.energy >= unit.cost(row) and cooldown <= 0,
                            'cooldown': cooldown})
+        copied = getattr(unit, 'mimicked_skill', '')
+        copied_row = self.tables['Skill'].get(str(copied)) if copied else None
+        if copied_row:
+            # Mimic becomes the first combat slot until it is used.
+            entry = {'id': str(copied), 'row': copied_row,
+                     'usable': unit.energy >= unit.cost(copied_row)
+                     and unit.cooldowns.get(str(copied), 0) <= 0,
+                     'cooldown': unit.cooldowns.get(str(copied), 0),
+                     'mimic': True}
+            result = [entry]+[item for item in result if item['id'] != str(copied)][:3]
         return result
 
     # -- player actions ------------------------------------------------------
@@ -861,6 +872,8 @@ class Battle:
         if cooldown:
             unit.cooldowns[str(skill['keyId'])] = cooldown
         unit.last_skill = str(skill['keyId'])
+        if str(skill['keyId']) == getattr(unit, 'mimicked_skill', ''):
+            unit.mimicked_skill = ''
         self.messages.append(f'{unit.name} 使用了 {skill["name"]}！')
         self.events.append({'type': 'skill', 'side': unit.side, 'name': unit.name,
                             'uid': unit.pet.uid,
@@ -1053,6 +1066,19 @@ class Battle:
         for field_name in ('state', 'state2'):
             for index, chance in _pairs(skill.get(field_name, '')):
                 if index == 0:
+                    continue
+                if int(index) == 18:
+                    # Water Ripple Mask copies the opponent's last used skill.
+                    copied = str(getattr(target, 'last_skill', '') or '')
+                    copied_row = self.tables['Skill'].get(copied) if copied else None
+                    if not copied_row:
+                        self.messages.append(f'{unit.name} 没有可以模仿的技能！')
+                    else:
+                        unit.mimicked_skill = copied
+                        self.messages.append(f'{unit.name} 模仿了 {copied_row["name"]}！')
+                        self.events.append({'type': 'mimic', 'side': unit.side,
+                                            'name': unit.name, 'skill_id': copied,
+                                            'skill': copied_row['name']})
                     continue
                 receiver = unit if int(index) in SELF_STATES else target
                 if not receiver.alive:

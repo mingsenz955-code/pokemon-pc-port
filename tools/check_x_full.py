@@ -872,6 +872,21 @@ class XFullChecks(unittest.TestCase):
 
 
 
+    def test_x_mimic_copies_last_enemy_skill(self):
+        """Skill 300053 (state 18) copies the opponent's last used skill."""
+        pet = generate_pet(self.data.tables, random.Random(81), '100160', 60)
+        battle = make_npc_battle(self.data.tables, [pet], '6208041', random.Random(82))
+        battle.rng = SimpleNamespace(randrange=lambda n: 0, random=lambda: .5,
+                                     randint=lambda a, b: a, choice=lambda seq: seq[0])
+        player, enemy = battle.player_active, battle.enemy_active
+        enemy.last_skill = '300232'
+        battle._apply_states(player, enemy, self.data.tables['Skill']['300053'])
+        self.assertEqual('300232', player.mimicked_skill)
+        self.assertEqual('300232', battle.available_skills(player)[0]['id'])
+        player.energy = player.max_energy
+        battle._use_skill(player, enemy, self.data.tables['Skill']['300232'])
+        self.assertEqual('', player.mimicked_skill)
+
     def test_x_skill_event_plays_skill_sound(self):
         """Skill.sound is played alongside the SkillEffect armature sound."""
         with tempfile.TemporaryDirectory() as save:
