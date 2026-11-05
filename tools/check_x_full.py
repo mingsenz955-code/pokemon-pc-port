@@ -526,6 +526,56 @@ class XFullChecks(unittest.TestCase):
                     errors.append((table, key, type(error).__name__, str(error)))
         self.assertFalse(errors, errors[:10])
 
+    def test_x_battle_start_effect_survives_first_tick(self):
+        """A long frame that created the battle must not skip the intro."""
+        from types import SimpleNamespace
+        from battle_ui import BattleUI
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                unit = SimpleNamespace(side='player', hp=10, alive=True,
+                                       pet=SimpleNamespace(uid=1, species='100001'))
+                enemy = SimpleNamespace(side='enemy', hp=10, alive=True,
+                                        pet=SimpleNamespace(uid=2, species='100001'))
+                battle = SimpleNamespace(player=[unit], enemy=[enemy], events=[],
+                                         result=None, kind='wild',
+                                         player_active=unit, enemy_active=enemy)
+                ui = BattleUI(app, battle, opening=True)
+                transition = ui.opening_transition
+                self.assertGreater(transition, 0)
+                ui.advance(seconds=10)
+                self.assertIsNotNone(ui.opening_frame)
+                self.assertLess(ui.opening_frame, transition)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
+    def test_x_battle_escape_runs_the_pet_away(self):
+        """The player pet must leave its anchor on a successful escape."""
+        from types import SimpleNamespace
+        from battle_ui import BattleUI
+        ui = BattleUI.__new__(BattleUI)
+        ui.anim = {'kind': 'escape', 'side': 'player', 'age': 30,
+                   'duration': 40}
+        _, player_offset, _ = ui._animation_offsets()
+        self.assertLess(player_offset[0], -100)
+        self.assertGreater(player_offset[1], 0)
+        ui.anim['side'] = 'enemy'
+        enemy_offset, player_offset, _ = ui._animation_offsets()
+        self.assertGreater(enemy_offset[0], 100)
+        self.assertEqual((0, 0), player_offset)
+
     def test_x_battle_plays_pet_wow_sound(self):
         """A pet with an original wowSound roars during battle entrance."""
         from types import SimpleNamespace
@@ -836,6 +886,9 @@ class XFullChecks(unittest.TestCase):
                 app = NativeGame(root, self.data)
                 app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
                 ui = app.battle_ui
+                # This check is about the settlement panel, not the authored
+                # battle-start timeline; skip that timeline explicitly.
+                ui.opening_frame = None
                 ui.advance(seconds=10)
                 self.assertIsNone(ui.opening_frame)
                 unit = app.battle.player_active
@@ -1688,6 +1741,113 @@ class XFullChecks(unittest.TestCase):
                 self.assertEqual(127, app.state.main_task)
                 self.assertEqual(1, app.state.events.get('5909004', 0))
                 self.assertEqual(1, app.state.events.get('109008', 0))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
+    def test_x_wood_errand_starts_task_128(self):
+        """305004 takes the blueprint and asks for five route birds."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 127, 3
+                app.state.events['109008'] = 1
+                app.state.inventory['270083'] = 1
+                app.load_map(305)
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '305004')
+                app.runtime.start('pEvent305004.json', trigger)
+                app.drive()
+                for _ in range(20000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                    'tapscreen', 'button'):
+                        app.interact()
+                    elif app.ui_open:
+                        app.close_ui('yes')
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.runtime.running:
+                        app.drive()
+                    else:
+                        break
+                self.assertFalse(app.runtime.running, app.event_issue)
+                self.assertEqual(128, app.state.main_task)
+                self.assertEqual(1, app.state.events.get('305004', 0))
+                self.assertEqual(0, app.state.inventory.get('270083', 0))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
+    def test_x_wood_collection_finishes_task_129(self):
+        """300 cut trees -> 305006 hands over 300 wood and starts task 130."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 129, 3
+                app.state.events['312001'] = 1
+                app.state.task_counts['main:129'] = [300]
+                app.load_map(305)
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '305006')
+                app.runtime.start('pEvent305006.json', trigger)
+                app.drive()
+                for _ in range(30000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                    'tapscreen', 'button'):
+                        app.interact()
+                    elif app.ui_open:
+                        app.close_ui('yes')
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.runtime.running:
+                        app.drive()
+                    else:
+                        break
+                self.assertFalse(app.runtime.running, app.event_issue)
+                self.assertEqual(305, app.map_id)
+                self.assertEqual(130, app.state.main_task)
+                self.assertEqual(300, app.state.inventory.get('270086'))
+                self.assertEqual(1, app.state.events.get('305006', 0))
             finally:
                 for job in root.tk.call('after', 'info'):
                     try:

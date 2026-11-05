@@ -87,6 +87,11 @@ class BattleUI:
         steps = max(0.0, float(steps) if seconds is None else float(seconds)*25)
         if self.opening_frame is not None:
             previous = self.opening_frame
+            # The first tick after a battle is created can carry the long map
+            # frame that built the battle.  Do not let that one delta skip the
+            # whole authored BattleStartEffectUI (60 frames) before it is seen.
+            if previous == 0 and steps > 1:
+                steps = 1
             self.opening_frame += steps*60/25
             voice_frame = self.opening_transition+3
             if previous <= voice_frame < self.opening_frame:
@@ -258,7 +263,20 @@ class BattleUI:
         self._signature = None
 
     def _animation_offsets(self):
-        # Pet motion comes from the authored Spine timelines.
+        # Pet motion comes from the authored Spine timelines.  Escape is a
+        # controller action rather than a skill armature: the fleeing pet runs
+        # out of the authored pet anchor before the result layer appears.
+        if self.anim and self.anim.get('kind') == 'escape':
+            age = max(0.0, self.anim['age'])
+            length = max(1.0, self.anim['duration'])
+            t = min(1.0, age/(length*.75))
+            side = self.anim.get('side')
+            distance = W*.55*t
+            dy = H*.035*t
+            offset = (round(-distance if side == 'player' else distance), round(dy))
+            if side == 'player':
+                return (0, 0), offset, 0.0
+            return offset, (0, 0), 0.0
         return (0, 0), (0, 0), 0.0
 
     def presentation_unit(self, enemy=False):
@@ -578,6 +596,17 @@ class BattleUI:
         origin = (art.width-origin[0], origin[1])
         art = art.resize((max(1, round(art.width*scale)), max(1, round(art.height*scale))), Image.Resampling.LANCZOS)
         point = self.pet_positions['enemy']
+        # Thrown balls travel from our pet's side before the authored
+        # kaichong ball opens/shakes at the target.  This is still the same
+        # original armature; only its first few frames are positioned on the
+        # flight path instead of appearing directly on the enemy.
+        frames = int(self.anim['age']*60/25)
+        flight = min(12, max(1, int(self.anim['duration']*60/25)//3))
+        if frames < flight:
+            t = frames/flight
+            start = self.pet_positions['player']
+            point = (start[0]+(point[0]-start[0])*t,
+                     start[1]-90+(point[1]-start[1]+90)*t)
         frame.alpha_composite(art, (round(point[0]-origin[0]*scale), round(point[1]-origin[1]*scale)))
 
     def _draw_damage(self, draw):
@@ -1091,6 +1120,17 @@ class BattleUI:
         elif b.result:
             self.screen = 'main'
             self.notice = ''
+            if b.result in ('escape', 'enemy_escape') and not self.anim:
+                unit = (b.player_active if b.result == 'escape'
+                        else b.enemy_active)
+                if unit is not None:
+                    self.anim = {'side': 'player' if b.result == 'escape' else 'enemy',
+                                 'target': 'player' if b.result == 'escape' else 'enemy',
+                                 'kind': 'escape', 'source_uid': unit.pet.uid,
+                                 'amount': 0, 'crit': False, 'age': 0,
+                                 'duration': 40, 'damages': []}
+                    self.frame = None
+                    self._signature = None
             if b.result in ('win', 'caught'):
                 b.apply_rewards(self.app.state)
         else:
