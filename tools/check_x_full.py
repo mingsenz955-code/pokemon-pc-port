@@ -871,6 +871,43 @@ class XFullChecks(unittest.TestCase):
 
 
 
+
+    def test_x_skill_event_plays_skill_sound(self):
+        """Skill.sound is played alongside the SkillEffect armature sound."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.state.initialize(2)
+                key = next(iter(self.data.tables['VillageEnemy']))
+                app.start_battle(key)
+                root.update()
+                ui = app.battle_ui
+                ui.advance(seconds=3)
+                played = []
+                ui.effect_audio = SimpleNamespace(play=lambda value: played.append(str(value)))
+                app.battle.events = [{'type': 'skill', 'side': 'player',
+                                      'uid': app.battle.player_active.pet.uid,
+                                      'skill_id': '300232', 'name': '大地之怒'}]
+                ui._event_batch = None
+                ui._event_cursor = 0
+                ui._capture_events()
+                self.assertIn('4117', played)
+                self.assertEqual(1, ui.anim['shake'])
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_pet_item_effect_uses_original_armature(self):
         """PetItem.effectId resolves to its original SkillEffect armature."""
         from battle_effects import BattleEffects

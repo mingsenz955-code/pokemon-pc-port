@@ -216,8 +216,14 @@ class BattleUI:
                     current['effect'] = plan
                     current['duration'] = plan['duration']
                     current['hit_at'] = plan['hit'] if plan['hit'] is not None else plan['duration']
-                skill_row = self.app.data.tables.get('Skill', {}).get(str(event.get('skill_id')), {})
+                skill_row = self.app.data.tables.get('Skill', {}).get(
+                    str(event.get('skill_id', '300056')), {})
                 current['shake'] = int(skill_row.get('shake', 0) or 0)
+                # Skill.sound is the authored cast/hit SFX; SkillEffect.sound is
+                # the armature's own filename callback.  Both are original data.
+                sound = str(skill_row.get('sound', '0'))
+                if sound not in ('', '0') and sound in self.app.data.tables.get('Sound', {}):
+                    self.effect_audio.play(sound)
                 self.anim_queue.append(current)
             elif kind == 'item_used':
                 effect = self.app.data.tables.get('PetItem', {}).get(str(event.get('id')), {})
