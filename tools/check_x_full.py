@@ -565,6 +565,35 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_battle_status_uses_original_buff_icon(self):
+        """SkillState.stateId must select the authored buff_<id>.png badge."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from battle import Buff
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
+                ui = app.battle_ui
+                ui.opening_frame = None
+                unit = app.battle.player_active
+                unit.add_buff('2', Buff('2', 6, '9,15', 2, name='中毒'))
+                self.assertEqual((32, 28), ui._buff_icon('2').size)
+                ui.frame, ui._signature = None, None
+                ui.render()
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_battle_switch_plays_appearance_flash(self):
         """A switched-in pet scales in under the authored chuchongguang."""
         with tempfile.TemporaryDirectory() as save:

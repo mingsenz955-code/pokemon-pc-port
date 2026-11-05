@@ -56,6 +56,7 @@ class BattleUI:
         self.info = ''
         self._hud_cache = OrderedDict()
         self._pose_cache = OrderedDict()
+        self._buff_icons = {}
         self._background_cache = {}
         self.result_page = 'outcome'
         self.result_age = 0.0
@@ -512,8 +513,8 @@ class BattleUI:
         draw = ImageDraw.Draw(frame, 'RGBA')
         if not hide_hud:
             self._draw_bars(draw)
-            self._draw_status(draw, self.presentation_unit(True), True)
-            self._draw_status(draw, self.presentation_unit(False), False)
+            self._draw_status(frame, draw, self.presentation_unit(True), True)
+            self._draw_status(frame, draw, self.presentation_unit(False), False)
             self._draw_team(draw)
         self._draw_damage(draw)
         self.hits = {}
@@ -720,18 +721,43 @@ class BattleUI:
                     if active:
                         self._bar(draw, rect, active.energy/active.max_energy, (76, 150, 235, 255))
 
-    def _draw_status(self, draw, unit, enemy):
+    def _buff_icon(self, key):
+        """SkillState.stateId selects the authored res/UI/buff_<id>.png."""
+        key = str(key)
+        if key not in self._buff_icons:
+            row = self.app.data.tables.get('SkillState', {}).get(key, {})
+            state_id = str(row.get('stateId', ''))
+            icon = None
+            if state_id:
+                try:
+                    icon = self.app.data.image(f'res/UI/buff_{state_id}.png')
+                except (OSError, KeyError):
+                    icon = None
+            if icon is not None:
+                icon = icon.resize((32, 28), Image.Resampling.LANCZOS)
+            self._buff_icons[key] = icon
+        return self._buff_icons[key]
+
+    def _draw_status(self, frame, draw, unit, enemy):
         if not unit:
             return
         x = W*.52 if enemy else W*.04
         y = H*.09 if enemy else H*.70
         for index, buff in enumerate(unit.buffs[:6]):
+            icon = self._buff_icon(buff.key)
+            if icon is not None:
+                top = y+index*30
+                frame.alpha_composite(icon, (round(x), round(top)))
+                self._label(draw, (x+31, top+27), str(buff.rounds), 12, anchor='rs')
+                continue
+            # Seven authored states have no buff_<stateId>.png; keep a readable
+            # text badge for those instead of dropping the state entirely.
             name = buff.name or buff.kind
             bad = buff.kind in ('poison', 'drain', 'leech', 'nightmare', 'doom',
                                 'sleep', 'petrify', 'freeze', 'fear')
             color = (170, 45, 45, 230) if bad else (50, 130, 70, 230)
-            draw.rounded_rectangle((x, y+index*22, x+94, y+index*22+19), 4, fill=color)
-            self._label(draw, (x+47, y+index*22+9), f'{name}{buff.rounds}', 13, anchor='mm')
+            draw.rounded_rectangle((x, y+index*30, x+94, y+index*30+24), 4, fill=color)
+            self._label(draw, (x+47, y+index*30+12), f'{name}{buff.rounds}', 13, anchor='mm')
 
     def _draw_team(self, draw):
         for index, unit in enumerate(self.battle.enemy):
