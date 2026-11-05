@@ -1591,6 +1591,83 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_buede_trials_reach_task_127(self):
+        """124 -> the two disciples -> Buede -> material errands (task 127)."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 124, 3
+                app.state.events['602013'] = 1
+
+                def play():
+                    for _ in range(30000):
+                        root.update()
+                        time.sleep(.001)
+                        request = app.display_request
+                        if request:
+                            app.interact()
+                        elif app.pending_wait:
+                            app.pending_wait = None
+                            app.runtime.resume()
+                            app.drive()
+                        elif app.battle:
+                            app.battle.result = 'win'
+                            app.finish_battle()
+                        elif app.ui_open:
+                            app.close_ui('yes')
+                        elif app.runtime.running:
+                            app.drive()
+                        else:
+                            return
+
+                app.load_map(5909)
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '5909001')
+                app.runtime.start('pEvent5909001.json', trigger)
+                app.drive()
+                play()
+                self.assertEqual(125, app.state.main_task)
+                self.assertFalse(app.runtime.running, app.event_issue)
+
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '5909002')
+                app.runtime.start('pEvent5909002.json', trigger)
+                app.drive()
+                play()
+                self.assertEqual(126, app.state.main_task)
+                self.assertEqual([1, 1], app.state.task_counts['main:125'])
+                self.assertEqual(1, app.state.events.get('5909002', 0))
+                self.assertEqual(1, app.state.events.get('5909003', 0))
+
+                trigger = next(r for r in app.runtime.triggers
+                               if str(r['id']) == '5909004')
+                app.runtime.start('pEvent5909004.json', trigger)
+                app.drive()
+                play()
+                self.assertFalse(app.runtime.running, app.event_issue)
+                self.assertEqual(109, app.map_id)
+                self.assertEqual(127, app.state.main_task)
+                self.assertEqual(1, app.state.events.get('5909004', 0))
+                self.assertEqual(1, app.state.events.get('109008', 0))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_postgame_blueprint_reaches_task_124(self):
         """Postgame 121 -> 122 -> 123 must hand over the boat blueprint."""
         import time
