@@ -1299,6 +1299,40 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_missed_map_arrival_survives_restore(self):
+        """The same recovery must run when the stuck save is loaded again."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.load_map(5205)
+                app.state.main_task, app.state.main_state = 115, 4
+                app.state.task_counts['main:115'] = [1]
+                app.state.events['5202001'] = 1
+                app.map_id, app.x, app.y = 5205, 960, 1088
+                self.assertTrue(app.save())
+                restored = NativeGame(root, self.data)
+                self.assertTrue(restored.restore())
+                self.assertTrue(restored.runtime.running)
+                self.assertEqual('pEvent5205001.json', restored.runtime.file)
+                self.assertEqual(115, restored.state.main_task)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_missed_map_arrival_starts_original_plot(self):
         """A task becoming ready inside its map still starts the tomap plot."""
         with tempfile.TemporaryDirectory() as save:
