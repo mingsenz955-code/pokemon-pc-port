@@ -110,6 +110,7 @@ class BattlePet:
         self.participated = False
         self.transformed = None
         self.mimicked_skill = ''
+        self._countering = False
         self._apply_talent_stats()
 
     # -- original talent passives -------------------------------------------
@@ -354,8 +355,15 @@ class BattlePet:
                     and attribute is not None):
                 if buff.kind == f'immune_{attribute}':
                     return 0
-        if self.has('counter') and source is not None:
-            source.take_damage(max(1, amount//2))
+        if self.has('counter') and source is not None and not self._countering:
+            # 石化反击 is a full reflection and petrifies the attacker.
+            self._countering = True
+            try:
+                source.take_damage(amount, source=None)
+                if source.alive:
+                    source.add_buff('7', Buff('7', 2, '0', 2, name='石化'))
+            finally:
+                self._countering = False
         self.hp = max(0, self.hp-amount)
         return amount
 

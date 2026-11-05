@@ -872,6 +872,18 @@ class XFullChecks(unittest.TestCase):
 
 
 
+    def test_x_counter_reflects_full_damage_and_petrifies(self):
+        """State 29 石化反击 returns the full hit and petrifies the attacker."""
+        pet = generate_pet(self.data.tables, random.Random(83), '100160', 60)
+        battle = make_npc_battle(self.data.tables, [pet], '6208041', random.Random(84))
+        attacker, defender = battle.player_active, battle.enemy_active
+        attacker.hp, defender.hp = attacker.max_hp, defender.max_hp
+        defender.add_buff('29', Buff('29', 2, '28,1', 2, name='石化反击'))
+        before = attacker.hp
+        self.assertEqual(100, defender.take_damage(100, source=attacker))
+        self.assertEqual(100, before-attacker.hp)
+        self.assertTrue(attacker.has_state('7'))
+
     def test_x_mimic_copies_last_enemy_skill(self):
         """Skill 300053 (state 18) copies the opponent's last used skill."""
         pet = generate_pet(self.data.tables, random.Random(81), '100160', 60)
