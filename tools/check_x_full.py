@@ -2003,6 +2003,54 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual([], [p.uid for p in state.pets if p.species == '100093'])
         self.assertEqual(1, len(state.pets))
 
+    def test_x_ship_launch_reaches_task_136(self):
+        """119014 builds the ship and hands task 135 to the license test."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 135, 4
+        trigger = {'id': 119014, 'type': 'talk',
+                   'conditions_add': {'npcid': 590901},
+                   'conditions_mtask': [135, 4]}
+        runtime = EventRuntime(self.data, state)
+        runtime.start('pEvent119014.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume('win' if request.kind == 'fight' else
+                           (True if request.kind == 'accepttask' else
+                            ([] if request.kind == 'costtaskitem' else None)))
+        self.assertEqual(136, state.main_task)
+        self.assertEqual(3, state.main_state)
+        self.assertEqual(1, state.events.get('119014', 0))
+
+    def test_x_license_fight_reaches_task_137(self):
+        """119015's test fight must submit 136 and start the sea voyage."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 136, 3
+        trigger = {'id': 119015, 'type': 'talk',
+                   'conditions_add': {'npcid': 11928},
+                   'conditions_mtask': [136, 3, 136, 4]}
+        runtime = EventRuntime(self.data, state)
+        runtime.start('pEvent119015.json', trigger)
+        while True:
+            request = runtime.next()
+            if request is None:
+                break
+            runtime.resume('win' if request.kind == 'fight' else
+                           (True if request.kind == 'accepttask' else
+                            ([] if request.kind == 'costtaskitem' else None)))
+        self.assertEqual(137, state.main_task)
+        self.assertEqual(3, state.main_state)
+        self.assertEqual(1, state.events.get('119015', 0))
+
     def test_x_cloth_errand_starts_task_134(self):
         """203006 takes the cloth blueprint and asks for 500k medals."""
         from event_runtime import EventRuntime
