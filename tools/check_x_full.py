@@ -1425,6 +1425,58 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_sea_return_chain_reaches_task_118(self):
+        """703002 -> gym 6501008 -> 1101001 must submit 117 and land on 1101."""
+        import time
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.display_request = None
+                app.state.main_task, app.state.main_state = 117, 3
+                app.state.events['6501007'] = 1
+                app.load_map(6501)
+                app.request_map('70301')
+                self.assertEqual('pEvent703002.json', app.runtime.file)
+                for _ in range(15000):
+                    root.update()
+                    time.sleep(.001)
+                    request = app.display_request
+                    if request and request.kind in ('talk', 'aside', 'airtalk',
+                                                     'tapscreen', 'button'):
+                        app.interact()
+                    elif app.pending_wait:
+                        app.pending_wait = None
+                        app.runtime.resume()
+                        app.drive()
+                    elif app.ui_open:
+                        app.close_ui('yes')
+                    elif (app.runtime.running and not request and not app.pending_wait
+                          and not app.battle):
+                        app.drive()
+                    elif not app.runtime.running and not request:
+                        break
+                self.assertFalse(app.runtime.running)
+                self.assertEqual(1101, app.map_id)
+                self.assertEqual(118, app.state.main_task)
+                self.assertEqual(1, app.state.events.get('703002', 0))
+                self.assertEqual(1, app.state.events.get('6501008', 0))
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_missed_map_arrival_survives_restore(self):
         """The same recovery must run when the stuck save is loaded again."""
         with tempfile.TemporaryDirectory() as save:

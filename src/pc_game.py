@@ -650,6 +650,16 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         67: ('AsideUI', '侧边栏'),
     }
 
+    def _ui_photo(self, image):
+        """Bind every PhotoImage to the interpreter that owns the open page."""
+        master = getattr(self, 'ui_window', None)
+        try:
+            if master is None or not master.winfo_exists():
+                master = self.root
+        except tk.TclError:
+            master = self.root
+        return ImageTk.PhotoImage(image, master=master)
+
     def open_ui(self, request):
         self.ui_story_active = False
         self.area_map_focus = None
@@ -708,7 +718,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             self.ui_rects = dict(self.cocos_ui.rects)
             self.ui_buttons = dict(self.cocos_ui.buttons)
             self.ui_button_text = dict(self.cocos_ui.button_text)
-            photo = ImageTk.PhotoImage(layer)
+            photo = self._ui_photo(layer)
             label = GameArtLabel(win, image=photo, bg='#101418', borderwidth=0)
             label.image = photo
             label.pack()
@@ -2902,7 +2912,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                      + (f' · 滚轮翻页（{scroll[0]//2+1}/{(len(items)+1)//2}）'
                         if len(items) > 2 else ''))
             if getattr(self, 'ui_art_label', None) is not None:
-                photo = ImageTk.PhotoImage(layer)
+                photo = self._ui_photo(layer)
                 self.ui_art_label.configure(image=photo)
                 self.ui_art_label.image = photo
 
@@ -2922,7 +2932,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         text = str(self.ui_parameters.get('text', '确定执行这个操作吗？'))
         if getattr(self, 'ui_art_label', None) is not None:
             layer = self.cocos_ui.render('SecondConfirmUI', (800, 480), {'info_Text': text})
-            photo = ImageTk.PhotoImage(layer)
+            photo = self._ui_photo(layer)
             self.ui_art_label.configure(image=photo)
             self.ui_art_label.image = photo
         info.set(text)
@@ -2935,7 +2945,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         text = str(self.ui_parameters.get('text', ''))
         if getattr(self, 'ui_art_label', None) is not None:
             layer = self.cocos_ui.render('TipConfirmUI', (800, 480), {'tip_Text': text})
-            photo = ImageTk.PhotoImage(layer)
+            photo = self._ui_photo(layer)
             self.ui_art_label.configure(image=photo)
             self.ui_art_label.image = photo
         info.set(text)
@@ -3011,7 +3021,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
         if getattr(self, 'ui_art_label', None) is not None:
             layer = self.cocos_ui.render('FreePetConfirmUI', (800, 480),
                                          {'info_Text': text})
-            photo = ImageTk.PhotoImage(layer)
+            photo = self._ui_photo(layer)
             self.ui_art_label.configure(image=photo)
             self.ui_art_label.image = photo
         info.set(text)
@@ -3152,7 +3162,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 'about_Text_58': '',
             }
             layer = self.cocos_ui.render('GameAboutUI', (800, 480), fields)
-            photo = ImageTk.PhotoImage(layer)
+            photo = self._ui_photo(layer)
             self.ui_art_label.configure(image=photo)
             self.ui_art_label.image = photo
         info.set(text)
@@ -3205,7 +3215,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 'number_BitmapFontLabel': str(pet.uid),
                 'skillInfo_Text': (f'生命 {stats[0]}  能量 {stats[1]}\n'
                                    f'攻击 {stats[2]}  防御 {stats[3]}  速度 {stats[4]}')})
-            photo = ImageTk.PhotoImage(layer)
+            photo = self._ui_photo(layer)
             self.ui_art_label.configure(image=photo)
             self.ui_art_label.image = photo
         frame = tk.Frame(self.ui_window, bg='#202b30', highlightthickness=0)
@@ -3390,7 +3400,7 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                 self.ui_actions['pet_row_1'] = lambda: choose(scroll[0]+1)
                 self.ui_actions['pet_row_2'] = lambda: choose(scroll[0]+2)
                 if hasattr(self, 'ui_art_label') and self.ui_art_label.winfo_exists():
-                    photo = ImageTk.PhotoImage(layer)
+                    photo = self._ui_photo(layer)
                     self.ui_art_label.configure(image=photo)
                     self.ui_art_label.image = photo
 
