@@ -498,7 +498,7 @@ class BattleUI:
         return frame
 
     def _draw_pet(self, frame, unit, center, height, enemy=False, flash=0.0):
-        if not unit:
+        if not unit or getattr(unit, 'fled', False):
             return
         # Pet.scale is applied to both the setup pose and every spine frame in
         # OriginalData; the battle target height must carry it as well or the
@@ -872,6 +872,8 @@ class BattleUI:
         outcome = {'win': 'battleWin', 'lose': 'battleLose'}.get(self.battle.result)
         if outcome:
             lines.insert(0, self.app.data.localized_text()[outcome])
+        elif self.battle.result == 'enemy_escape':
+            lines.insert(0, '野生宠物逃走了！')
         if self.battle.caught_pet:
             name = self.app.data.tables['Pet'][self.battle.caught_pet.species]['name']
             lines.insert(0, f'捕捉到了 {name}！')
@@ -884,7 +886,16 @@ class BattleUI:
         if self.result_page == 'outcome' and self._levelup_active():
             self._draw_levelup(frame)
             return
-        if self.result_page == 'outcome':
+        if result == 'enemy_escape':
+            # The original wild-escape path has no success/fail panel; show the
+            # authored calculation layer with the flee line instead of an
+            # empty ChallengeResultUI.
+            self.result_page = 'calculation'
+            self.result_index = 0
+            layer = self.app.cocos_ui.render('BattleCalculationUI', (W, H),
+                text={'chat_Text': '野生宠物逃走了！'}, timeline_frame=60)
+            frame.alpha_composite(layer)
+        elif self.result_page == 'outcome':
             if result == 'caught' and self.battle.caught_pet:
                 pet = self.battle.caught_pet
                 stats = pet.stats(self.app.data.tables)

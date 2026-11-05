@@ -144,6 +144,8 @@ class BattlePet:
         self.reflect_damage = {}
         self.capture_bonus = 0.0
         self.escape_bonus = 0.0
+        self.enemy_cannot_escape = False
+        self.friendly_locked = False
         self.dodge_chance = 0.0
         self.never_miss = False
         self.cleanse_on_switch = False
@@ -171,6 +173,10 @@ class BattlePet:
                 if mode == 9:
                     if state == 14:
                         self.regen_pct += value
+                    elif state == 32:
+                        self.friendly_locked = True
+                    elif state == 33:
+                        self.enemy_cannot_escape = True
                     elif state == 41:
                         self.half_damage_chance += value
                     elif state == 24:
@@ -212,6 +218,14 @@ class BattlePet:
                         self.talent_immune.add('52')
                     elif state == 66:
                         self.prevent_drain = True
+                    elif state == 32:
+                        self.friendly_locked = True
+                    elif state == 33:
+                        self.enemy_cannot_escape = True
+                    elif state == 32:
+                        self.friendly_locked = True
+                    elif state == 33:
+                        self.enemy_cannot_escape = True
                     elif state == 34:
                         self.capture_bonus += value
                     elif state == 35:
@@ -544,24 +558,29 @@ class Battle:
             return []
         return self._perform_round({'type': 'switch', 'index': index})
 
-    def _enemy_escape_bonus(self):
-        """VillageEnemy.escapeLife/escapePro raise the player's escape rate.
+    def _enemy_escape_chance(self):
+        """VillageEnemy.escapeLife/escapePro are the wild enemy's flee odds.
 
-        The original row stores HP percentages (90,50,30,10) and the matching
-        percentage-point bonus (0,1,3,5).  The weak wild pet is easier to run
-        from, which is why the values are paired by threshold.
+        The original rows pair HP percentages (90,50,30,10) with a per-turn
+        percentage chance (0,1,3,5).  Talent 33 (Affinity Angel) explicitly
+        says the enemy cannot run, confirming this is the enemy-side escape.
         """
+        if self.kind != 'wild' or self.result:
+            return 0
         enemy = self.enemy_active
-        if not enemy or enemy.max_hp <= 0:
+        player = self.player_active
+        if not enemy or enemy.max_hp <= 0 or enemy.hp <= 0 or not player:
+            return 0
+        if getattr(player, 'enemy_cannot_escape', False):
             return 0
         life = numbers(self.fight_row.get('escapeLife', '0'))
         pro = numbers(self.fight_row.get('escapePro', '0'))
         pct = enemy.hp/enemy.max_hp*100
-        bonus = 0
+        chance = 0
         for threshold, value in zip(life, pro):
             if pct <= threshold:
-                bonus = max(bonus, value)
-        return max(0, int(bonus))
+                chance = max(chance, value)
+        return max(0, int(chance))
 
     def choose_escape(self):
         if self.result or self.force_switch:
@@ -576,7 +595,6 @@ class Battle:
         enemy = self.enemy_active
         rate = escape_rate(unit.effective(4), enemy.effective(4))
         rate += int(getattr(unit, 'escape_bonus', 0))
-        rate += self._enemy_escape_bonus()
         rate = max(0, min(100, rate))
         if self.rng.randrange(100) < rate:
             self.messages.append('成功逃走了！')
@@ -605,6 +623,8 @@ class Battle:
         if self._skip_turn(player):
             player_action = {'type': 'skip'}
         enemy_action = self._enemy_action()
+        if self.result:
+            return list(self.events)
         if self._skip_turn(enemy):
             enemy_action = {'type': 'skip'}
 
@@ -656,6 +676,14 @@ class Battle:
 
     def _enemy_action(self):
         unit = self.enemy_active
+        chance = self._enemy_escape_chance()
+        if chance and self.rng.randrange(100) < chance:
+            self.messages.append(f'野生的 {unit.name} 逃走了！')
+            self.events.append({'type': 'enemy_escape', 'name': unit.name})
+            self.result = 'enemy_escape'
+            unit.fled = True
+            self._finish()
+            return {'type': 'skip'}
         if unit.hp/unit.max_hp*100 <= self._enemy_heal_threshold():
             item = self._enemy_heal_item()
             if item and self.rng.randrange(100) < self._enemy_heal_rate():
@@ -1229,9 +1257,10 @@ class Battle:
             self.messages.append(f'从球里逃出来了！({roll} > {self.last_catch_chance})')
             self.events.append({'type': 'catch_failed', 'chance': self.last_catch_chance})
             enemy_action = self._enemy_action()
-            self._execute(self.enemy_active, self.player_active, enemy_action, 'enemy')
-            self._end_round()
-            self._check_end()
+            if not self.result:
+                self._execute(self.enemy_active, self.player_active, enemy_action, 'enemy')
+                self._end_round()
+                self._check_end()
         for unit in self.player+self.enemy:
             self._sync_pet(unit)
         return list(self.events)

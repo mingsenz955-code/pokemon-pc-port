@@ -968,7 +968,7 @@ class XFullChecks(unittest.TestCase):
                     pass
 
     def test_x_wild_escape_uses_enemy_life_thresholds(self):
-        """VillageEnemy.escapeLife/escapePro raise the wild escape rate."""
+        """VillageEnemy.escapeLife/escapePro are the wild enemy's flee odds."""
         key = next(k for k, r in self.data.tables['VillageEnemy'].items()
                    if len(str(r.get('escapeLife', '')).split(',')) >= 4
                    and len(str(r.get('escapePro', '')).split(',')) >= 4)
@@ -976,13 +976,27 @@ class XFullChecks(unittest.TestCase):
         battle = make_wild_battle(self.data.tables, [player], key, random.Random(4))
         enemy = battle.enemy_active
         enemy.hp = enemy.max_hp
-        self.assertEqual(0, battle._enemy_escape_bonus())
+        self.assertEqual(0, battle._enemy_escape_chance())
         enemy.hp = max(1, int(enemy.max_hp*.40))
-        self.assertEqual(1, battle._enemy_escape_bonus())
+        self.assertEqual(1, battle._enemy_escape_chance())
         enemy.hp = max(1, int(enemy.max_hp*.20))
-        self.assertEqual(3, battle._enemy_escape_bonus())
+        self.assertEqual(3, battle._enemy_escape_chance())
         enemy.hp = max(1, int(enemy.max_hp*.05))
-        self.assertEqual(5, battle._enemy_escape_bonus())
+        self.assertEqual(5, battle._enemy_escape_chance())
+        battle.rng = SimpleNamespace(randrange=lambda n: 0)
+        action = battle._enemy_action()
+        self.assertEqual('skip', action['type'])
+        self.assertEqual('enemy_escape', battle.result)
+        self.assertTrue(enemy.fled)
+
+        # Talent 400205 (state 33) is Affinity Angel: enemies cannot flee.
+        player2 = generate_pet(self.data.tables, random.Random(5), '100160', 50)
+        player2.talents = ['400205']
+        battle2 = make_wild_battle(self.data.tables, [player2], key, random.Random(6))
+        battle2.player_active._apply_talent_stats()
+        battle2.enemy_active.hp = max(1, int(battle2.enemy_active.max_hp*.05))
+        self.assertTrue(battle2.player_active.enemy_cannot_escape)
+        self.assertEqual(0, battle2._enemy_escape_chance())
 
     def test_x_wild_capture_reaches_caught(self):
         pets = [generate_pet(self.data.tables, random.Random(22), '100160', 80)
