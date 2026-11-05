@@ -1506,9 +1506,13 @@ def make_npc_battle(tables, player_pets, npcid, rng):
         specs[0]['held_item'] = '0'
     else:
         token = None
+    # NpcFight type 1 is the original single-enemy capture fight.  Story
+    # tasks 163/169 (幻魔雷狼/传说宠物) and the other type-1 rows use it;
+    # type 2 is the ordinary six-pet trainer battle.
+    can_catch = row.get('type') == '1' or bool(token)
     battle = Battle(tables, player_pets, specs, rng, kind=kind,
                   name='对手', fight_row=row, bgm=row.get('bgmId', '0'),
-                  can_catch=bool(token), can_escape=False)
+                  can_catch=can_catch, can_escape=False)
     battle.capture_story_token = token
     return battle
 
