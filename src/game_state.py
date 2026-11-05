@@ -241,6 +241,12 @@ class GameState:
         for key, row in self.tables.get('Ride', {}).items():
             if str(row['petId']) == str(species) and int(key) not in self.rides:
                 self.rides.append(int(key))
+        # Shiny/variant Pet rows keep the same rideId; record_pet is also the
+        # acquisition hook for those variants, so honor Pet.rideId too.
+        pet_row = self.tables.get('Pet', {}).get(str(species), {})
+        ride_id = int(pet_row.get('rideId', 0) or 0)
+        if ride_id and str(ride_id) in self.tables.get('Ride', {}) and ride_id not in self.rides:
+            self.rides.append(ride_id)
 
     def main_matches(self, task_id, state):
         """TaskManager::compareMainTaskId: past=5, future=2; current exact."""

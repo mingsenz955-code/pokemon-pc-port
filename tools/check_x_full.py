@@ -884,6 +884,13 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(100, before-attacker.hp)
         self.assertTrue(attacker.has_state('7'))
 
+    def test_x_variant_pet_unlocks_authored_ride(self):
+        """Shiny/variant rows keep Pet.rideId and must unlock that mount."""
+        self.state.record_pet('101003')
+        self.assertIn(500001, self.state.rides)
+        self.state.record_pet('101133')
+        self.assertIn(500007, self.state.rides)
+
     def test_x_fang_and_equalize_use_original_current_hp(self):
         """愤怒门牙 cuts 25% current HP; 平等 copies the caster's HP."""
         pet = generate_pet(self.data.tables, random.Random(87), '100160', 60)
