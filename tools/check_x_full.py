@@ -2040,6 +2040,41 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(138, state.main_task)
         self.assertEqual(3, state.main_state)
 
+    def test_x_island_festival_reaches_task_140(self):
+        """1202002 -> 8052001 -> 1203001 must reach the festival fight."""
+        from event_runtime import EventRuntime
+        from game_state import GameState
+        from task_progress import TaskProgress
+        state = GameState(self.data.tables)
+        state.initialize(1)
+        state.add_preset(next(iter(self.data.tables['InitPet'])))
+        state.main_task, state.main_state = 138, 3
+        state.events['1202001'] = 1
+        runtime = EventRuntime(self.data, state)
+
+        def play(notification, **parameters):
+            self.assertTrue(runtime.notify(notification, **parameters))
+            while True:
+                request = runtime.next()
+                if request is None:
+                    break
+                runtime.resume('win' if request.kind == 'fight' else
+                               (True if request.kind == 'accepttask' else
+                                ([] if request.kind == 'costtaskitem' else None)))
+
+        play('toarea', area=120201)
+        self.assertEqual(1, state.events.get('1202002', 0))
+        TaskProgress(state).update('area', 120201)
+        self.assertEqual(4, state.main_state)
+        play('tomap', map=8052)
+        self.assertEqual(1, state.events.get('8052001', 0))
+        self.assertEqual(139, state.main_task)
+        self.assertEqual(3, state.main_state)
+        play('toarea', area=120301)
+        self.assertEqual(1, state.events.get('1203001', 0))
+        self.assertEqual(140, state.main_task)
+        self.assertEqual(3, state.main_state)
+
     def test_x_ship_launch_reaches_task_136(self):
         """119014 builds the ship and hands task 135 to the license test."""
         from event_runtime import EventRuntime
