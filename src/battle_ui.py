@@ -473,6 +473,7 @@ class BattleUI:
                     x, y = self.pet_positions[side]
                     frame.alpha_composite(art, (round(x-origin[0]*ratio), round(y-origin[1]*ratio)))
         self.effects.draw(frame, self)
+        self._draw_escape_dust(frame)
         if self.anim and self.anim['kind'] == 'capture':
             self._draw_capture(frame)
         hide_hud = bool(self.battle.result and not self.anim) or bool(self.anim and self.anim.get('effect', {}).get('hide_ui'))
@@ -584,6 +585,19 @@ class BattleUI:
             overlay = Image.new('RGBA', image.size, (255, 48, 32, 255))
             image = Image.blend(image, overlay, min(.55, .55*flash))
         frame.alpha_composite(image, (round(center[0]-origin[0]), round(center[1]-origin[1])))
+
+    def _draw_escape_dust(self, frame):
+        """Original particle/escape.plist dust behind a fleeing pet."""
+        if not self.anim or self.anim.get('kind') != 'escape':
+            return
+        from particles import draw_emitter
+        path = self.app.data.assets/'particle/escape.plist'
+        if not path.is_file():
+            return
+        elapsed = max(0.0, self.anim['age']/60)
+        side = self.anim.get('side', 'player')
+        x, y = self.pet_positions[side]
+        draw_emitter(frame, path, (x, y-12), (1.0, 1.0), elapsed)
 
     def _draw_capture(self, frame):
         art = self.app.data.armature('kaichong', self.anim['capture_clip'],

@@ -565,6 +565,38 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_battle_escape_uses_the_authored_dust(self):
+        """particle/escape.plist must actually emit at the fleeing pet."""
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
+                ui = app.battle_ui
+                ui.opening_frame = None
+                unit = app.battle.player_active
+                ui.anim = {'kind': 'escape', 'side': 'player',
+                           'target': 'player', 'source_uid': unit.pet.uid,
+                           'age': 10, 'duration': 40, 'amount': 0,
+                           'crit': False, 'damages': []}
+                layer = Image.new('RGBA', (960, 576))
+                ui._draw_escape_dust(layer)
+                self.assertIsNotNone(layer.getbbox())
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_battle_escape_runs_the_pet_away(self):
         """The player pet must leave its anchor on a successful escape."""
         from types import SimpleNamespace
