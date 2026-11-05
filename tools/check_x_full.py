@@ -896,10 +896,15 @@ class XFullChecks(unittest.TestCase):
         state.add_preset(next(iter(self.data.tables['InitPet'])))
         first, second = state.pets[0], state.pets[1]
         self.assertTrue(state.can_free_pet(first.uid)[0])
-        second.hp = 0
-        allowed, reason = state.can_free_pet(first.uid)
+        before = state.count('700001')
+        expected = 300*int(self.data.tables['Pet'][first.species]['starLevel'])
+        self.assertEqual(expected, state.release_pet(first.uid))
+        self.assertNotIn(first, state.pets)
+        self.assertEqual(before+expected, state.count('700001'))
+        allowed, reason = state.can_free_pet(second.uid)
         self.assertFalse(allowed)
         self.assertEqual('cantFreeLastPet', reason)
+        second.hp = 0
         self.assertTrue(state.can_free_pet(second.uid)[0])
 
     def test_x_variant_pet_unlocks_authored_ride(self):

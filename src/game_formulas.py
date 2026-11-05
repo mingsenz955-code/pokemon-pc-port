@@ -35,6 +35,11 @@ def hatch_exp(experience):
     return max(1, int(mul(experience, .3)))
 
 
+def free_pet_gold(star_level):
+    """Formula_FreePetGoldCount: 300 gold per authored Pet.starLevel."""
+    return 300*int(star_level)
+
+
 def attribute(base, variation, growth, level, hp=False):
     rate = mul(add(base, variation), growth)
     if hp:

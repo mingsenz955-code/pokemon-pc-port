@@ -12,7 +12,7 @@ from functools import wraps
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from game_formulas import add, attribute, level_exp, train_attribute, train_hp, train_mp
+from game_formulas import add, attribute, free_pet_gold, level_exp, train_attribute, train_hp, train_mp
 from economy import GOLD_PER_FEN, EVOLUTION_GOLD_COST
 
 
@@ -258,6 +258,21 @@ class GameState:
         if pet.hp > 0 and sum(1 for p in self.pets if p.hp > 0) <= 1:
             return False, 'cantFreeLastPet'
         return True, ''
+
+    def release_pet(self, uid):
+        """FreePetEvent: remove the pet and grant 700001 gold by star level."""
+        allowed, reason = self.can_free_pet(uid)
+        if not allowed:
+            raise ValueError(reason or '不能放生这只宠物。')
+        pet = next(p for p in self.pets if p.uid == str(uid))
+        gold = free_pet_gold(self.tables['Pet'][pet.species]['starLevel'])
+        index = self.pets.index(pet)
+        self.pets.remove(pet)
+        if self.active_pet > index:
+            self.active_pet -= 1
+        self.active_pet = max(0, min(self.active_pet, len(self.pets)-1))
+        self.grant('700001', gold)
+        return gold
 
     def main_matches(self, task_id, state):
         """TaskManager::compareMainTaskId: past=5, future=2; current exact."""

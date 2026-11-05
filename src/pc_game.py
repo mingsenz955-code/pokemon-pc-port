@@ -2957,17 +2957,14 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
             else:
                 self.pets_ui()
         def confirm():
-            allowed, reason = self.state.can_free_pet(pet.uid)
-            if not allowed:
+            try:
+                gold = self.state.release_pet(pet.uid)
+            except ValueError as exc:
+                reason = str(exc)
                 info.set(self.data.localized_text().get(
-                    reason, '不能放生，至少携带一只存活的战斗宠物！'))
+                    reason, reason or '不能放生，至少携带一只存活的战斗宠物！'))
                 return
-            index = self.state.pets.index(pet)
-            self.state.pets.remove(pet)
-            if self.state.active_pet > index:
-                self.state.active_pet -= 1
-            self.state.active_pet = max(
-                0, min(self.state.active_pet, len(self.state.pets)-1))
+            self.event_notice = f'放生 {name}，获得 {gold} 金币。'
             back_uiid = 47
             back()
         self.ui_actions['confirm_Button'] = confirm
