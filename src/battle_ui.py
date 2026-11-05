@@ -461,8 +461,10 @@ class BattleUI:
         self.effects.draw(frame, self, rear=True)
         frame.alpha_composite(pets_layer)
         if self.opening_frame is not None:
+            # PetController's appearance effect is Skill/chuchongguang, not
+            # the skill-armature vfx_appear.  It is a 13-frame flash.
             index = int(self.opening_frame-self.opening_transition)
-            art = self.app.data.armature('vfx_appear', 'Animation1', index)
+            art = self.app.data.armature('chuchongguang', 'Animation1', index)
             if art is not None:
                 origin = art.info.get('origin', (art.width/2, art.height/2))
                 ratio = W/800

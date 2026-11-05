@@ -547,6 +547,10 @@ class XFullChecks(unittest.TestCase):
                 ui = BattleUI(app, battle, opening=True)
                 transition = ui.opening_transition
                 self.assertGreater(transition, 0)
+                # PetController uses Skill/chuchongguang for the appearance
+                # flash; vfx_appear is a skill asset and must not stand in.
+                self.assertIsNotNone(
+                    self.data.armature('chuchongguang', 'Animation1', 0))
                 ui.advance(seconds=10)
                 self.assertIsNotNone(ui.opening_frame)
                 self.assertLess(ui.opening_frame, transition)
