@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from collections import OrderedDict
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 W, H = 960, 576
 FONT = 'C:/Windows/Fonts/msyh.ttc'
@@ -216,6 +216,8 @@ class BattleUI:
                     current['effect'] = plan
                     current['duration'] = plan['duration']
                     current['hit_at'] = plan['hit'] if plan['hit'] is not None else plan['duration']
+                skill_row = self.app.data.tables.get('Skill', {}).get(str(event.get('skill_id')), {})
+                current['shake'] = int(skill_row.get('shake', 0) or 0)
                 self.anim_queue.append(current)
             elif kind == 'item_used':
                 effect = self.app.data.tables.get('PetItem', {}).get(str(event.get('id')), {})
@@ -349,6 +351,18 @@ class BattleUI:
             land = active.terrain_override
         return land
 
+    def _shake_offset(self):
+        """Skill.shake=1 (Ground Wrath) shakes the battlefield, not the HUD."""
+        anim = self.anim
+        if not anim or not anim.get('shake'):
+            return 0, 0
+        hit = float(anim.get('hit_at') or 0)
+        age = float(anim.get('age') or 0)
+        if age < hit or age > hit+14:
+            return 0, 0
+        phase = age-hit+0.5
+        return round(math.sin(phase*1.7)*7), round(math.cos(phase*2.3)*4)
+
     def render(self):
         signature = (self.screen, self.page, self.ball_page, self.notice, self.info, self.result_page, getattr(self, 'result_index', 0),
                      int(self.anim_idle*30/25),
@@ -375,7 +389,12 @@ class BattleUI:
             background = getattr(self.app, 'background', None)
         if land not in self._background_cache:
             self._background_cache[land] = cover(background, (W, H))
-        frame.alpha_composite(self._background_cache[land])
+        shake_x, shake_y = self._shake_offset()
+        if shake_x or shake_y:
+            frame.alpha_composite(ImageChops.offset(
+                self._background_cache[land], shake_x, shake_y))
+        else:
+            frame.alpha_composite(self._background_cache[land])
         if self.opening_frame is not None and self.opening_frame < self.opening_transition:
             frame.alpha_composite(self.app.cocos_ui.render(
                 'BattleStartEffectUI', (W, H), timeline_frame=int(self.opening_frame)))
@@ -396,10 +415,14 @@ class BattleUI:
             enemy_offset, player_offset = (0, 0), (0, 0)
         pets_layer = Image.new('RGBA', frame.size)
         self._draw_pet(pets_layer, self.presentation_unit(True),
-                       tuple(round(v)+d for v, d in zip(self.pet_positions['enemy'], enemy_offset)),
+                       tuple(round(v)+d+s for v, d, s in
+                             zip(self.pet_positions['enemy'], enemy_offset,
+                                 (shake_x, shake_y))),
                        235, True, flash if self.anim and self.anim['target'] == 'enemy' else 0)
         self._draw_pet(pets_layer, self.presentation_unit(False),
-                       tuple(round(v)+d for v, d in zip(self.pet_positions['player'], player_offset)),
+                       tuple(round(v)+d+s for v, d, s in
+                             zip(self.pet_positions['player'], player_offset,
+                                 (shake_x, shake_y))),
                        250, False, flash if self.anim and self.anim['target'] == 'player' else 0)
         self.effects.draw(frame, self, rear=True)
         frame.alpha_composite(pets_layer)

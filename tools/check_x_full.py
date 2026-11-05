@@ -869,6 +869,22 @@ class XFullChecks(unittest.TestCase):
 
 
 
+
+    def test_x_ground_wrath_shakes_battlefield(self):
+        """Skill.shake=1 is the authored Ground Wrath battlefield shake."""
+        from battle_ui import BattleUI
+        row = self.data.tables['Skill']['300232']
+        self.assertEqual(1, int(row['shake']))
+        self.assertEqual('大地之怒', row['name'])
+        ui = BattleUI.__new__(BattleUI)
+        ui.anim = {'shake': 1, 'hit_at': 4, 'age': 6, 'duration': 20}
+        x, y = ui._shake_offset()
+        self.assertTrue(x or y)
+        ui.anim['age'] = 40
+        self.assertEqual((0, 0), ui._shake_offset())
+        ui.anim = {'shake': 0, 'hit_at': 4, 'age': 6}
+        self.assertEqual((0, 0), ui._shake_offset())
+
     def test_x_battle_item_uses_original_sound(self):
         """PetItem.soundId is the authored battle item sound."""
         with tempfile.TemporaryDirectory() as save:
