@@ -472,7 +472,15 @@ class NativeGame(SkillPages, MailPages, OriginalPages, ActivityUI, ExitMarkers, 
                     image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
                     image.info['origin'] = (image.width-origin[0], origin[1])
                 return image
-        return self.scene_sprite(self.player_sprite, animation)
+        image = self.scene_sprite(self.player_sprite, animation)
+        if image is None and str(self.player_sprite) in {
+                '10001', '10002', '10003', '10004', '10005', '10006', '10007'}:
+            # 2.10.9's VillageSprite rows 10001..10007 point at role1..role7,
+            # but the APK ships no role*.ExportJson.  The normal hero body is
+            # npc1 (VillageSprite 20001), so keep the unmounted player visible
+            # instead of drawing nothing when a ride is removed.
+            image = self.scene_sprite('20001', animation)
+        return image
 
     def show_purchase_notice(self, name, count):
         # RewardTipsUiLayer uses TipsUiNode, DelayTime(.5), FadeOut(.5).

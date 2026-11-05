@@ -943,6 +943,37 @@ class XFullChecks(unittest.TestCase):
         self.assertEqual(enemy.hp, hp)
         self.assertEqual(enemy.energy, energy)
 
+    def test_x_unmounted_player_keeps_a_visible_body(self):
+        """2.10.9 has no role*.ExportJson; the unmounted hero must not vanish."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                if app.runtime.running:
+                    app.runtime.finish()
+                app.state.ride = 0
+                app.state.trial_ride = 0
+                app.state.sprite_id = '10001'
+                app.player_sprite = '10001'
+                self.assertIsNone(self.data.village_sprite('10001'))
+                body = app.player_image('standdown')
+                self.assertIsNotNone(body)
+                self.assertGreater(body.width, 0)
+                self.assertGreater(body.height, 0)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_ambient_air_talk_reaches_its_bubble(self):
         """The authored talk<id> line must become bubble text, not stay unused."""
         from event_runtime import Request
