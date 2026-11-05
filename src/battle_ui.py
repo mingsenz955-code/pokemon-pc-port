@@ -245,6 +245,15 @@ class BattleUI:
                                'hit_at': plan['hit'] if plan['hit'] is not None else plan['duration'],
                                'damages': [], 'effect': plan, 'shake': 0}
                     self.anim_queue.append(current)
+            elif kind == 'switch':
+                unit = next((u for u in self.battle.player+self.battle.enemy
+                             if u.pet.uid == event.get('uid')), None)
+                if unit is not None:
+                    self.anim_queue.append({
+                        'side': event.get('side', unit.side), 'target': '',
+                        'source_uid': unit.pet.uid, 'kind': 'switch',
+                        'amount': 0, 'crit': False, 'age': 0,
+                        'duration': 34, 'damages': []})
             elif kind == 'faint':
                 unit = next((u for u in self.battle.player+self.battle.enemy
                              if u.pet.uid == event.get('uid')), None)
@@ -481,6 +490,17 @@ class BattleUI:
                 for side in ('player', 'enemy') if self.battle.kind != 'wild' else ('player',):
                     x, y = self.pet_positions[side]
                     frame.alpha_composite(art, (round(x-origin[0]*ratio), round(y-origin[1]*ratio)))
+        if self.anim and self.anim.get('kind') == 'switch':
+            art = self.app.data.armature('chuchongguang', 'Animation1',
+                                         int(self.anim['age']))
+            if art is not None:
+                origin = art.info.get('origin', (art.width/2, art.height/2))
+                ratio = W/800
+                art = art.resize((round(art.width*ratio), round(art.height*ratio)),
+                                 Image.Resampling.LANCZOS)
+                x, y = self.pet_positions[self.anim['side']]
+                frame.alpha_composite(art, (round(x-origin[0]*ratio),
+                                            round(y-origin[1]*ratio)))
         self.effects.draw(frame, self)
         self._draw_escape_dust(frame)
         if self.anim and self.anim['kind'] == 'capture':
@@ -563,6 +583,10 @@ class BattleUI:
             center = (center[0], center[1]+round(28*faint_t))
             if self.app.data.pet_clip_duration(unit.pet.species, 'dead') > 0:
                 clip, age, loop = 'dead', self.anim['age'], False
+        elif self.anim and self.anim['kind'] == 'switch' and self.anim['side'] == side:
+            switch_t = min(1.0, self.anim['age']/20)
+            scale = 1+2.70158*(switch_t-1)**3+1.70158*(switch_t-1)**2
+            height = max(1, round(height*(.1+.9*scale)))
         if self.anim and self.anim['kind'] in ('attack', 'skill') and self.anim['side'] == side and not self.anim.get('idle'):
             clip, age, loop = 'attack', self.anim['age'], False
         elif self.anim and self.anim.get('impact', {}).get('side') == side and self.anim['impact']['type'] == 'damage':

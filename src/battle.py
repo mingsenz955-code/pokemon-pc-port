@@ -853,7 +853,8 @@ class Battle:
                 self.events.append({'type': 'copy_status', 'side': new.side,
                                     'name': new.name, 'count': len(new.buffs)})
         self.messages.append(f'换上 {new.name}！')
-        self.events.append({'type': 'switch', 'side': unit.side, 'name': new.name})
+        self.events.append({'type': 'switch', 'side': unit.side, 'name': new.name,
+                            'uid': new.pet.uid})
 
     def _attack(self, unit, target):
         self.messages.append(f'{unit.name} 的普通攻击！')

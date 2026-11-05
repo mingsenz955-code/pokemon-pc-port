@@ -565,6 +565,39 @@ class XFullChecks(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_x_battle_switch_plays_appearance_flash(self):
+        """A switched-in pet scales in under the authored chuchongguang."""
+        with tempfile.TemporaryDirectory() as save:
+            os.environ['POCKET_NATIVE_SAVE_DIR'] = save
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                from pc_game import NativeGame
+                app = NativeGame(root, self.data)
+                app.start_battle(next(iter(self.data.tables['VillageEnemy'])))
+                ui = app.battle_ui
+                ui.opening_frame = None
+                unit = app.battle.player_active
+                ui.anim, ui.anim_queue = None, []
+                app.battle.events = [{'type': 'switch', 'side': 'player',
+                                      'uid': unit.pet.uid, 'name': unit.name}]
+                ui._event_batch, ui._event_cursor = None, 0
+                ui._capture_events()
+                self.assertEqual('switch', ui.anim['kind'])
+                ui.anim['age'] = 6
+                ui.frame, ui._signature = None, None
+                self.assertEqual((960, 576), ui.render().size)
+            finally:
+                for job in root.tk.call('after', 'info'):
+                    try:
+                        root.after_cancel(job)
+                    except tk.TclError:
+                        pass
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_x_battle_faint_sinks_and_fades(self):
         """A faint event selects the dead pose/fade instead of popping out."""
         from PIL import Image
